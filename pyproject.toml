@@ -1,0 +1,64 @@
+[tool.poetry]
+name = "Amazhist Python"
+version = "0.1.0"
+description = "Amazon.co.jp の購入履歴情報を収集するスクリプトです．"
+authors = ["KIMATA Tetsuya <kimata@green-rabbit.net>"]
+
+[tool.poetry.dependencies]
+coloredlogs = "^15.0.1"
+docopt = "^0.6.2"
+python = "^3.10"
+pyyaml = "^6.0.1"
+selenium = "^4.18.1"
+pillow = "^10.2.0"
+pyprind = "^2.11.3"
+enlighten = "^1.12.4"
+
+[tool.poetry.group.test.dependencies]
+playwright = "^1.36.0"
+pytest-cov = "^4.1.0"
+pytest-freezegun = "^0.4.2"
+pytest-html = "^4.0.0"
+pytest-playwright = "^0.4.0"
+pytest-xdist = "^3.3.1"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+
+addopts = "--verbose --cov=app --cov=lib --log-file-level=INFO --log-format=\"%(asctime)s %(levelname)s %(message)s\" --log-format=\"%(asctime)s %(levelname)s [%(filename)s:%(lineno)s %(funcName)s] %(message)s\" --capture=sys --cov-report=html --html=tests/evidence/index.htm --self-contained-html"
+
+testpaths = [
+    "tests",
+]
+filterwarnings = [
+    "ignore:The hookimpl CovPlugin.pytest_configure_node uses",
+    "ignore:The hookimpl CovPlugin.pytest_testnodedown uses",
+    "ignore::DeprecationWarning:pytest_freezegun",
+]
+
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+
+  # 以下，未使用関数
+]
+
+[tool.coverage.html]
+directory = "tests/evidence/coverage"
+
+[tool.black]
+target-version = ['py310']
+line-length = 110
+
+[tool.isort]
+profile = "black"
+line_length = 110
+include_trailing_comma = true
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

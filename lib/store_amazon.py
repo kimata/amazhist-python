@@ -18,10 +18,13 @@ import math
 import pathlib
 import datetime
 import io
+import random
 import logging
 import inspect
 import time
 import PIL.Image
+import functools
+import enlighten
 
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
@@ -50,6 +53,41 @@ def record_item(handle, item):
     handle["item_list"].append(item)
 
 
+def set_year_list(handle, year_list):
+    handle["year_list"] = year_list
+
+
+def set_order_count(handle, year, order_count):
+    handle["order_count"][year] = order_count
+
+
+def get_order_count(handle, year):
+    return handle["order_count"][year]
+
+
+def get_total_order_count(handle):
+    return functools.reduce(lambda a, b: a + b, handle["order_count"].values())
+
+
+def get_year_list(handle):
+    return handle["year_list"]
+
+
+def set_progress_bar(handle, desc, total):
+    handle["progress_bar"][desc] = handle["progress_manager"].counter(total=total, desc=desc)
+
+
+def get_progress_bar(handle, desc):
+    return handle["progress_bar"][desc]
+
+
+def wait_for_loading(handle):
+    driver, wait = get_queue_dirver(handle)
+
+    wait.until(EC.presence_of_all_elements_located)
+    time.sleep(0.1)
+
+
 def resolve_captcha(handle):
     driver, wait = get_queue_dirver(handle)
 
@@ -72,7 +110,7 @@ def resolve_captcha(handle):
         driver.find_element(By.XPATH, '//input[@name="cvf_captcha_input"]').send_keys(captcha_text.strip())
         driver.find_element(By.XPATH, '//input[@type="submit"]').click()
 
-        wait.until(EC.presence_of_all_elements_located)
+        wait_for_loading(handle)
 
         if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) == 0:
             return
@@ -87,12 +125,12 @@ def resolve_captcha(handle):
 def execute_login(handle):
     driver, wait = get_queue_dirver(handle)
 
-    if len(driver.find_elements(By.XPATH, '//input[@id="ap_email"]')) != 0:
+    if len(driver.find_elements(By.XPATH, '//input[@id="ap_email" and @type="text"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').send_keys(handle["config"]["login"]["user"])
 
         driver.find_element(By.XPATH, '//input[@id="continue"]').click()
-        wait.until(EC.presence_of_all_elements_located)
+        wait_for_loading(handle)
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_password"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
@@ -106,8 +144,7 @@ def execute_login(handle):
 
     driver.find_element(By.XPATH, '//input[@id="signInSubmit"]').click()
 
-    wait.until(EC.presence_of_all_elements_located)
-    time.sleep(0.1)
+    wait_for_loading(handle)
 
     if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) != 0:
         resolve_captcha(handle)
@@ -146,23 +183,51 @@ def visit_url(handle, url, file_name):
     driver, wait = get_queue_dirver(handle)
     driver.get(url)
 
-    wait.until(EC.presence_of_all_elements_located)
-
-
-def get_info(handle, queue_info, index):
-    driver, wait = get_queue_dirver(handle, queue_info["name"])
-
-    item_xpath = '//div[@class="vvp-item-tile"][{index}]'.format(index=index)
-
-    asin = driver.find_element(By.XPATH, item_xpath + "//input[@data-asin]").get_attribute("data-asin")
-
-    if asin in handle["cache"]["item"]:
-        logging.debug("Use cache: {asin}".format(asin=asin))
-        return handle["cache"]["item"][asin]
+    wait_for_loading(handle)
 
 
 def parse_date(date_text):
     return datetime.datetime.strptime(date_text, "%Y年%m月%d日")
+
+
+def parse_item(handle, item_xpath):
+    driver, wait = get_queue_dirver(handle)
+
+    link = driver.find_element(
+        By.XPATH,
+        item_xpath + "//a[contains(@class, 'a-link-normal')]",
+    )
+    name = link.text
+    url = link.get_attribute("href")
+    asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
+
+    count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
+
+    price_text = driver.find_element(By.XPATH, item_xpath + "//span[contains(@class, 'a-color-price')]").text
+    price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
+
+    seller = get_text(
+        driver,
+        item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
+        " アマゾンジャパン合同会社",
+    ).split(" ", 2)[1]
+
+    condition = get_text(
+        driver,
+        item_xpath
+        + "//span[contains(@class, 'a-color-secondary') and contains(text(), 'コンディション：')]/following-sibling::span[1]",
+        "新品",
+    )
+
+    return {
+        "name": name,
+        "url": url,
+        "asin": asin,
+        "count": count,
+        "price": price,
+        "seller": seller,
+        "condition": condition,
+    }
 
 
 def parse_order(handle, link):
@@ -171,8 +236,13 @@ def parse_order(handle, link):
     driver, wait = get_queue_dirver(handle)
 
     link.click()
+    wait_for_loading(handle)
 
-    wait.until(EC.presence_of_all_elements_located)
+    dump_page(driver, int(random.random() * 100))
+
+    keep_logged_on(handle)
+
+    dump_page(driver, int(random.random() * 100))
 
     date_text = driver.find_element(
         By.XPATH, '//span[contains(@class, "order-date-invoice-item")][1]'
@@ -181,69 +251,14 @@ def parse_order(handle, link):
 
     no = driver.find_element(By.XPATH, '//span[contains(@class, "order-date-invoice-item")]/bdi').text
 
+    order = {"date": date, "no": no}
+
     is_unempty = False
     for i in range(len(driver.find_elements(By.XPATH, ITEM_XPATH))):
         item_xpath = "(" + ITEM_XPATH + ")[{index}]".format(index=i + 1)
 
-        itemlink = driver.find_element(By.XPATH, item_xpath)
-
-        link = driver.find_element(
-            By.XPATH,
-            item_xpath + "//a[contains(@class, 'a-link-normal')]",
-        )
-        name = link.text
-
-        count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
-
-        price_text = driver.find_element(
-            By.XPATH, item_xpath + "//span[contains(@class, 'a-color-price')]"
-        ).text
-        m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
-        price = int(m.group(1).replace(",", ""))
-
-        if (
-            len(
-                driver.find_elements(
-                    By.XPATH,
-                    item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
-                )
-            )
-            != 0
-        ):
-            seller = driver.find_element(
-                By.XPATH,
-                item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
-            ).text.split(" ", 2)[1]
-        else:
-            seller = "アマゾンジャパン合同会社"
-
-        if (
-            len(
-                driver.find_elements(
-                    By.XPATH,
-                    item_xpath
-                    + "//span[contains(@class, 'a-color-secondary') and contains(text(), 'コンディション：')]/following-sibling::span[1]",
-                )
-            )
-            != 0
-        ):
-            condition = driver.find_element(
-                By.XPATH,
-                item_xpath
-                + "//span[contains(@class, 'a-color-secondary') and contains(text(), 'コンディション：')]/following-sibling::span[1]",
-            ).text
-        else:
-            condition = "新品"
-
-        item = {
-            "date": date,
-            "no": no,
-            "name": name,
-            "count": count,
-            "price": price,
-            "seller": seller,
-            "condition": condition,
-        }
+        item = parse_item(handle, item_xpath)
+        item |= order
 
         logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
 
@@ -251,21 +266,23 @@ def parse_order(handle, link):
         is_unempty = True
 
     driver.back()
-    wait.until(EC.presence_of_all_elements_located)
+    wait_for_loading(handle)
 
     return is_unempty
+
+
+def get_order_count_by_year(handle):
+    driver, wait = get_queue_dirver(handle)
+
+    order_count_text = driver.find_element(By.XPATH, "//span[contains(@class, 'num-orders')]").text
+
+    return int(re.match(r"(\d+)", order_count_text).group(1))
 
 
 def get_total_page_by_year(handle):
     ORDER_PER_PAGE = 10
 
-    driver, wait = get_queue_dirver(handle)
-
-    order_count_text = driver.find_element(By.XPATH, "//span[contains(@class, 'num-orders')]").text
-    m = re.match(r"(\d+)", order_count_text)
-    order_count = int(m.group(1))
-
-    return math.ceil(float(order_count) / ORDER_PER_PAGE)
+    return math.ceil(float(get_order_count_by_year(handle)) / ORDER_PER_PAGE)
 
 
 def get_order_item_list_by_year_page(handle, year, page):
@@ -274,7 +291,6 @@ def get_order_item_list_by_year_page(handle, year, page):
     driver, wait = get_queue_dirver(handle)
 
     visit_url(handle, gen_hist_url(year, page), inspect.currentframe().f_code.co_name)
-
     keep_logged_on(handle)
 
     total_page = get_total_page_by_year(handle)
@@ -309,21 +325,24 @@ def get_order_item_list_by_year_page(handle, year, page):
         else:
             is_unempty = True
 
-        time.sleep(2)
+        get_progress_bar(handle, "Year {year}".format(year=year)).update()
+        get_progress_bar(handle, "All").update()
+
+        time.sleep(1)
 
     return is_unempty and (page != total_page)
 
 
-def get_year_list(handle):
+def parse_year_list(handle):
     driver, wait = get_queue_dirver(handle)
 
     driver.find_element(
         By.XPATH, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
     ).click()
 
-    wait.until(EC.presence_of_all_elements_located)
+    wait_for_loading(handle)
 
-    return list(
+    year_list = list(
         reversed(
             list(
                 map(
@@ -343,6 +362,10 @@ def get_year_list(handle):
         )
     )
 
+    set_year_list(handle, year_list)
+
+    return year_list
+
 
 def get_order_item_list_by_year(handle, year, start_page=1):
     visit_url(handle, gen_hist_url(year, start_page), inspect.currentframe().f_code.co_name)
@@ -357,11 +380,44 @@ def get_order_item_list_by_year(handle, year, start_page=1):
         )
     )
 
+    set_progress_bar(handle, "Year {year}".format(year=year), get_order_count(handle, year))
+
     page = start_page
     while True:
-        if not get_order_item_list_by_year_page(handle, year, page):
+        is_last = not get_order_item_list_by_year_page(handle, year, page)
+
+        if is_last:
             break
+
         page += 1
+
+    get_progress_bar(handle, "Year {year}".format(year=year)).update()
+
+
+def parse_order_count(handle):
+    year_list = get_year_list(handle)
+
+    logging.info("Collect order count")
+
+    set_progress_bar(handle, "Collect order count", len(year_list))
+
+    total_count = 0
+    for year in year_list:
+        visit_url(handle, gen_hist_url(year, 1), inspect.currentframe().f_code.co_name)
+
+        count = get_order_count_by_year(handle)
+        total_count += count
+
+        logging.info("Year {year}: {count:,} orders".format(year=year, count=count))
+
+        set_order_count(handle, year, count)
+        get_progress_bar(handle, "Collect order count").update()
+
+        time.sleep(1)
+
+    logging.info("Total order is {total_count:,}".format(total_count=total_count))
+
+    get_progress_bar(handle, "Collect order count").update()
 
 
 def get_order_item_list(handle):
@@ -371,10 +427,15 @@ def get_order_item_list(handle):
 
     keep_logged_on(handle)
 
-    year_list = get_year_list(handle)
+    year_list = parse_year_list(handle)
+    parse_order_count(handle)
+
+    set_progress_bar(handle, "All", get_total_order_count(handle))
 
     for year in year_list:
         get_order_item_list_by_year(handle, year)
+
+    get_progress_bar(handle, "All").update()
 
 
 def create_handle(config):
@@ -388,7 +449,11 @@ def create_handle(config):
             "driver": driver,
             "wait": wait,
         },
+        "progress_manager": enlighten.get_manager(),
+        "progress_bar": {},
         "config": config,
+        "year_list": [],
+        "order_count": {},
         "item_list": [],
     }
 
