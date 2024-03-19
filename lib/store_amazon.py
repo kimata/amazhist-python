@@ -4,12 +4,14 @@
 Amazon の購入履歴情報を取得します．
 
 Usage:
-  store_amazon.py [-c CONFIG] [-y YEAR] [-s PAGE]
+  store_amazon.py [-c CONFIG] [-y YEAR] [-s PAGE] [-n ORDER_NO]
+  store_amazon.py [-c CONFIG] -n ORDER_NO
 
 Options:
   -c CONFIG    : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
   -y YEAR      : 購入年．
   -s PAGE      : 開始ページ．[default: 1]
+  -n ORDER_NO  : 注文番号
 """
 
 import os
@@ -22,22 +24,20 @@ import random
 import logging
 import inspect
 import time
+import traceback
 import PIL.Image
-import functools
-import enlighten
 
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
-from selenium_util import clean_dump, clear_cache, create_driver, dump_page, get_text
+from selenium_util import clean_dump, clear_cache, dump_page, get_text
 
-import serializer
+import crawl_handle
 
 CAPTCHA_RETRY_COUNT = 2
 LOGIN_RETRY_COUNT = 2
 CAPTCHA_IMAGE_FILE = "captcha.png"
-CACHE_FILE = "amazhist_cache.dat"
 
 DEBUG_USE_DUMP = False
 DEBUG_DUMP = True
@@ -148,6 +148,10 @@ def gen_hist_url(year, page):
     return HIST_URL_BY_YEAR_PAGE.format(year=year, start=10 * (page - 1))
 
 
+def gen_order_url(no):
+    return HIST_URL_BY_ORDER_NO.format(no=no)
+
+
 def visit_url(handle, url, file_name):
     driver, wait = crawl_handle.get_queue_dirver(handle)
     driver.get(url)
@@ -159,16 +163,30 @@ def parse_date(date_text):
     return datetime.datetime.strptime(date_text, "%Y年%m月%d日")
 
 
-def parse_item(handle, item_xpath):
+def parse_item_giftcard(handle, item_xpath):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
-    link = driver.find_element(
+    count = 1
+
+    price_text = driver.find_element(
         By.XPATH,
-        item_xpath + "//a[contains(@class, 'a-link-normal')]",
-    )
-    name = link.text
-    url = link.get_attribute("href")
-    asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
+        item_xpath + "//div[contains(@class, 'gift-card-instance')]/div[contains(@class, 'a-column')][1]",
+    ).text
+    price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
+
+    seller = "アマゾンジャパン合同会社"
+    condition = "新品"
+
+    return {
+        "count": count,
+        "price": price,
+        "seller": seller,
+        "condition": condition,
+    }
+
+
+def parse_item_default(handle, item_xpath):
+    driver, wait = crawl_handle.get_queue_dirver(handle)
 
     count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
 
@@ -189,9 +207,6 @@ def parse_item(handle, item_xpath):
     )
 
     return {
-        "name": name,
-        "url": url,
-        "asin": asin,
         "count": count,
         "price": price,
         "seller": seller,
@@ -199,7 +214,30 @@ def parse_item(handle, item_xpath):
     }
 
 
-def parse_order_kindle(handle, date, no, link):
+def parse_item(handle, item_xpath):
+    driver, wait = crawl_handle.get_queue_dirver(handle)
+
+    link = driver.find_element(
+        By.XPATH,
+        item_xpath + "//a[contains(@class, 'a-link-normal')]",
+    )
+    name = link.text
+    url = link.get_attribute("href")
+    asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
+
+    item = {
+        "name": name,
+        "url": url,
+        "asin": asin,
+    }
+
+    if len(driver.find_elements(By.XPATH, item_xpath + "//div[contains(@class, 'gift-card-instance')]")) != 0:
+        return item | parse_item_giftcard(handle, item_xpath)
+    else:
+        return item | parse_item_default(handle, item_xpath)
+
+
+def parse_order_kindle(handle, date, no):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
     # //*[@id="digitalOrderSummaryContainer"]/div[1]/table[2]/tbody/tr[2]/td/table/tbody/tr/td[3]/table/tbody/tr[1]/td/table/tbody/tr[2]/td[1]
@@ -237,7 +275,7 @@ def parse_order_kindle(handle, date, no, link):
     return False
 
 
-def parse_order_default(handle, date, no, link):
+def parse_order_default(handle, date, no):
     ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
 
     driver, wait = crawl_handle.get_queue_dirver(handle)
@@ -266,26 +304,15 @@ def parse_order_default(handle, date, no, link):
     return is_unempty
 
 
-def parse_order(handle, date, no, link):
+def parse_order(handle, date, no):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
     logging.info("Parse order: {date} - {no}".format(date=date.strftime("%Y-%m-%d"), no=no))
 
-    current_url = driver.current_url
-
-    link.click()
-    wait_for_loading(handle)
-
-    keep_logged_on(handle)
-
-    if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) == 0:
-        is_unempty = parse_order_default(handle, date, no, link)
+    if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) != 0:
+        is_unempty = parse_order_kindle(handle, date, no)
     else:
-        is_unempty = parse_order_kindle(handle, date, no, link)
-
-    # NOTE: Kindle 購入の場合，注文詳細アクセス時にログイン処理が行われている可能性があり，
-    # その場合は driver.back() では都合が悪いので，明示的に元の URL に戻す．
-    visit_url(handle, current_url, inspect.currentframe().f_code.co_name)
+        is_unempty = parse_order_default(handle, date, no)
 
     return is_unempty
 
@@ -338,9 +365,20 @@ def fetch_order_item_list_by_year_page(handle, year, page):
                 By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
             )
 
-            if not parse_order(handle, date, no, link):
+            current_url = driver.current_url
+
+            link.click()
+            wait_for_loading(handle)
+
+            keep_logged_on(handle)
+
+            if not parse_order(handle, date, no):
                 logging.warning("Failed to parse order of {no}".format(no=no))
                 is_skipped = True
+
+            # NOTE: Kindle 購入の場合，注文詳細アクセス時にログイン処理が行われている可能性があり，
+            # その場合は driver.back() では都合が悪いので，明示的に元の URL に戻す．
+            visit_url(handle, current_url, inspect.currentframe().f_code.co_name)
 
             time.sleep(0.5)
         else:
@@ -511,7 +549,16 @@ if __name__ == "__main__":
     config = load_config(args["-c"])
     handle = crawl_handle.create(config)
 
-    if args["-y"] is None:
+    if args["-n"] is not None:
+        try:
+            no = args["-n"]
+            visit_url(handle, gen_order_url(no), inspect.currentframe().f_code.co_name)
+            parse_order(handle, datetime.datetime.now(), no)
+        except:
+            driver, wait = crawl_handle.get_queue_dirver(handle)
+            logging.error(traceback.format_exc())
+            dump_page(driver, int(random.random() * 100))
+    elif args["-y"] is None:
         get_order_item_list(handle)
     else:
         year = int(args["-y"])
