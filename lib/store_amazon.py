@@ -30,11 +30,14 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
-from selenium_util import clean_dump, clear_cache, create_driver, dump_page, random_sleep, get_text
+from selenium_util import clean_dump, clear_cache, create_driver, dump_page, get_text
+
+import serializer
 
 CAPTCHA_RETRY_COUNT = 2
 LOGIN_RETRY_COUNT = 2
 CAPTCHA_IMAGE_FILE = "captcha.png"
+CACHE_FILE = "amazhist_cache.dat"
 
 DEBUG_USE_DUMP = False
 DEBUG_DUMP = True
@@ -50,31 +53,86 @@ def get_queue_dirver(handle):
 
 
 def record_item(handle, item):
-    handle["item_list"].append(item)
+    handle["order"]["item_list"].append(item)
+    handle["order"]["order_no_stat"][item["no"]] = True
+
+
+def get_order_stat(handle, no):
+    return no in handle["order"]["order_no_stat"]
 
 
 def set_year_list(handle, year_list):
-    handle["year_list"] = year_list
+    handle["order"]["year_list"] = year_list
 
 
 def set_order_count(handle, year, order_count):
-    handle["order_count"][year] = order_count
+    handle["order"]["year_count"][year] = order_count
+
+
+def get_cache_last_modified(handle):
+    return handle["order"]["last_modified"]
 
 
 def get_order_count(handle, year):
-    return handle["order_count"][year]
+    return handle["order"]["year_count"][year]
 
 
 def get_total_order_count(handle):
-    return functools.reduce(lambda a, b: a + b, handle["order_count"].values())
+    return functools.reduce(lambda a, b: a + b, handle["order"]["year_count"].values())
 
 
 def get_year_list(handle):
-    return handle["year_list"]
+    return handle["order"]["year_list"]
 
 
 def set_progress_bar(handle, desc, total):
-    handle["progress_bar"][desc] = handle["progress_manager"].counter(total=total, desc=desc)
+    BAR_FORMAT = (
+        "{desc:20s}{desc_pad}{percentage:3.0f}%|{bar}| {count:5d}/{total:5d} "
+        + "[{elapsed}<{eta}, {rate:6.2f}{unit_pad}{unit}/s]"
+    )
+    COUNTER_FORMAT = (
+        "{desc:20s}{desc_pad}{count:5d} {unit}{unit_pad}[{elapsed}, {rate:6.2f}{unit_pad}{unit}/s]{fill}"
+    )
+
+    handle["progress_bar"][desc] = handle["progress_manager"].counter(
+        total=total, desc=desc, bar_format=BAR_FORMAT, counter_format=COUNTER_FORMAT
+    )
+
+
+def store_order_info(handle):
+    handle["order"]["last_modified"] = datetime.datetime.now()
+
+    cache_file = pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / CACHE_FILE
+    serializer.store(cache_file, handle["order"])
+
+
+def set_year_checked(handle, year):
+    # NOTE: 今年はまだ注文が増える可能性があるので，チェックしない．
+    if year == datetime.datetime.now().year:
+        return
+
+    handle["order"]["year_stat"][year] = True
+    store_order_info(handle)
+
+
+def get_year_checked(handle, year):
+    return year in handle["order"]["year_stat"]
+
+
+def load_order_info(handle):
+    cache_file = pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / CACHE_FILE
+
+    handle["order"] = serializer.load(
+        cache_file,
+        {
+            "year_list": [],
+            "year_count": {},
+            "year_stat": {},
+            "item_list": [],
+            "order_no_stat": {},
+            "last_modified": datetime.datetime(1994, 7, 5),
+        },
+    )
 
 
 def get_progress_bar(handle, desc):
@@ -100,7 +158,7 @@ def resolve_captcha(handle):
         captcha = PIL.Image.open(
             io.BytesIO(driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png)
         )
-        captcha_img_path = pathlib.Path(os.path.splitext(__file__)[0]).parent.parent / CAPTCHA_IMAGE_FILE
+        captcha_img_path = pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / CAPTCHA_IMAGE_FILE
 
         logging.info("Save image: {path}".format(path=captcha_img_path))
         captcha.save(captcha_img_path)
@@ -230,19 +288,48 @@ def parse_item(handle, item_xpath):
     }
 
 
-def parse_order(handle, link):
+def parse_order_kindle(handle, date, no, link):
+    driver, wait = get_queue_dirver(handle)
+
+    # //*[@id="digitalOrderSummaryContainer"]/div[1]/table[2]/tbody/tr[2]/td/table/tbody/tr/td[3]/table/tbody/tr[1]/td/table/tbody/tr[2]/td[1]
+
+    # link = driver.find_element(
+    #     By.XPATH,
+    #     item_xpath + "//a[contains(@class, 'a-link-normal')]",
+    # )
+    # name = link.text
+    # url = link.get_attribute("href")
+    # asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
+
+    # count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
+
+    # price_text = driver.find_element(By.XPATH, item_xpath + "//span[contains(@class, 'a-color-price')]").text
+    # price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
+
+    # seller = get_text(
+    #     driver,
+    #     item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
+    #     " アマゾンジャパン合同会社",
+    # ).split(" ", 2)[1]
+
+    # condition = "新品"
+
+    # return {
+    #     "name": name,
+    #     "url": url,
+    #     "asin": asin,
+    #     "count": count,
+    #     "price": price,
+    #     "seller": seller,
+    #     "condition": condition,
+    # }
+    return False
+
+
+def parse_order_default(handle, date, no, link):
     ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
 
     driver, wait = get_queue_dirver(handle)
-
-    link.click()
-    wait_for_loading(handle)
-
-    dump_page(driver, int(random.random() * 100))
-
-    keep_logged_on(handle)
-
-    dump_page(driver, int(random.random() * 100))
 
     date_text = driver.find_element(
         By.XPATH, '//span[contains(@class, "order-date-invoice-item")][1]'
@@ -265,8 +352,29 @@ def parse_order(handle, link):
         record_item(handle, item)
         is_unempty = True
 
-    driver.back()
+    return is_unempty
+
+
+def parse_order(handle, date, no, link):
+    driver, wait = get_queue_dirver(handle)
+
+    logging.info("Parse order: {date} - {no}".format(date=date.strftime("%Y-%m-%d"), no=no))
+
+    current_url = driver.current_url
+
+    link.click()
     wait_for_loading(handle)
+
+    keep_logged_on(handle)
+
+    if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) == 0:
+        is_unempty = parse_order_default(handle, date, no, link)
+    else:
+        is_unempty = parse_order_kindle(handle, date, no, link)
+
+    # NOTE: Kindle 購入の場合，注文詳細アクセス時にログイン処理が行われている可能性があり，
+    # その場合は driver.back() では都合が悪いので，明示的に元の URL に戻す．
+    visit_url(handle, current_url, inspect.currentframe().f_code.co_name)
 
     return is_unempty
 
@@ -285,7 +393,7 @@ def get_total_page_by_year(handle):
     return math.ceil(float(get_order_count_by_year(handle)) / ORDER_PER_PAGE)
 
 
-def get_order_item_list_by_year_page(handle, year, page):
+def fetch_order_item_list_by_year_page(handle, year, page):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
     driver, wait = get_queue_dirver(handle)
@@ -300,7 +408,7 @@ def get_order_item_list_by_year_page(handle, year, page):
     )
     logging.info("URL: {url}".format(url=driver.current_url))
 
-    is_unempty = False
+    is_skipped = False
     for i in range(len(driver.find_elements(By.XPATH, ORDER_XPATH))):
         order_xpath = ORDER_XPATH + "[{index}]".format(index=i + 1)
 
@@ -314,26 +422,28 @@ def get_order_item_list_by_year_page(handle, year, page):
             order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[contains(@class, 'value')]",
         ).text
 
-        logging.info("Parse order: {date} - {no}".format(date=date.strftime("%Y-%m-%d"), no=no))
+        if not get_order_stat(handle, no):
+            link = driver.find_element(
+                By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
+            )
 
-        link = driver.find_element(
-            By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
-        )
+            if not parse_order(handle, date, no, link):
+                logging.warning("Failed to parse order of {no}".format(no=no))
+                is_skipped = True
 
-        if not parse_order(handle, link):
-            logging.warning("Failed to parse order of {no}".foramt(no=no))
+            time.sleep(0.5)
         else:
-            is_unempty = True
+            logging.info("Done order: {date} - {no} [cached]".format(date=date.strftime("%Y-%m-%d"), no=no))
 
         get_progress_bar(handle, "Year {year}".format(year=year)).update()
         get_progress_bar(handle, "All").update()
 
-        time.sleep(1)
+    store_order_info(handle)
 
-    return is_unempty and (page != total_page)
+    return (is_skipped, page == total_page)
 
 
-def parse_year_list(handle):
+def fetch_year_list(handle):
     driver, wait = get_queue_dirver(handle)
 
     driver.find_element(
@@ -367,10 +477,16 @@ def parse_year_list(handle):
     return year_list
 
 
-def get_order_item_list_by_year(handle, year, start_page=1):
+def fetch_order_item_list_by_year(handle, year, start_page=1):
     visit_url(handle, gen_hist_url(year, start_page), inspect.currentframe().f_code.co_name)
 
     keep_logged_on(handle)
+
+    # NOTE: デバッグ用に関数を直接呼んだ場合．
+    if len(get_year_list(handle)) == 0:
+        set_year_list(handle, [year])
+        set_order_count(handle, year, get_order_count_by_year(handle))
+        set_progress_bar(handle, "All", get_total_order_count(handle))
 
     year_list = get_year_list(handle)
 
@@ -383,8 +499,10 @@ def get_order_item_list_by_year(handle, year, start_page=1):
     set_progress_bar(handle, "Year {year}".format(year=year), get_order_count(handle, year))
 
     page = start_page
+    is_skipped = False
     while True:
-        is_last = not get_order_item_list_by_year_page(handle, year, page)
+        is_skipped_page, is_last = fetch_order_item_list_by_year_page(handle, year, page)
+        is_skipped |= is_skipped_page
 
         if is_last:
             break
@@ -393,8 +511,19 @@ def get_order_item_list_by_year(handle, year, start_page=1):
 
     get_progress_bar(handle, "Year {year}".format(year=year)).update()
 
+    if not is_skipped:
+        set_year_checked(handle, year)
 
-def parse_order_count(handle):
+
+def fetch_order_count_by_year(handle, year):
+    # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
+    # あり得ないページ数を指定する．
+    visit_url(handle, gen_hist_url(year, 10000), inspect.currentframe().f_code.co_name)
+
+    return get_order_count_by_year(handle)
+
+
+def fetch_order_count(handle):
     year_list = get_year_list(handle)
 
     logging.info("Collect order count")
@@ -403,48 +532,70 @@ def parse_order_count(handle):
 
     total_count = 0
     for year in year_list:
-        visit_url(handle, gen_hist_url(year, 1), inspect.currentframe().f_code.co_name)
+        if year >= get_cache_last_modified(handle).year:
+            count = fetch_order_count_by_year(handle, year)
+            set_order_count(handle, year, count)
+            logging.info("Year {year}: {count:,} orders".format(year=year, count=count))
+            time.sleep(0.5)
+        else:
+            count = get_order_count(handle, year)
+            logging.info("Year {year}: {count:,} orders [cached]".format(year=year, count=count))
 
-        count = get_order_count_by_year(handle)
         total_count += count
-
-        logging.info("Year {year}: {count:,} orders".format(year=year, count=count))
-
-        set_order_count(handle, year, count)
         get_progress_bar(handle, "Collect order count").update()
-
-        time.sleep(1)
 
     logging.info("Total order is {total_count:,}".format(total_count=total_count))
 
     get_progress_bar(handle, "Collect order count").update()
+    store_order_info(handle)
 
 
-def get_order_item_list(handle):
+def get_order_item_list_impl(handle):
     driver, wait = get_queue_dirver(handle)
 
     visit_url(handle, HIST_URL, inspect.currentframe().f_code.co_name)
 
     keep_logged_on(handle)
 
-    year_list = parse_year_list(handle)
-    parse_order_count(handle)
+    year_list = fetch_year_list(handle)
+    fetch_order_count(handle)
 
     set_progress_bar(handle, "All", get_total_order_count(handle))
 
     for year in year_list:
-        get_order_item_list_by_year(handle, year)
+        if not get_year_checked(handle, year):
+            fetch_order_item_list_by_year(handle, year)
+        else:
+            logging.info(
+                "Done order of {year} ({year_index}/{total_year}) [cached]".format(
+                    year=year, year_index=year_list.index(year) + 1, total_year=len(year_list)
+                )
+            )
+            get_progress_bar(handle, "All").update(get_order_count(handle, year))
 
     get_progress_bar(handle, "All").update()
 
 
+def get_order_item_list(handle):
+    driver, wait = get_queue_dirver(handle)
+
+    try:
+        get_order_item_list_impl(handle)
+    except:
+        dump_page(driver, int(random.random() * 100))
+        raise
+
+
 def create_handle(config):
-    driver = create_driver(os.path.splitext(__file__)[0], pathlib.Path(config["data"]["selenium"]))
+    driver = create_driver(
+        os.path.splitext(__file__)[0],
+        pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / config["data"]["selenium"],
+    )
     wait = WebDriverWait(driver, 5)
 
     clear_cache(driver)
 
-    return {
+    handle = {
         "selenium": {
             "driver": driver,
             "wait": wait,
@@ -452,10 +603,11 @@ def create_handle(config):
         "progress_manager": enlighten.get_manager(),
         "progress_bar": {},
         "config": config,
-        "year_list": [],
-        "order_count": {},
-        "item_list": [],
     }
+
+    load_order_info(handle)
+
+    return handle
 
 
 if __name__ == "__main__":
@@ -476,4 +628,4 @@ if __name__ == "__main__":
         year = int(args["-y"])
         start_page = int(args["-s"])
 
-        get_order_item_list_by_year(handle, year, start_page)
+        fetch_order_item_list_by_year(handle, year, start_page)
