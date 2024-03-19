@@ -431,12 +431,6 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
     keep_logged_on(handle)
 
-    # NOTE: デバッグ用に関数を直接呼んだ場合．
-    if len(crawl_handle.get_year_list(handle)) == 0:
-        crawl_handle.set_year_list(handle, [year])
-        crawl_handle.set_order_count(handle, year, get_order_count_by_year(handle))
-        crawl_handle.set_progress_bar(handle, "All", crawl_handle.get_total_order_count(handle))
-
     year_list = crawl_handle.get_year_list(handle)
 
     logging.info(
@@ -549,19 +543,25 @@ if __name__ == "__main__":
     config = load_config(args["-c"])
     handle = crawl_handle.create(config)
 
-    if args["-n"] is not None:
-        try:
+    try:
+        if args["-n"] is not None:
             no = args["-n"]
             visit_url(handle, gen_order_url(no), inspect.currentframe().f_code.co_name)
             parse_order(handle, datetime.datetime.now(), no)
-        except:
-            driver, wait = crawl_handle.get_queue_dirver(handle)
-            logging.error(traceback.format_exc())
-            dump_page(driver, int(random.random() * 100))
-    elif args["-y"] is None:
-        get_order_item_list(handle)
-    else:
-        year = int(args["-y"])
-        start_page = int(args["-s"])
+        elif args["-y"] is None:
+            get_order_item_list(handle)
+        else:
+            year = int(args["-y"])
+            start_page = int(args["-s"])
 
-        fetch_order_item_list_by_year(handle, year, start_page)
+            crawl_handle.set_year_list(handle, [year])
+
+            count = fetch_order_count_by_year(handle, year)
+            crawl_handle.set_order_count(handle, year, count)
+            crawl_handle.set_progress_bar(handle, "All", count)
+
+            fetch_order_item_list_by_year(handle, year, start_page)
+    except:
+        driver, wait = crawl_handle.get_queue_dirver(handle)
+        logging.error(traceback.format_exc())
+        dump_page(driver, int(random.random() * 100))
