@@ -27,11 +27,10 @@ import time
 import traceback
 import PIL.Image
 
-from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
-from selenium_util import clean_dump, clear_cache, dump_page, get_text
+from selenium_util import dump_page, get_text
 
 import crawl_handle
 
@@ -53,7 +52,7 @@ def wait_for_loading(handle):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
     wait.until(EC.presence_of_all_elements_located)
-    time.sleep(0.1)
+    time.sleep(0.01)
 
 
 def resolve_captcha(handle):
@@ -163,6 +162,10 @@ def parse_date(date_text):
     return datetime.datetime.strptime(date_text, "%Y年%m月%d日")
 
 
+def parse_date_digital(date_text):
+    return datetime.datetime.strptime(date_text, "%Y/%m/%d")
+
+
 def parse_item_giftcard(handle, item_xpath):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
@@ -182,6 +185,7 @@ def parse_item_giftcard(handle, item_xpath):
         "price": price,
         "seller": seller,
         "condition": condition,
+        "kind": "Gift card",
     }
 
 
@@ -211,6 +215,7 @@ def parse_item_default(handle, item_xpath):
         "price": price,
         "seller": seller,
         "condition": condition,
+        "kind": "Normal",
     }
 
 
@@ -237,42 +242,54 @@ def parse_item(handle, item_xpath):
         return item | parse_item_default(handle, item_xpath)
 
 
-def parse_order_kindle(handle, date, no):
+def parse_order_digital(handle, date, no):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
-    # //*[@id="digitalOrderSummaryContainer"]/div[1]/table[2]/tbody/tr[2]/td/table/tbody/tr/td[3]/table/tbody/tr[1]/td/table/tbody/tr[2]/td[1]
+    date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
+    date = parse_date_digital(date_text)
 
-    # link = driver.find_element(
-    #     By.XPATH,
-    #     item_xpath + "//a[contains(@class, 'a-link-normal')]",
-    # )
-    # name = link.text
-    # url = link.get_attribute("href")
-    # asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
+    no = driver.find_element(By.XPATH, '//ul/li/b[contains(text(), "注文番号")]/..').text.split(": ")[1]
 
-    # count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
+    item_xpath = "//tr[td[b[contains(text(), '注文商品')]]]/following-sibling::tr[1]"
 
-    # price_text = driver.find_element(By.XPATH, item_xpath + "//span[contains(@class, 'a-color-price')]").text
-    # price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
+    if len(driver.find_elements(By.XPATH, item_xpath + "/td[1]//a")) != 0:
+        link = driver.find_element(By.XPATH, item_xpath + "/td[1]//a")
+        name = link.text
+        url = link.get_attribute("href")
+        asin = re.match(r".*/dp/([^/]+)/", url).group(1)
+    else:
+        # NOTE: もう販売ページが存在しない場合．
+        name = driver.find_element(By.XPATH, item_xpath + "/td[1]//b").text
+        url = None
+        asin = None
 
-    # seller = get_text(
-    #     driver,
-    #     item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
-    #     " アマゾンジャパン合同会社",
-    # ).split(" ", 2)[1]
+    count = 1
 
-    # condition = "新品"
+    price_text = driver.find_element(By.XPATH, item_xpath + "/td[2]").text
+    price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
 
-    # return {
-    #     "name": name,
-    #     "url": url,
-    #     "asin": asin,
-    #     "count": count,
-    #     "price": price,
-    #     "seller": seller,
-    #     "condition": condition,
-    # }
-    return False
+    seller = "アマゾンジャパン合同会社"
+    condition = "新品"
+    kind = "Digital"
+
+    item = {
+        "date": date,
+        "no": no,
+        "name": name,
+        "url": url,
+        "asin": asin,
+        "count": count,
+        "price": price,
+        "seller": seller,
+        "condition": condition,
+        "kind": kind,
+    }
+
+    logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
+
+    crawl_handle.record_item(handle, item)
+
+    return True
 
 
 def parse_order_default(handle, date, no):
@@ -310,7 +327,7 @@ def parse_order(handle, date, no):
     logging.info("Parse order: {date} - {no}".format(date=date.strftime("%Y-%m-%d"), no=no))
 
     if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) != 0:
-        is_unempty = parse_order_kindle(handle, date, no)
+        is_unempty = parse_order_digital(handle, date, no)
     else:
         is_unempty = parse_order_default(handle, date, no)
 
@@ -376,11 +393,9 @@ def fetch_order_item_list_by_year_page(handle, year, page):
                 logging.warning("Failed to parse order of {no}".format(no=no))
                 is_skipped = True
 
-            # NOTE: Kindle 購入の場合，注文詳細アクセス時にログイン処理が行われている可能性があり，
+            # NOTE: デジタル購入の場合，注文詳細アクセス時にログイン処理が行われている可能性があり，
             # その場合は driver.back() では都合が悪いので，明示的に元の URL に戻す．
             visit_url(handle, current_url, inspect.currentframe().f_code.co_name)
-
-            time.sleep(0.5)
         else:
             logging.info("Done order: {date} - {no} [cached]".format(date=date.strftime("%Y-%m-%d"), no=no))
 
@@ -481,7 +496,6 @@ def fetch_order_count(handle):
             count = fetch_order_count_by_year(handle, year)
             crawl_handle.set_order_count(handle, year, count)
             logging.info("Year {year}: {count:,} orders".format(year=year, count=count))
-            time.sleep(0.5)
         else:
             count = crawl_handle.get_order_count(handle, year)
             logging.info("Year {year}: {count:,} orders [cached]".format(year=year, count=count))
@@ -547,6 +561,8 @@ if __name__ == "__main__":
         if args["-n"] is not None:
             no = args["-n"]
             visit_url(handle, gen_order_url(no), inspect.currentframe().f_code.co_name)
+            keep_logged_on(handle)
+
             parse_order(handle, datetime.datetime.now(), no)
         elif args["-y"] is None:
             get_order_item_list(handle)

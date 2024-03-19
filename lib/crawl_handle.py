@@ -77,7 +77,7 @@ def get_year_list(handle):
 
 def set_progress_bar(handle, desc, total):
     BAR_FORMAT = (
-        "{desc:20s}{desc_pad}{percentage:3.0f}%|{bar}| {count:5d}/{total:5d} "
+        "{desc:21s}{desc_pad}{percentage:3.0f}%|{bar}| {count:5d}/{total:5d} "
         + "[{elapsed}<{eta}, {rate:6.2f}{unit_pad}{unit}/s]"
     )
     COUNTER_FORMAT = (
