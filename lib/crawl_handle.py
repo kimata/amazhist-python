@@ -11,8 +11,6 @@ from selenium_util import create_driver, clear_cache
 
 import serializer
 
-CACHE_FILE = "amazhist_cache.dat"
-
 
 def create(config):
     driver = create_driver(
@@ -103,11 +101,17 @@ def set_status(handle, status):
         handle["status"].update(status=status)
 
 
+def get_order_cache_path(handle):
+    return (
+        pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
+        / handle["config"]["data"]["cache"]["order"]
+    )
+
+
 def store_order_info(handle):
     handle["order"]["last_modified"] = datetime.datetime.now()
 
-    cache_file = pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / CACHE_FILE
-    serializer.store(cache_file, handle["order"])
+    serializer.store(get_order_cache_path(handle), handle["order"])
 
 
 def set_year_checked(handle, year):
@@ -124,10 +128,8 @@ def get_year_checked(handle, year):
 
 
 def load_order_info(handle):
-    cache_file = pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / CACHE_FILE
-
     handle["order"] = serializer.load(
-        cache_file,
+        get_order_cache_path(handle),
         {
             "year_list": [],
             "year_count": {},
