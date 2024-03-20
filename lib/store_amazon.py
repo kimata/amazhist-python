@@ -8,10 +8,10 @@ Usage:
   store_amazon.py [-c CONFIG] -n ORDER_NO
 
 Options:
-  -c CONFIG    : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
-  -y YEAR      : 購入年．
-  -s PAGE      : 開始ページ．[default: 1]
-  -n ORDER_NO  : 注文番号
+  -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
+  -y YEAR       : 購入年．
+  -s PAGE       : 開始ページ．[default: 1]
+  -n ORDER_NO   : 注文番号
 """
 
 import os
@@ -50,7 +50,7 @@ HIST_URL_BY_ORDER_NO = "https://www.amazon.co.jp/gp/your-account/order-details/?
 
 
 def wait_for_loading(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     wait.until(EC.presence_of_all_elements_located)
     time.sleep(0.01)

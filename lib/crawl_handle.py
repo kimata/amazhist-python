@@ -29,7 +29,7 @@ def get_selenium_driver(handle):
         return (handle["selenium"]["driver"], handle["selenium"]["wait"])
     else:
         driver = create_driver(
-            os.path.splitext(__file__)[0],
+            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent.name,
             pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
             / handle["config"]["data"]["selenium"],
         )
@@ -48,6 +48,10 @@ def get_selenium_driver(handle):
 def record_item(handle, item):
     handle["order"]["item_list"].append(item)
     handle["order"]["order_no_stat"][item["no"]] = True
+
+
+def get_item_list(handle):
+    return handle["order"]["item_list"]
 
 
 def get_order_stat(handle, no):
