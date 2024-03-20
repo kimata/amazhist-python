@@ -13,19 +13,7 @@ import serializer
 
 
 def create(config):
-    driver = create_driver(
-        os.path.splitext(__file__)[0],
-        pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / config["data"]["selenium"],
-    )
-    wait = WebDriverWait(driver, 5)
-
-    clear_cache(driver)
-
     handle = {
-        "selenium": {
-            "driver": driver,
-            "wait": wait,
-        },
         "progress_manager": enlighten.get_manager(),
         "progress_bar": {},
         "config": config,
@@ -36,8 +24,25 @@ def create(config):
     return handle
 
 
-def get_queue_dirver(handle):
-    return (handle["selenium"]["driver"], handle["selenium"]["wait"])
+def get_selenium_driver(handle):
+    if "selenium" in handle:
+        return (handle["selenium"]["driver"], handle["selenium"]["wait"])
+    else:
+        driver = create_driver(
+            os.path.splitext(__file__)[0],
+            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
+            / handle["config"]["data"]["selenium"],
+        )
+        wait = WebDriverWait(driver, 5)
+
+        clear_cache(driver)
+
+        handle["selenium"] = {
+            "driver": driver,
+            "wait": wait,
+        }
+
+        return (driver, wait)
 
 
 def record_item(handle, item):

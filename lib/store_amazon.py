@@ -57,7 +57,7 @@ def wait_for_loading(handle):
 
 
 def resolve_captcha(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     logging.info("Try to resolve CAPTCHA")
 
@@ -91,7 +91,7 @@ def resolve_captcha(handle):
 
 
 def execute_login(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_email" and @type!="hidden"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
@@ -120,7 +120,7 @@ def execute_login(handle):
 
 
 def keep_logged_on(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     if not re.match("Amazonサインイン", driver.title):
         return
@@ -163,7 +163,7 @@ def gen_target_text(year):
 
 
 def visit_url(handle, url, file_name):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
     driver.get(url)
 
     wait_for_loading(handle)
@@ -178,7 +178,7 @@ def parse_date_digital(date_text):
 
 
 def parse_item_giftcard(handle, item_xpath):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     count = 1
 
@@ -201,7 +201,7 @@ def parse_item_giftcard(handle, item_xpath):
 
 
 def parse_item_default(handle, item_xpath):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
 
@@ -231,7 +231,7 @@ def parse_item_default(handle, item_xpath):
 
 
 def parse_item(handle, item_xpath):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     link = driver.find_element(
         By.XPATH,
@@ -254,7 +254,7 @@ def parse_item(handle, item_xpath):
 
 
 def parse_order_digital(handle, date, no):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
     date = parse_date_digital(date_text)
@@ -306,7 +306,7 @@ def parse_order_digital(handle, date, no):
 def parse_order_default(handle, date, no):
     ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
 
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(
         By.XPATH, '//span[contains(@class, "order-date-invoice-item")][1]'
@@ -333,7 +333,7 @@ def parse_order_default(handle, date, no):
 
 
 def parse_order(handle, date, no):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     logging.info("Parse order: {date} - {no}".format(date=date.strftime("%Y-%m-%d"), no=no))
 
@@ -346,7 +346,7 @@ def parse_order(handle, date, no):
 
 
 def parse_order_count(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     order_count_text = driver.find_element(By.XPATH, "//span[contains(@class, 'num-orders')]").text
 
@@ -362,7 +362,7 @@ def parse_total_page(handle):
 def fetch_order_item_list_by_year_page(handle, year, page):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     crawl_handle.set_status(
         handle, "注文履歴を解析しています... {target} {page}ページ".format(target=gen_target_text(year), page=page)
@@ -424,7 +424,7 @@ def fetch_order_item_list_by_year_page(handle, year, page):
 
 
 def fetch_year_list(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     driver.find_element(
         By.XPATH, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
@@ -540,7 +540,7 @@ def fetch_order_count(handle):
 
 
 def fetch_order_item_list_all_year(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     visit_url(handle, HIST_URL, inspect.currentframe().f_code.co_name)
 
@@ -566,7 +566,7 @@ def fetch_order_item_list_all_year(handle):
 
 
 def get_order_item_list(handle):
-    driver, wait = crawl_handle.get_queue_dirver(handle)
+    driver, wait = crawl_handle.get_selenium_driver(handle)
 
     crawl_handle.set_status(handle, "注文履歴の解析を開始します...")
 
@@ -612,6 +612,6 @@ if __name__ == "__main__":
 
             fetch_order_item_list_by_year(handle, year, start_page)
     except:
-        driver, wait = crawl_handle.get_queue_dirver(handle)
+        driver, wait = crawl_handle.get_selenium_driver(handle)
         logging.error(traceback.format_exc())
         dump_page(driver, int(random.random() * 100))
