@@ -41,10 +41,11 @@ CAPTCHA_IMAGE_FILE = "captcha.png"
 DEBUG_USE_DUMP = False
 DEBUG_DUMP = True
 
+ARCHIVE_LABEL = "archive"
+
 HIST_URL = "https://www.amazon.co.jp/your-orders/orders"
-HIST_URL_BY_YEAR_PAGE = (
-    "https://www.amazon.co.jp/your-orders/orders?timeFilter=year-{year}&startIndex={start}"
-)
+HIST_URL_BY_YEAR = "https://www.amazon.co.jp/your-orders/orders?timeFilter=year-{year}&startIndex={start}"
+HIST_URL_IN_ARCHIVE = "https://www.amazon.co.jp/your-orders/orders?timeFilter=archived&startIndex={start}"
 HIST_URL_BY_ORDER_NO = "https://www.amazon.co.jp/gp/your-account/order-details/?orderID={no}"
 
 
@@ -144,11 +145,21 @@ def keep_logged_on(handle):
 
 
 def gen_hist_url(year, page):
-    return HIST_URL_BY_YEAR_PAGE.format(year=year, start=10 * (page - 1))
+    if year == ARCHIVE_LABEL:
+        return HIST_URL_IN_ARCHIVE.format(start=10 * (page - 1))
+    else:
+        return HIST_URL_BY_YEAR.format(year=year, start=10 * (page - 1))
 
 
 def gen_order_url(no):
     return HIST_URL_BY_ORDER_NO.format(no=no)
+
+
+def gen_target_text(year):
+    if year == ARCHIVE_LABEL:
+        return "非表示の注文"
+    else:
+        return "{year}年".format(year=year)
 
 
 def visit_url(handle, url, file_name):
@@ -334,7 +345,7 @@ def parse_order(handle, date, no):
     return is_unempty
 
 
-def get_order_count_by_year(handle):
+def parse_order_count(handle):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
     order_count_text = driver.find_element(By.XPATH, "//span[contains(@class, 'num-orders')]").text
@@ -342,10 +353,10 @@ def get_order_count_by_year(handle):
     return int(re.match(r"(\d+)", order_count_text).group(1))
 
 
-def get_total_page_by_year(handle):
+def parse_total_page(handle):
     ORDER_PER_PAGE = 10
 
-    return math.ceil(float(get_order_count_by_year(handle)) / ORDER_PER_PAGE)
+    return math.ceil(float(parse_order_count(handle)) / ORDER_PER_PAGE)
 
 
 def fetch_order_item_list_by_year_page(handle, year, page):
@@ -353,17 +364,21 @@ def fetch_order_item_list_by_year_page(handle, year, page):
 
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
+    crawl_handle.set_status(
+        handle, "注文履歴を解析しています... {target} {page}ページ".format(target=gen_target_text(year), page=page)
+    )
+
     visit_url(handle, gen_hist_url(year, page), inspect.currentframe().f_code.co_name)
     keep_logged_on(handle)
 
-    total_page = get_total_page_by_year(handle)
+    total_page = parse_total_page(handle)
 
     logging.info(
         "Check order of {year} page {page}/{total_page}".format(year=year, page=page, total_page=total_page)
     )
     logging.info("URL: {url}".format(url=driver.current_url))
 
-    is_skipped = False
+    order_list = []
     for i in range(len(driver.find_elements(By.XPATH, ORDER_XPATH))):
         order_xpath = ORDER_XPATH + "[{index}]".format(index=i + 1)
 
@@ -377,29 +392,30 @@ def fetch_order_item_list_by_year_page(handle, year, page):
             order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[contains(@class, 'value')]",
         ).text
 
+        url = driver.find_element(
+            By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
+        ).get_attribute("href")
+
+        order_list.append({"date": date, "no": no, "url": url})
+
+    is_skipped = False
+    for order_info in order_list:
         if not crawl_handle.get_order_stat(handle, no):
-            link = driver.find_element(
-                By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
-            )
-
-            current_url = driver.current_url
-
-            link.click()
-            wait_for_loading(handle)
-
+            visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
             keep_logged_on(handle)
 
-            if not parse_order(handle, date, no):
-                logging.warning("Failed to parse order of {no}".format(no=no))
+            if not parse_order(handle, order_info["date"], order_info["no"]):
+                logging.warning("Failed to parse order of {no}".format(no=order_info["no"]))
                 is_skipped = True
-
-            # NOTE: デジタル購入の場合，注文詳細アクセス時にログイン処理が行われている可能性があり，
-            # その場合は driver.back() では都合が悪いので，明示的に元の URL に戻す．
-            visit_url(handle, current_url, inspect.currentframe().f_code.co_name)
+            time.sleep(1)
         else:
-            logging.info("Done order: {date} - {no} [cached]".format(date=date.strftime("%Y-%m-%d"), no=no))
+            logging.info(
+                "Done order: {date} - {no} [cached]".format(
+                    date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
+                )
+            )
 
-        crawl_handle.get_progress_bar(handle, "Year {year}".format(year=year)).update()
+        crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update()
         crawl_handle.get_progress_bar(handle, "All").update()
 
     crawl_handle.store_order_info(handle)
@@ -416,25 +432,29 @@ def fetch_year_list(handle):
 
     wait_for_loading(handle)
 
+    year_str_list = list(
+        map(
+            lambda elem: elem.text,
+            driver.find_elements(
+                By.XPATH,
+                "//div[contains(@class, 'a-popover-wrapper')]//li",
+            ),
+        )
+    )
+
     year_list = list(
         reversed(
             list(
                 map(
                     lambda label: int(label.replace("年", "")),
-                    filter(
-                        lambda label: re.match(r"\d+年", label),
-                        map(
-                            lambda elem: elem.text,
-                            driver.find_elements(
-                                By.XPATH,
-                                "//div[contains(@class, 'a-popover-wrapper')]//li",
-                            ),
-                        ),
-                    ),
+                    filter(lambda label: re.match(r"\d+年", label), year_str_list),
                 )
             )
         )
     )
+
+    if "非表示にした注文" in year_str_list:
+        year_list.append(ARCHIVE_LABEL)
 
     crawl_handle.set_year_list(handle, year_list)
 
@@ -455,7 +475,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
     )
 
     crawl_handle.set_progress_bar(
-        handle, "Year {year}".format(year=year), crawl_handle.get_order_count(handle, year)
+        handle, "{target}".format(target=gen_target_text(year)), crawl_handle.get_order_count(handle, year)
     )
 
     page = start_page
@@ -467,20 +487,26 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
         if is_last:
             break
 
+        time.sleep(1)
         page += 1
 
-    crawl_handle.get_progress_bar(handle, "Year {year}".format(year=year)).update()
+    crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update()
 
     if not is_skipped:
         crawl_handle.set_year_checked(handle, year)
 
 
 def fetch_order_count_by_year(handle, year):
+    crawl_handle.set_status(
+        handle,
+        "注文件数を調べています... {target}".format(target=gen_target_text(year)),
+    )
+
     # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
     # あり得ないページ数を指定する．
     visit_url(handle, gen_hist_url(year, 10000), inspect.currentframe().f_code.co_name)
 
-    return get_order_count_by_year(handle)
+    return parse_order_count(handle)
 
 
 def fetch_order_count(handle):
@@ -492,7 +518,11 @@ def fetch_order_count(handle):
 
     total_count = 0
     for year in year_list:
-        if year >= crawl_handle.get_cache_last_modified(handle).year:
+        if year == ARCHIVE_LABEL:
+            count = fetch_order_count_by_year(handle, year)
+            crawl_handle.set_order_count(handle, year, count)
+            logging.info("Archive: {count:,} orders".format(count=count))
+        elif year >= crawl_handle.get_cache_last_modified(handle).year:
             count = fetch_order_count_by_year(handle, year)
             crawl_handle.set_order_count(handle, year, count)
             logging.info("Year {year}: {count:,} orders".format(year=year, count=count))
@@ -509,7 +539,7 @@ def fetch_order_count(handle):
     crawl_handle.store_order_info(handle)
 
 
-def get_order_item_list_impl(handle):
+def fetch_order_item_list_all_year(handle):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
     visit_url(handle, HIST_URL, inspect.currentframe().f_code.co_name)
@@ -538,11 +568,15 @@ def get_order_item_list_impl(handle):
 def get_order_item_list(handle):
     driver, wait = crawl_handle.get_queue_dirver(handle)
 
+    crawl_handle.set_status(handle, "注文履歴の解析を開始します...")
+
     try:
-        get_order_item_list_impl(handle)
+        fetch_order_item_list_all_year(handle)
     except:
         dump_page(driver, int(random.random() * 100))
         raise
+
+    crawl_handle.set_status(handle, "注文履歴の解析が完了しました．")
 
 
 if __name__ == "__main__":

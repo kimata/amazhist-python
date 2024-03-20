@@ -89,6 +89,20 @@ def set_progress_bar(handle, desc, total):
     )
 
 
+def set_status(handle, status):
+    if "status" not in handle:
+        handle["status"] = handle["progress_manager"].status_bar(
+            status_format="Amazhist{fill}{status}{fill}{elapsed}",
+            color="bold_bright_white_on_lightslategray",
+            justify=enlighten.Justify.CENTER,
+            status=status,
+            autorefresh=True,
+            min_delta=0.5,
+        )
+    else:
+        handle["status"].update(status=status)
+
+
 def store_order_info(handle):
     handle["order"]["last_modified"] = datetime.datetime.now()
 
@@ -97,8 +111,8 @@ def store_order_info(handle):
 
 
 def set_year_checked(handle, year):
-    # NOTE: 今年はまだ注文が増える可能性があるので，チェックしない．
-    if year == datetime.datetime.now().year:
+    # NOTE: 今年の注文や非表示の注文はまだ注文が増える可能性があるので，チェック済みにしない．
+    if (year == datetime.datetime.now().year) or (type(year) is str):
         return
 
     handle["order"]["year_stat"][year] = True
