@@ -164,12 +164,12 @@ def insert_table_cell_image(sheet, row, col, item):
     cell_width_pix = TABLE_HEADER["col"]["image"]["width"] * 8
     cell_height_pix = openpyxl.utils.units.points_to_pixels(TABLE_HEADER["row"]["height"])
 
+    cell_width_emu = openpyxl.utils.units.pixels_to_EMU(cell_width_pix)
+    cell_height_emu = openpyxl.utils.units.pixels_to_EMU(cell_height_pix)
+
     margin_pix = 2
     content_width_pix = cell_width_pix - (margin_pix * 2)
     content_height_pix = cell_height_pix - (margin_pix * 2)
-
-    cell_width_emu = openpyxl.utils.units.pixels_to_EMU(cell_width_pix)
-    cell_height_emu = openpyxl.utils.units.pixels_to_EMU(cell_height_pix)
 
     content_ratio = content_width_pix / content_height_pix
     image_ratio = img.width / img.height
@@ -194,11 +194,15 @@ def insert_table_cell_image(sheet, row, col, item):
     marker = openpyxl.drawing.spreadsheet_drawing.AnchorMarker(
         col=col - 1, row=row - 1, colOff=col_offset_emu, rowOff=row_offset_emu
     )
+    marker2 = openpyxl.drawing.spreadsheet_drawing.AnchorMarker(
+        col=col, row=row, colOff=-col_offset_emu, rowOff=-row_offset_emu
+    )
     size = openpyxl.drawing.xdr.XDRPositiveSize2D(image_width_emu, image_height_emu)
 
-    img.anchor = openpyxl.drawing.spreadsheet_drawing.OneCellAnchor(_from=marker, ext=size)
+    img.anchor = openpyxl.drawing.spreadsheet_drawing.TwoCellAnchor(_from=marker, to=marker2)
+
+    # img.anchor = openpyxl.drawing.spreadsheet_drawing.OneCellAnchor(_from=marker, ext=size)
     sheet.add_image(img)
-    # * 1.33
 
 
 def gen_item_cell_style(base_style, key):
