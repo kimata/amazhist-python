@@ -247,6 +247,12 @@ def insert_table_item(sheet, row, item, style):
 def setting_table_view(sheet, row_last):
     crawl_handle.set_status(handle, "テーブルの表示設定しています...")
 
+    sheet.column_dimensions.group(
+        openpyxl.utils.get_column_letter(TABLE_HEADER["col"]["image"]["pos"]),
+        openpyxl.utils.get_column_letter(TABLE_HEADER["col"]["image"]["pos"]),
+        hidden=False,
+    )
+
     sheet.freeze_panes = gen_text_pos(TABLE_HEADER["row"]["pos"] + 1, TABLE_HEADER["col"]["count"]["pos"])
 
     sheet.auto_filter.ref = "{start}:{end}".format(
