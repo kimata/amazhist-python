@@ -50,7 +50,7 @@ def record_item(handle, item):
 
 
 def get_item_list(handle):
-    return sorted(handle["order"]["item_list"], key=lambda x: x["date"])
+    return sorted(handle["order"]["item_list"], key=lambda x: x["date"], reverse=True)
 
 
 def get_thubm_path(handle, asin):
@@ -116,6 +116,14 @@ def set_status(handle, status):
         )
     else:
         handle["status"].update(status=status)
+
+
+def finish(handle):
+    if "selenium" in handle:
+        handle["selenium"]["driver"].quit()
+        handle.pop("selenium")
+
+    handle["progress_manager"].stop()
 
 
 def get_order_cache_path(handle):
