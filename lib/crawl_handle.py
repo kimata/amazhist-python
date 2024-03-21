@@ -128,6 +128,24 @@ def store_order_info(handle):
     serializer.store(get_order_cache_path(handle), handle["order"])
 
 
+def set_page_checked(handle, year, page):
+    # NOTE: 今年の注文や非表示の注文はまだ注文が増える可能性があるので，チェック済みにしない．
+    if (year == datetime.datetime.now().year) or (type(year) is str):
+        return
+
+    if year in handle["order"]["page_stat"]:
+        handle["order"]["page_stat"][year][page] = True
+    else:
+        handle["order"]["page_stat"][year] = {page: True}
+
+
+def get_page_checked(handle, year, page):
+    if (year in handle["order"]["page_stat"]) and (page in handle["order"]["page_stat"][year]):
+        return handle["order"]["page_stat"][year][page]
+    else:
+        return False
+
+
 def set_year_checked(handle, year):
     # NOTE: 今年の注文や非表示の注文はまだ注文が増える可能性があるので，チェック済みにしない．
     if (year == datetime.datetime.now().year) or (type(year) is str):
@@ -148,6 +166,7 @@ def load_order_info(handle):
             "year_list": [],
             "year_count": {},
             "year_stat": {},
+            "page_stat": {},
             "item_list": [],
             "order_no_stat": {},
             "last_modified": datetime.datetime(1994, 7, 5),

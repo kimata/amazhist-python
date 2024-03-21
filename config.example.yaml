@@ -1,0 +1,17 @@
+login:
+  user: Amazon.co.jp のユーザ名
+  pass: Amazon.co.jp のパスワード
+
+data:
+  selenium: data
+  cache:
+    order: data/amazhist_cache.dat
+    thumb: data/thumb
+  
+  captcha: captcha.png
+
+output:
+  excel:
+    table: amazhist.xlsx
+
+

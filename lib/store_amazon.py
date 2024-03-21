@@ -39,13 +39,14 @@ import crawl_handle
 
 CAPTCHA_RETRY_COUNT = 2
 LOGIN_RETRY_COUNT = 2
-CAPTCHA_IMAGE_FILE = "captcha.png"
+FETCH_RETRY_COUNT = 1
 
 DEBUG_USE_DUMP = False
 DEBUG_DUMP = True
 
 ARCHIVE_LABEL = "archive"
 
+ODER_COUNT_BY_PAGE = 10
 HIST_URL = "https://www.amazon.co.jp/your-orders/orders"
 HIST_URL_BY_YEAR = "https://www.amazon.co.jp/your-orders/orders?timeFilter=year-{year}&startIndex={start}"
 HIST_URL_IN_ARCHIVE = "https://www.amazon.co.jp/your-orders/orders?timeFilter=archived&startIndex={start}"
@@ -71,12 +72,14 @@ def resolve_captcha(handle):
         captcha = PIL.Image.open(
             io.BytesIO(driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png)
         )
-        captcha_img_path = pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / CAPTCHA_IMAGE_FILE
+        captcha_img_path = (
+            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / handle["config"]["data"]["captcha"]
+        )
 
         logging.info("Save image: {path}".format(path=captcha_img_path))
         captcha.save(captcha_img_path)
 
-        captcha_text = input("{img_file} に書かれているテキストを入力してくだい: ".format(img_file=CAPTCHA_IMAGE_FILE))
+        captcha_text = input("{img_file} に書かれているテキストを入力してくだい: ".format(img_file=captcha_img_path.name))
 
         driver.find_element(By.XPATH, '//input[@name="cvf_captcha_input"]').send_keys(captcha_text.strip())
         driver.find_element(By.XPATH, '//input[@type="submit"]').click()
@@ -149,9 +152,9 @@ def keep_logged_on(handle):
 
 def gen_hist_url(year, page):
     if year == ARCHIVE_LABEL:
-        return HIST_URL_IN_ARCHIVE.format(start=10 * (page - 1))
+        return HIST_URL_IN_ARCHIVE.format(start=ODER_COUNT_BY_PAGE * (page - 1))
     else:
-        return HIST_URL_BY_YEAR.format(year=year, start=10 * (page - 1))
+        return HIST_URL_BY_YEAR.format(year=year, start=ODER_COUNT_BY_PAGE * (page - 1))
 
 
 def gen_order_url(no):
@@ -287,6 +290,7 @@ def parse_item(handle, item_xpath):
     url = link.get_attribute("href")
     asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
 
+    time.sleep(0.5)
     category = fetch_item_category(handle, link)
 
     item = {
@@ -413,7 +417,19 @@ def parse_total_page(handle):
     return math.ceil(float(parse_order_count(handle)) / ORDER_PER_PAGE)
 
 
-def fetch_order_item_list_by_year_page(handle, year, page):
+def fetch_order_item_list_by_order_info(handle, order_info):
+    visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
+    keep_logged_on(handle)
+
+    if not parse_order(handle, order_info["date"], order_info["no"]):
+        logging.warning("Failed to parse order of {no}".format(no=order_info["no"]))
+        time.sleep(1)
+        return False
+
+    return True
+
+
+def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
     driver, wait = crawl_handle.get_selenium_driver(handle)
@@ -432,9 +448,25 @@ def fetch_order_item_list_by_year_page(handle, year, page):
     )
     logging.info("URL: {url}".format(url=driver.current_url))
 
+    is_skipped = False
     order_list = []
     for i in range(len(driver.find_elements(By.XPATH, ORDER_XPATH))):
         order_xpath = ORDER_XPATH + "[{index}]".format(index=i + 1)
+
+        if (
+            len(
+                driver.find_elements(
+                    By.XPATH, '//div[contains(@class, "a-alert-content")]//span[contains(text(), "問題が発生")]'
+                )
+            )
+            != 0
+        ):
+            if retry < FETCH_RETRY_COUNT:
+                logging.warning("Something went wrong. Try retying...")
+                time.sleep(1)
+                return fetch_order_item_list_by_year_page(handle, year, page, retry=0)
+            else:
+                continue
 
         date_text = driver.find_element(
             By.XPATH, order_xpath + "//div[contains(@class, 'a-row')]/span[contains(@class, 'value')]"
@@ -452,16 +484,9 @@ def fetch_order_item_list_by_year_page(handle, year, page):
 
         order_list.append({"date": date, "no": no, "url": url})
 
-    is_skipped = False
     for order_info in order_list:
         if not crawl_handle.get_order_stat(handle, no):
-            visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
-            keep_logged_on(handle)
-
-            if not parse_order(handle, order_info["date"], order_info["no"]):
-                logging.warning("Failed to parse order of {no}".format(no=order_info["no"]))
-                is_skipped = True
-            time.sleep(1)
+            is_skipped |= not fetch_order_item_list_by_order_info(handle, order_info)
         else:
             logging.info(
                 "Done order: {date} - {no} [cached]".format(
@@ -515,6 +540,18 @@ def fetch_year_list(handle):
     return year_list
 
 
+def skip_order_item_list_by_year_page(handle, year, page):
+    logging.info("Skip check order of {year} page {page} [cached]".format(year=year, page=page))
+    incr_order = min(
+        crawl_handle.get_order_count(handle, year)
+        - crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).count,
+        ODER_COUNT_BY_PAGE,
+    )
+    crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update(incr_order)
+
+    return incr_order != ODER_COUNT_BY_PAGE
+
+
 def fetch_order_item_list_by_year(handle, year, start_page=1):
     visit_url(handle, gen_hist_url(year, start_page), inspect.currentframe().f_code.co_name)
 
@@ -535,8 +572,15 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
     page = start_page
     is_skipped = False
     while True:
-        is_skipped_page, is_last = fetch_order_item_list_by_year_page(handle, year, page)
-        is_skipped |= is_skipped_page
+        if not crawl_handle.get_page_checked(handle, year, page):
+            is_skipped_page, is_last = fetch_order_item_list_by_year_page(handle, year, page)
+
+            if not is_skipped_page:
+                crawl_handle.set_page_checked(handle, year, page)
+
+            is_skipped |= is_skipped_page
+        else:
+            is_last = skip_order_item_list_by_year_page(handle, year, page)
 
         if is_last:
             break
