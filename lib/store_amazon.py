@@ -11,7 +11,7 @@ Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
   -y YEAR       : 購入年．
   -s PAGE       : 開始ページ．[default: 1]
-  -n ORDER_NO   : 注文番号
+  -n ORDER_NO   : 注文番号．
 """
 
 import os
@@ -26,9 +26,12 @@ import inspect
 import time
 import traceback
 import PIL.Image
+import platform
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 
 from selenium_util import dump_page, get_text
 
@@ -230,6 +233,49 @@ def parse_item_default(handle, item_xpath):
     }
 
 
+def fetch_item_category(handle, item_link):
+    driver, wait = crawl_handle.get_selenium_driver(handle)
+
+    actions = ActionChains(driver)
+
+    if platform.system() == "Darwin":
+        actions.key_down(Keys.COMMAND)
+    else:
+        actions.key_down(Keys.CONTROL)
+
+    actions.click(item_link)
+    actions.perform()
+
+    driver.switch_to.window(driver.window_handles[-1])
+
+    breadcrumb_list = driver.find_elements(By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a")
+    category = list(map(lambda x: x.text, breadcrumb_list))
+
+    time.sleep(1)
+    driver.close()
+    driver.switch_to.window(driver.window_handles[0])
+
+    return category
+
+
+def save_thumbnail(handle, item_xpath, asin):
+    driver, wait = crawl_handle.get_selenium_driver(handle)
+
+    thumb_url = driver.find_element(By.XPATH, item_xpath + "/preceding-sibling::div//a/img").get_attribute(
+        "src"
+    )
+
+    # NOTE: 別タブを開いて，サムネイル画像を保存
+    driver.execute_script("window.open('{thumb_url}', '_blank');".format(thumb_url=thumb_url))
+    driver.switch_to.window(driver.window_handles[-1])
+    png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
+
+    with open(crawl_handle.get_thubm_path(handle, asin), "wb") as f:
+        f.write(png_data)
+    driver.close()
+    driver.switch_to.window(driver.window_handles[0])
+
+
 def parse_item(handle, item_xpath):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
@@ -241,11 +287,16 @@ def parse_item(handle, item_xpath):
     url = link.get_attribute("href")
     asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
 
+    category = fetch_item_category(handle, link)
+
     item = {
         "name": name,
         "url": url,
         "asin": asin,
+        "category": category,
     }
+
+    save_thumbnail(handle, item_xpath, asin)
 
     if len(driver.find_elements(By.XPATH, item_xpath + "//div[contains(@class, 'gift-card-instance')]")) != 0:
         return item | parse_item_giftcard(handle, item_xpath)
@@ -268,11 +319,13 @@ def parse_order_digital(handle, date, no):
         name = link.text
         url = link.get_attribute("href")
         asin = re.match(r".*/dp/([^/]+)/", url).group(1)
+        category = fetch_item_category(handle, link)
     else:
         # NOTE: もう販売ページが存在しない場合．
         name = driver.find_element(By.XPATH, item_xpath + "/td[1]//b").text
         url = None
         asin = None
+        category = []
 
     count = 1
 
@@ -291,6 +344,7 @@ def parse_order_digital(handle, date, no):
         "asin": asin,
         "count": count,
         "price": price,
+        "category": category,
         "seller": seller,
         "condition": condition,
         "kind": kind,
@@ -565,7 +619,7 @@ def fetch_order_item_list_all_year(handle):
     crawl_handle.get_progress_bar(handle, "All").update()
 
 
-def get_order_item_list(handle):
+def fetch_order_item_list(handle):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
     crawl_handle.set_status(handle, "注文履歴の解析を開始します...")
@@ -599,7 +653,7 @@ if __name__ == "__main__":
 
             parse_order(handle, datetime.datetime.now(), no)
         elif args["-y"] is None:
-            get_order_item_list(handle)
+            fetch_order_item_list(handle)
         else:
             year = int(args["-y"])
             start_page = int(args["-s"])

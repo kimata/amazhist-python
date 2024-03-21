@@ -29,9 +29,8 @@ def get_selenium_driver(handle):
         return (handle["selenium"]["driver"], handle["selenium"]["wait"])
     else:
         driver = create_driver(
-            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent.name,
-            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
-            / handle["config"]["data"]["selenium"],
+            pathlib.Path(os.path.dirname(__file__)).parent.name,
+            pathlib.Path(os.path.dirname(__file__)).parent / handle["config"]["data"]["selenium"],
         )
         wait = WebDriverWait(driver, 5)
 
@@ -51,7 +50,16 @@ def record_item(handle, item):
 
 
 def get_item_list(handle):
-    return handle["order"]["item_list"]
+    return sorted(handle["order"]["item_list"], key=lambda x: x["date"])
+
+
+def get_thubm_path(handle, asin):
+    pathlib.Path(handle["config"]["data"]["cache"]["thumb"]).mkdir(parents=True, exist_ok=True)
+
+    if asin is None:
+        return None
+    else:
+        return pathlib.Path(handle["config"]["data"]["cache"]["thumb"]) / (asin + ".png")
 
 
 def get_order_stat(handle, no):
@@ -111,10 +119,7 @@ def set_status(handle, status):
 
 
 def get_order_cache_path(handle):
-    return (
-        pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
-        / handle["config"]["data"]["cache"]["order"]
-    )
+    return pathlib.Path(os.path.dirname(__file__)).parent / handle["config"]["data"]["cache"]["order"]
 
 
 def store_order_info(handle):
