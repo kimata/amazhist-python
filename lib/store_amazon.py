@@ -517,8 +517,6 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                 for i in range(total_page):
                     crawl_handle.set_page_checked(handle, year, i + 1)
 
-    crawl_handle.store_order_info(handle)
-
     return (is_skipped, page == total_page)
 
 
@@ -604,6 +602,8 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
             time.sleep(1)
         else:
             is_last = skip_order_item_list_by_year_page(handle, year, page)
+
+        crawl_handle.store_order_info(handle)
 
         if is_last:
             break
