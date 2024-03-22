@@ -79,7 +79,9 @@ def resolve_captcha(handle):
         logging.info("Save image: {path}".format(path=captcha_img_path))
         captcha.save(captcha_img_path)
 
-        captcha_text = input("{img_file} に書かれているテキストを入力してくだい: ".format(img_file=captcha_img_path.name))
+        captcha_text = input(
+            "「{img_file}」に書かれているテキストを入力してくだい: ".format(img_file=handle["config"]["data"]["captcha"])
+        )
 
         driver.find_element(By.XPATH, '//input[@name="cvf_captcha_input"]').send_keys(captcha_text.strip())
         driver.find_element(By.XPATH, '//input[@type="submit"]').click()

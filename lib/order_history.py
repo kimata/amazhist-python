@@ -310,7 +310,8 @@ def generate_list_sheet(book):
 
     crawl_handle.get_progress_bar(handle, "Insert item").update()
 
-    insert_sum_row(sheet, row_last, style)
+    # NOTE: 下記を行うと，ピボットテーブルの作成の邪魔になるのでコメントアウト
+    # insert_sum_row(sheet, row_last, style)
     setting_table_view(sheet, row_last)
 
 
