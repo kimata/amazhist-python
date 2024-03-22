@@ -9,6 +9,7 @@ import datetime
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium_util import create_driver, clear_cache
 
+import store_amazon_const
 import serializer
 
 

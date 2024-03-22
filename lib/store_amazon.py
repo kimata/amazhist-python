@@ -35,6 +35,7 @@ from selenium.webdriver.common.keys import Keys
 
 from selenium_util import dump_page, get_text
 
+import store_amazon_const
 import crawl_handle
 
 CAPTCHA_RETRY_COUNT = 2
@@ -43,14 +44,6 @@ FETCH_RETRY_COUNT = 1
 
 DEBUG_USE_DUMP = False
 DEBUG_DUMP = True
-
-ARCHIVE_LABEL = "archive"
-
-ODER_COUNT_BY_PAGE = 10
-HIST_URL = "https://www.amazon.co.jp/your-orders/orders"
-HIST_URL_BY_YEAR = "https://www.amazon.co.jp/your-orders/orders?timeFilter=year-{year}&startIndex={start}"
-HIST_URL_IN_ARCHIVE = "https://www.amazon.co.jp/your-orders/orders?timeFilter=archived&startIndex={start}"
-HIST_URL_BY_ORDER_NO = "https://www.amazon.co.jp/gp/your-account/order-details/?orderID={no}"
 
 
 def wait_for_loading(handle):
@@ -153,18 +146,22 @@ def keep_logged_on(handle):
 
 
 def gen_hist_url(year, page):
-    if year == ARCHIVE_LABEL:
-        return HIST_URL_IN_ARCHIVE.format(start=ODER_COUNT_BY_PAGE * (page - 1))
+    if year == store_amazon_const.ARCHIVE_LABEL:
+        return store_amazon_const.HIST_URL_IN_ARCHIVE.format(
+            start=store_amazon_const.ODER_COUNT_BY_PAGE * (page - 1)
+        )
     else:
-        return HIST_URL_BY_YEAR.format(year=year, start=ODER_COUNT_BY_PAGE * (page - 1))
+        return store_amazon_const.HIST_URL_BY_YEAR.format(
+            year=year, start=store_amazon_const.ODER_COUNT_BY_PAGE * (page - 1)
+        )
 
 
 def gen_order_url(no):
-    return HIST_URL_BY_ORDER_NO.format(no=no)
+    return store_amazon_const.HIST_URL_BY_ORDER_NO.format(no=no)
 
 
 def gen_target_text(year):
-    if year == ARCHIVE_LABEL:
+    if year == store_amazon_const.ARCHIVE_LABEL:
         return "非表示の注文"
     else:
         return "{year}年".format(year=year)
@@ -310,7 +307,7 @@ def parse_item(handle, item_xpath):
         return item | parse_item_default(handle, item_xpath)
 
 
-def parse_order_digital(handle, date, no):
+def parse_order_digital(handle, order_info):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
@@ -354,6 +351,8 @@ def parse_order_digital(handle, date, no):
         "seller": seller,
         "condition": condition,
         "kind": kind,
+        "order_time_filter": order_info["time_filter"],
+        "order_page": order_info["page"],
     }
 
     logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
@@ -363,7 +362,7 @@ def parse_order_digital(handle, date, no):
     return True
 
 
-def parse_order_default(handle, date, no):
+def parse_order_default(handle, order_info):
     ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
 
     driver, wait = crawl_handle.get_selenium_driver(handle)
@@ -375,14 +374,19 @@ def parse_order_default(handle, date, no):
 
     no = driver.find_element(By.XPATH, '//span[contains(@class, "order-date-invoice-item")]/bdi').text
 
-    order = {"date": date, "no": no}
+    item_base = {
+        "date": date,
+        "no": no,
+        "order_time_filter": order_info["time_filter"],
+        "order_page": order_info["page"],
+    }
 
     is_unempty = False
     for i in range(len(driver.find_elements(By.XPATH, ITEM_XPATH))):
         item_xpath = "(" + ITEM_XPATH + ")[{index}]".format(index=i + 1)
 
         item = parse_item(handle, item_xpath)
-        item |= order
+        item |= item_base
 
         logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
 
@@ -392,15 +396,17 @@ def parse_order_default(handle, date, no):
     return is_unempty
 
 
-def parse_order(handle, date, no):
+def parse_order(handle, order_info):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
-    logging.info("Parse order: {date} - {no}".format(date=date.strftime("%Y-%m-%d"), no=no))
+    logging.info(
+        "Parse order: {date} - {no}".format(date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"])
+    )
 
     if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) != 0:
-        is_unempty = parse_order_digital(handle, date, no)
+        is_unempty = parse_order_digital(handle, order_info)
     else:
-        is_unempty = parse_order_default(handle, date, no)
+        is_unempty = parse_order_default(handle, order_info)
 
     return is_unempty
 
@@ -423,7 +429,7 @@ def fetch_order_item_list_by_order_info(handle, order_info):
     visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
     keep_logged_on(handle)
 
-    if not parse_order(handle, order_info["date"], order_info["no"]):
+    if not parse_order(handle, order_info):
         logging.warning("Failed to parse order of {no}".format(no=order_info["no"]))
         time.sleep(1)
         return False
@@ -484,10 +490,10 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
         ).get_attribute("href")
 
-        order_list.append({"date": date, "no": no, "url": url})
+        order_list.append({"date": date, "no": no, "url": url, "time_filter": year, "page": page})
 
     for order_info in order_list:
-        if not crawl_handle.get_order_stat(handle, no):
+        if not crawl_handle.get_order_stat(handle, order_info["no"]):
             is_skipped |= not fetch_order_item_list_by_order_info(handle, order_info)
         else:
             logging.info(
@@ -535,7 +541,7 @@ def fetch_year_list(handle):
     )
 
     if "非表示にした注文" in year_str_list:
-        year_list.append(ARCHIVE_LABEL)
+        year_list.append(store_amazon_const.ARCHIVE_LABEL)
 
     crawl_handle.set_year_list(handle, year_list)
 
@@ -547,11 +553,11 @@ def skip_order_item_list_by_year_page(handle, year, page):
     incr_order = min(
         crawl_handle.get_order_count(handle, year)
         - crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).count,
-        ODER_COUNT_BY_PAGE,
+        store_amazon_const.ODER_COUNT_BY_PAGE,
     )
     crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update(incr_order)
 
-    return incr_order != ODER_COUNT_BY_PAGE
+    return incr_order != store_amazon_const.ODER_COUNT_BY_PAGE
 
 
 def fetch_order_item_list_by_year(handle, year, start_page=1):
@@ -618,7 +624,7 @@ def fetch_order_count(handle):
 
     total_count = 0
     for year in year_list:
-        if year == ARCHIVE_LABEL:
+        if year == store_amazon_const.ARCHIVE_LABEL:
             count = fetch_order_count_by_year(handle, year)
             crawl_handle.set_order_count(handle, year, count)
             logging.info("Archive: {count:,} orders".format(count=count))
@@ -642,7 +648,7 @@ def fetch_order_count(handle):
 def fetch_order_item_list_all_year(handle):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
-    visit_url(handle, HIST_URL, inspect.currentframe().f_code.co_name)
+    visit_url(handle, store_amazon_const.HIST_URL, inspect.currentframe().f_code.co_name)
 
     keep_logged_on(handle)
 
@@ -668,7 +674,7 @@ def fetch_order_item_list_all_year(handle):
 def fetch_order_item_list(handle):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
-    crawl_handle.set_status(handle, "注文履歴の解析を開始します...")
+    crawl_handle.set_status(handle, "注文履歴の収集を開始します...")
 
     try:
         fetch_order_item_list_all_year(handle)
@@ -676,7 +682,7 @@ def fetch_order_item_list(handle):
         dump_page(driver, int(random.random() * 100))
         raise
 
-    crawl_handle.set_status(handle, "注文履歴の解析が完了しました．")
+    crawl_handle.set_status(handle, "注文履歴の収集が完了しました．")
 
 
 if __name__ == "__main__":
@@ -697,7 +703,7 @@ if __name__ == "__main__":
             visit_url(handle, gen_order_url(no), inspect.currentframe().f_code.co_name)
             keep_logged_on(handle)
 
-            parse_order(handle, datetime.datetime.now(), no)
+            parse_order(handle, datetime.datetime.now(), no, "?")
         elif args["-y"] is None:
             fetch_order_item_list(handle)
         else:
