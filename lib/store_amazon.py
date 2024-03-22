@@ -96,6 +96,8 @@ def resolve_captcha(handle):
 def execute_login(handle):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
+    dump_page(driver, int(random.random() * 100))
+
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_email" and @type!="hidden"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').send_keys(handle["config"]["login"]["user"])
