@@ -84,7 +84,8 @@ def resolve_captcha(handle):
         if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) == 0:
             return
 
-        logging.info("Failed to resolve CAPTCHA")
+        logging.warning("Failed to resolve CAPTCHA")
+        dump_page(driver, int(random.random() * 100))
         time.sleep(1)
 
     logging.error("Give up to resolve CAPTCHA")
@@ -138,7 +139,8 @@ def keep_logged_on(handle):
             logging.info("Login sccessful!")
             return
 
-        logging.info("Failed to login")
+        logging.warning("Failed to login")
+        dump_page(driver, int(random.random() * 100))
         time.sleep(1)
 
     logging.error("Give up to login")
@@ -501,9 +503,15 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                     date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
                 )
             )
-
         crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update()
         crawl_handle.get_progress_bar(handle, "All").update()
+
+        if year in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
+            last_item = crawl_handle.get_last_item(handle, year)
+            # TODO
+            if (last_item != None) and (last_item["no"] == order_info["no"]):
+                for i in range(total_page):
+                    crawl_handle.set_page_checked(handle, year, i + 1)
 
     crawl_handle.store_order_info(handle)
 
@@ -574,7 +582,9 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
     )
 
     crawl_handle.set_progress_bar(
-        handle, "{target}".format(target=gen_target_text(year)), crawl_handle.get_order_count(handle, year)
+        handle,
+        "{target}".format(target=gen_target_text(year)),
+        crawl_handle.get_order_count(handle, year),
     )
 
     page = start_page
@@ -587,13 +597,13 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
                 crawl_handle.set_page_checked(handle, year, page)
 
             is_skipped |= is_skipped_page
+            time.sleep(1)
         else:
             is_last = skip_order_item_list_by_year_page(handle, year, page)
 
         if is_last:
             break
 
-        time.sleep(1)
         page += 1
 
     crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update()
@@ -658,7 +668,9 @@ def fetch_order_item_list_all_year(handle):
     crawl_handle.set_progress_bar(handle, "All", crawl_handle.get_total_order_count(handle))
 
     for year in year_list:
-        if not crawl_handle.get_year_checked(handle, year):
+        if ((year != datetime.datetime.now().year) and (type(year) is not str)) and (
+            not crawl_handle.get_year_checked(handle, year)
+        ):
             fetch_order_item_list_by_year(handle, year)
         else:
             logging.info(

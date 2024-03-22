@@ -54,6 +54,10 @@ def get_item_list(handle):
     return sorted(handle["order"]["item_list"], key=lambda x: x["date"], reverse=True)
 
 
+def get_last_item(handle, time_filter):
+    return next(filter(lambda item: item["order_time_filter"] == time_filter, get_item_list(handle)), None)
+
+
 def get_thubm_path(handle, asin):
     pathlib.Path(handle["config"]["data"]["cache"]["thumb"]).mkdir(parents=True, exist_ok=True)
 
@@ -134,14 +138,15 @@ def get_order_cache_path(handle):
 def store_order_info(handle):
     handle["order"]["last_modified"] = datetime.datetime.now()
 
+    # NOTE: 次回再開した時には巡回すべきなので削除しておく
+    for time_filter in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
+        if time_filter in handle["order"]["page_stat"]:
+            del handle["order"]["page_stat"][time_filter]
+
     serializer.store(get_order_cache_path(handle), handle["order"])
 
 
 def set_page_checked(handle, year, page):
-    # NOTE: 今年の注文や非表示の注文はまだ注文が増える可能性があるので，チェック済みにしない．
-    if (year == datetime.datetime.now().year) or (type(year) is str):
-        return
-
     if year in handle["order"]["page_stat"]:
         handle["order"]["page_stat"][year][page] = True
     else:
@@ -156,10 +161,6 @@ def get_page_checked(handle, year, page):
 
 
 def set_year_checked(handle, year):
-    # NOTE: 今年の注文や非表示の注文はまだ注文が増える可能性があるので，チェック済みにしない．
-    if (year == datetime.datetime.now().year) or (type(year) is str):
-        return
-
     handle["order"]["year_stat"][year] = True
     store_order_info(handle)
 
