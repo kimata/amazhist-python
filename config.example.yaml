@@ -15,13 +15,13 @@ data:
     # サムネイル画像
     thumb: data/thumb
 
-  # 画像認証画像
-  captcha: captcha.png
-
 # 出力ファイルの置き場所
 output:
+  # 画像認証画像
+  captcha: output/captcha.png
+  
   excel:
     # 購入履歴が記載されたファイル
-    table: amazhist.xlsx
+    table: output/amazhist.xlsx
 
 

@@ -66,14 +66,15 @@ def resolve_captcha(handle):
             io.BytesIO(driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png)
         )
         captcha_img_path = (
-            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent / handle["config"]["data"]["captcha"]
+            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
+            / handle["config"]["output"]["captcha"]
         )
 
         logging.info("Save image: {path}".format(path=captcha_img_path))
         captcha.save(captcha_img_path)
 
         captcha_text = input(
-            "「{img_file}」に書かれているテキストを入力してくだい: ".format(img_file=handle["config"]["data"]["captcha"])
+            "「{img_file}」に書かれているテキストを入力してくだい: ".format(img_file=handle["config"]["output"]["captcha"])
         )
 
         driver.find_element(By.XPATH, '//input[@name="cvf_captcha_input"]').send_keys(captcha_text.strip())
