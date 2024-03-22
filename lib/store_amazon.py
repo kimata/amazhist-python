@@ -108,6 +108,7 @@ def execute_login(handle):
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_password"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
+        time.sleep(0.1)
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').send_keys(
             handle["config"]["login"]["pass"]
         )
