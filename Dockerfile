@@ -15,18 +15,16 @@ RUN apt-get update && apt-get install --assume-yes \
 RUN curl -O  https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 
 RUN apt-get update && apt-get install --assume-yes \
-    language-pack-ja \
+    language-pack-ja fonts-ipaexfont-gothic \
     python3 python3-pip \
     ./google-chrome-stable_current_amd64.deb \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /opt/e-ink_weather
+WORKDIR /opt/amazhist
 
 RUN locale-gen en_US.UTF-8
 RUN locale-gen ja_JP.UTF-8
-
-COPY font /usr/share/fonts/
 
 # NOTE: apt にあるものはバージョンが古いので直接入れる
 RUN curl -sSL https://install.python-poetry.org | python3 -
@@ -46,4 +44,4 @@ RUN chown -R ubuntu:ubuntu .
 
 USER ubuntu
 
-CMD ["./app/display_image.py"]
+CMD ["./app/amazhist.py"]
