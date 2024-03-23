@@ -6,7 +6,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -38,10 +38,10 @@ jobs:
         with:
           nuitka-version: main
           script-name: app/amazhist.py
+          follow-imports : true
           include-package: |
             enlighten
             selenium.webdriver.support
-            PIL.Image
             openpyxl
             logging.handlers
             coloredlogs
@@ -53,7 +53,6 @@ jobs:
           product-version: 0.1.0
 
           windows-icon-from-ico: img/icon.png
-          macos-app-icon: img/icon.png
 
           standalone: true
           onefile: true
