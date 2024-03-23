@@ -23,7 +23,10 @@ sudo apt install docker-compose
 
 ## 実行
 
+以下のようにします．`build` は一回だけ実行すればOKです．
+
 ```
+docker-compose build
 docker-compose run --rm amazhist
 ```
 
@@ -35,6 +38,24 @@ docker-compose run --rm amazhist
 ```
 「output/captcha.png」に書かれているテキストを入力してくだい:
 ```
+
+### Docker を使いたくない場合
+
+[Poetry](https://python-poetry.org/) と Google Chrome がインストールされた環境であれば，
+下記のようにして Docker を使わずに実行することもできます．
+
+```
+poetry install
+poetry run app/amazhist.py
+```
+
+## 参考
+
+Amazon 公式では購入履歴の CSV を提供するサービスが行われています．
+購入日・商品・価格等だけがあれば十分な場合はこちらを利用するのが便利です．
+
+利用するには，Amazon.co.jp のアカウントサービス → [データをリクエストする](https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html)
+から手続きを行います．
 
 ## ライセンス
 
