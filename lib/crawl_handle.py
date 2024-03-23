@@ -58,7 +58,7 @@ def get_last_item(handle, time_filter):
     return next(filter(lambda item: item["order_time_filter"] == time_filter, get_item_list(handle)), None)
 
 
-def get_thubm_path(handle, asin):
+def get_thumb_path(handle, asin):
     pathlib.Path(handle["config"]["data"]["cache"]["thumb"]).mkdir(parents=True, exist_ok=True)
 
     if asin is None:
@@ -97,11 +97,11 @@ def get_year_list(handle):
 
 def set_progress_bar(handle, desc, total):
     BAR_FORMAT = (
-        "{desc:21s}{desc_pad}{percentage:3.0f}% |{bar}| {count:5d} / {total:5d} "
+        "{desc:31s}{desc_pad}{percentage:3.0f}% |{bar}| {count:5d} / {total:5d} "
         + "[{elapsed}<{eta}, {rate:6.2f}{unit_pad}{unit}/s]"
     )
     COUNTER_FORMAT = (
-        "{desc:20s}{desc_pad}{count:5d} {unit}{unit_pad}[{elapsed}, {rate:6.2f}{unit_pad}{unit}/s]{fill}"
+        "{desc:30s}{desc_pad}{count:5d} {unit}{unit_pad}[{elapsed}, {rate:6.2f}{unit_pad}{unit}/s]{fill}"
     )
 
     handle["progress_bar"][desc] = handle["progress_manager"].counter(
@@ -137,11 +137,6 @@ def get_order_cache_path(handle):
 
 def store_order_info(handle):
     handle["order"]["last_modified"] = datetime.datetime.now()
-
-    # NOTE: 次回再開した時には巡回すべきなので削除しておく
-    for time_filter in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
-        if time_filter in handle["order"]["page_stat"]:
-            del handle["order"]["page_stat"][time_filter]
 
     serializer.store(get_order_cache_path(handle), handle["order"])
 
@@ -182,6 +177,11 @@ def load_order_info(handle):
             "last_modified": datetime.datetime(1994, 7, 5),
         },
     )
+
+    # NOTE: 再開した時には巡回すべきなので削除しておく
+    for time_filter in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
+        if time_filter in handle["order"]["page_stat"]:
+            del handle["order"]["page_stat"][time_filter]
 
 
 def get_progress_bar(handle, desc):

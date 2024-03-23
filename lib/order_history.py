@@ -97,6 +97,9 @@ TABLE_HEADER = {
 }
 TABLE_SHEET_TITLE = "購入アイテム一覧"
 
+STATUS_INSERT_ITEM = "[generate] Insert item"
+STATUS_ALL = "[generate] Excel file"
+
 
 def gen_text_pos(row, col):
     return "{col}{row}".format(
@@ -125,7 +128,7 @@ def set_item_cell_style(sheet, row, col, value, style):
         sheet.cell(row, col).number_format = style["text_format"]
 
 
-def insert_table_header(sheet, row, style):
+def insert_table_header(handle, sheet, row, style):
     crawl_handle.set_status(handle, "テーブルのヘッダを設定しています...")
 
     for key in TABLE_HEADER["col"].keys():
@@ -149,8 +152,8 @@ def insert_table_header(sheet, row, style):
             set_header_cell_style(sheet, row, col, TABLE_HEADER["col"][key]["label"], width, style)
 
 
-def insert_table_cell_image(sheet, row, col, item):
-    thumb_path = crawl_handle.get_thubm_path(handle, item["asin"])
+def insert_table_cell_image(handle, sheet, row, col, item):
+    thumb_path = crawl_handle.get_thumb_path(handle, item["asin"])
 
     if (thumb_path is None) or (not thumb_path.exists()):
         return
@@ -218,7 +221,7 @@ def gen_item_cell_style(base_style, key):
     return style
 
 
-def insert_table_item(sheet, row, item, style):
+def insert_table_item(handle, sheet, row, item, style):
     for key in TABLE_HEADER["col"].keys():
         col = TABLE_HEADER["col"][key]["pos"]
 
@@ -233,7 +236,7 @@ def insert_table_item(sheet, row, item, style):
                 set_item_cell_style(sheet, row, col + i, value, cell_style)
         elif key == "image":
             sheet.cell(row, col).border = cell_style["border"]
-            insert_table_cell_image(sheet, row, col, item)
+            insert_table_cell_image(handle, sheet, row, col, item)
         else:
             set_item_cell_style(sheet, row, col, item[key], cell_style)
 
@@ -243,7 +246,7 @@ def insert_table_item(sheet, row, item, style):
             sheet.cell(row, col).hyperlink = gen_order_url(item["no"])
 
 
-def setting_table_view(sheet, row_last):
+def setting_table_view(handle, sheet, row_last):
     crawl_handle.set_status(handle, "テーブルの表示設定しています...")
 
     sheet.column_dimensions.group(
@@ -263,7 +266,7 @@ def setting_table_view(sheet, row_last):
     sheet.sheet_view.showGridLines = False
 
 
-def insert_sum_row(sheet, row_last, style):
+def insert_sum_row(handle, sheet, row_last, style):
     logging.info("Insert sum row")
 
     crawl_handle.set_status(handle, "集計行を挿入しています...")
@@ -281,7 +284,7 @@ def insert_sum_row(sheet, row_last, style):
     )
 
 
-def generate_list_sheet(book):
+def generate_list_sheet(handle, book):
     sheet = book.active
     sheet.title = TABLE_SHEET_TITLE
 
@@ -292,43 +295,56 @@ def generate_list_sheet(book):
     style = {"border": border, "fill": fill}
 
     row = TABLE_HEADER["row"]["pos"]
-    insert_table_header(sheet, row, style)
+    insert_table_header(handle, sheet, row, style)
+
+    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
 
     item_list = crawl_handle.get_item_list(handle)
 
-    crawl_handle.set_progress_bar(handle, "Insert item", len(item_list))
+    crawl_handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
     crawl_handle.set_status(handle, "購入商品の記載をしています...")
 
     row += 1
     for item in item_list:
         sheet.row_dimensions[row].height = TABLE_HEADER["row"]["height"]
-        insert_table_item(sheet, row, item, style)
-        crawl_handle.get_progress_bar(handle, "Insert item").update()
+        insert_table_item(handle, sheet, row, item, style)
+        crawl_handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update()
         row += 1
 
     row_last = row - 1
 
-    crawl_handle.get_progress_bar(handle, "Insert item").update()
+    crawl_handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update()
+    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
 
     # NOTE: 下記を行うと，ピボットテーブルの作成の邪魔になるのでコメントアウト
     # insert_sum_row(sheet, row_last, style)
-    setting_table_view(sheet, row_last)
+    setting_table_view(handle, sheet, row_last)
+
+    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
 
 
 def generate_table_excel(handle, excel_file):
-    logging.info("Start to Generate excel file")
-
     crawl_handle.set_status(handle, "エクセルファイルの作成を開始します...")
+    crawl_handle.set_progress_bar(handle, STATUS_ALL, 5)
+
+    logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
     book._named_styles["Normal"].font = openpyxl.styles.Font(name="A-OTF UD新ゴ Pro R", size=12)
 
-    generate_list_sheet(book)
+    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+
+    generate_list_sheet(handle, book)
 
     crawl_handle.set_status(handle, "エクセルファイルを書き出しています...")
 
     book.save(excel_file)
+
+    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+
     book.close()
+
+    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
 
     logging.info("Complete to Generate excel file")
 

@@ -38,6 +38,10 @@ from selenium_util import dump_page, get_text
 import store_amazon_const
 import crawl_handle
 
+STATUS_ORDER_COUNT = "[collect] Order count"
+STATUS_ORDER_ITEM_ALL = "[collect] All orders"
+STATUS_ORDER_ITEM_BY_TARGET = "[collect] {target} orders"
+
 CAPTCHA_RETRY_COUNT = 2
 LOGIN_RETRY_COUNT = 2
 FETCH_RETRY_COUNT = 1
@@ -96,7 +100,7 @@ def resolve_captcha(handle):
 def execute_login(handle):
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
-    dump_page(driver, int(random.random() * 100))
+    time.sleep(1)
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_email" and @type!="hidden"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
@@ -108,7 +112,6 @@ def execute_login(handle):
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_password"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
-        time.sleep(0.1)
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').send_keys(
             handle["config"]["login"]["pass"]
         )
@@ -145,7 +148,6 @@ def keep_logged_on(handle):
 
         logging.warning("Failed to login")
         dump_page(driver, int(random.random() * 100))
-        time.sleep(1)
 
     logging.error("Give up to login")
     raise "ログインに失敗しました．"
@@ -168,9 +170,13 @@ def gen_order_url(no):
 
 def gen_target_text(year):
     if year == store_amazon_const.ARCHIVE_LABEL:
-        return "非表示の注文"
+        return "Archive"
     else:
-        return "{year}年".format(year=year)
+        return "Year {year}".format(year=year)
+
+
+def gen_status_label_by_yeart(year):
+    return STATUS_ORDER_ITEM_BY_TARGET.format(target=gen_target_text(year))
 
 
 def visit_url(handle, url, file_name):
@@ -278,7 +284,7 @@ def save_thumbnail(handle, item_xpath, asin):
     driver.switch_to.window(driver.window_handles[-1])
     png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
 
-    with open(crawl_handle.get_thubm_path(handle, asin), "wb") as f:
+    with open(crawl_handle.get_thumb_path(handle, asin), "wb") as f:
         f.write(png_data)
     driver.close()
     driver.switch_to.window(driver.window_handles[0])
@@ -425,12 +431,6 @@ def parse_order_count(handle):
     return int(re.match(r"(\d+)", order_count_text).group(1))
 
 
-def parse_total_page(handle):
-    ORDER_PER_PAGE = 10
-
-    return math.ceil(float(parse_order_count(handle)) / ORDER_PER_PAGE)
-
-
 def fetch_order_item_list_by_order_info(handle, order_info):
     visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
     keep_logged_on(handle)
@@ -448,14 +448,17 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
 
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
+    total_page = math.ceil(crawl_handle.get_order_count(handle, year) / store_amazon_const.ODER_COUNT_BY_PAGE)
+
     crawl_handle.set_status(
-        handle, "注文履歴を解析しています... {target} {page}ページ".format(target=gen_target_text(year), page=page)
+        handle,
+        "注文履歴を解析しています... {target} {page}/{total_page} ページ".format(
+            target=gen_target_text(year), page=page, total_page=total_page
+        ),
     )
 
     visit_url(handle, gen_hist_url(year, page), inspect.currentframe().f_code.co_name)
     keep_logged_on(handle)
-
-    total_page = parse_total_page(handle)
 
     logging.info(
         "Check order of {year} page {page}/{total_page}".format(year=year, page=page, total_page=total_page)
@@ -498,6 +501,8 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
 
         order_list.append({"date": date, "no": no, "url": url, "time_filter": year, "page": page})
 
+    time.sleep(1)
+
     for order_info in order_list:
         if not crawl_handle.get_order_stat(handle, order_info["no"]):
             is_skipped |= not fetch_order_item_list_by_order_info(handle, order_info)
@@ -507,13 +512,17 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                     date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
                 )
             )
-        crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update()
-        crawl_handle.get_progress_bar(handle, "All").update()
+        crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
+        crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
         if year in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
             last_item = crawl_handle.get_last_item(handle, year)
-            # TODO
-            if (last_item != None) and (last_item["no"] == order_info["no"]):
+            if (
+                crawl_handle.get_year_checked(handle, year)
+                and (last_item != None)
+                and (last_item["no"] == order_info["no"])
+            ):
+                logging.info("Latest order found, skipping analysis of subsequent pages")
                 for i in range(total_page):
                     crawl_handle.set_page_checked(handle, year, i + 1)
 
@@ -562,10 +571,11 @@ def skip_order_item_list_by_year_page(handle, year, page):
     logging.info("Skip check order of {year} page {page} [cached]".format(year=year, page=page))
     incr_order = min(
         crawl_handle.get_order_count(handle, year)
-        - crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).count,
+        - crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).count,
         store_amazon_const.ODER_COUNT_BY_PAGE,
     )
-    crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update(incr_order)
+    crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update(incr_order)
+    crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(incr_order)
 
     return incr_order != store_amazon_const.ODER_COUNT_BY_PAGE
 
@@ -585,7 +595,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
     crawl_handle.set_progress_bar(
         handle,
-        "{target}".format(target=gen_target_text(year)),
+        gen_status_label_by_yeart(year),
         crawl_handle.get_order_count(handle, year),
     )
 
@@ -610,7 +620,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
         page += 1
 
-    crawl_handle.get_progress_bar(handle, "{target}".format(target=gen_target_text(year))).update()
+    crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
 
     if not is_skipped:
         crawl_handle.set_year_checked(handle, year)
@@ -634,7 +644,7 @@ def fetch_order_count(handle):
 
     logging.info("Collect order count")
 
-    crawl_handle.set_progress_bar(handle, "Collect order count", len(year_list))
+    crawl_handle.set_progress_bar(handle, STATUS_ORDER_COUNT, len(year_list))
 
     total_count = 0
     for year in year_list:
@@ -651,11 +661,11 @@ def fetch_order_count(handle):
             logging.info("Year {year}: {count:,} orders [cached]".format(year=year, count=count))
 
         total_count += count
-        crawl_handle.get_progress_bar(handle, "Collect order count").update()
+        crawl_handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
 
     logging.info("Total order is {total_count:,}".format(total_count=total_count))
 
-    crawl_handle.get_progress_bar(handle, "Collect order count").update()
+    crawl_handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
     crawl_handle.store_order_info(handle)
 
 
@@ -669,11 +679,13 @@ def fetch_order_item_list_all_year(handle):
     year_list = fetch_year_list(handle)
     fetch_order_count(handle)
 
-    crawl_handle.set_progress_bar(handle, "All", crawl_handle.get_total_order_count(handle))
+    crawl_handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, crawl_handle.get_total_order_count(handle))
 
     for year in year_list:
-        if ((year != datetime.datetime.now().year) and (type(year) is not str)) and (
-            not crawl_handle.get_year_checked(handle, year)
+        if (
+            (year == datetime.datetime.now().year)
+            or (type(year) is str)
+            or (not crawl_handle.get_year_checked(handle, year))
         ):
             fetch_order_item_list_by_year(handle, year)
         else:
@@ -682,9 +694,11 @@ def fetch_order_item_list_all_year(handle):
                     year=year, year_index=year_list.index(year) + 1, total_year=len(year_list)
                 )
             )
-            crawl_handle.get_progress_bar(handle, "All").update(crawl_handle.get_order_count(handle, year))
+            crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(
+                crawl_handle.get_order_count(handle, year)
+            )
 
-    crawl_handle.get_progress_bar(handle, "All").update()
+    crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
 
 def fetch_order_item_list(handle):
@@ -730,7 +744,7 @@ if __name__ == "__main__":
 
             count = fetch_order_count_by_year(handle, year)
             crawl_handle.set_order_count(handle, year, count)
-            crawl_handle.set_progress_bar(handle, "All", count)
+            crawl_handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, count)
 
             fetch_order_item_list_by_year(handle, year, start_page)
     except:
