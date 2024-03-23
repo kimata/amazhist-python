@@ -684,6 +684,7 @@ def fetch_order_item_list_all_year(handle):
     for year in year_list:
         if (
             (year == datetime.datetime.now().year)
+            or (year == crawl_handle.get_cache_last_modified(handle).year)
             or (type(year) is str)
             or (not crawl_handle.get_year_checked(handle, year))
         ):

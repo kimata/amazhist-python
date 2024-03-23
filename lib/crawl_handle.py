@@ -179,7 +179,11 @@ def load_order_info(handle):
     )
 
     # NOTE: 再開した時には巡回すべきなので削除しておく
-    for time_filter in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
+    for time_filter in [
+        datetime.datetime.now().year,
+        get_cache_last_modified(handle).year,
+        store_amazon_const.ARCHIVE_LABEL,
+    ]:
         if time_filter in handle["order"]["page_stat"]:
             del handle["order"]["page_stat"][time_filter]
 
