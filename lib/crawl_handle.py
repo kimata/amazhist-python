@@ -22,7 +22,17 @@ def create(config):
 
     load_order_info(handle)
 
+    prepare_directory(handle)
+
     return handle
+
+
+def prepare_directory(handle):
+    pathlib.Path(handle["config"]["data"]["selenium"]).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(handle["config"]["data"]["cache"]["thumb"]).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(handle["config"]["data"]["cache"]["order"]).parent.mkdir(parents=True, exist_ok=True)
+    pathlib.Path(handle["config"]["output"]["captcha"]).parent.mkdir(parents=True, exist_ok=True)
+    pathlib.Path(handle["config"]["output"]["excel"]["table"]).parent.mkdir(parents=True, exist_ok=True)
 
 
 def get_selenium_driver(handle):
@@ -59,8 +69,6 @@ def get_last_item(handle, time_filter):
 
 
 def get_thumb_path(handle, asin):
-    pathlib.Path(handle["config"]["data"]["cache"]["thumb"]).mkdir(parents=True, exist_ok=True)
-
     if asin is None:
         return None
     else:
