@@ -25,7 +25,6 @@ import logging
 import inspect
 import time
 import traceback
-import PIL.Image
 import platform
 
 from selenium.webdriver.common.by import By
@@ -66,16 +65,16 @@ def resolve_captcha(handle):
         if i != 0:
             logging.info("Retry to resolve CAPTCHA")
 
-        captcha = PIL.Image.open(
-            io.BytesIO(driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png)
-        )
+        captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
         captcha_img_path = (
             pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
             / handle["config"]["output"]["captcha"]
         )
 
         logging.info("Save image: {path}".format(path=captcha_img_path))
-        captcha.save(captcha_img_path)
+
+        with open(captcha_img_path, "wb") as f:
+            f.write(captcha_png_data)
 
         captcha_text = input(
             "「{img_file}」に書かれているテキストを入力してくだい: ".format(img_file=handle["config"]["output"]["captcha"])
@@ -703,6 +702,7 @@ def fetch_order_item_list_all_year(handle):
 
 
 def fetch_order_item_list(handle):
+    crawl_handle.set_status(handle, "巡回ロボットの準備をします...")
     driver, wait = crawl_handle.get_selenium_driver(handle)
 
     crawl_handle.set_status(handle, "注文履歴の収集を開始します...")
