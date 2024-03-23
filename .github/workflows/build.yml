@@ -24,12 +24,7 @@ jobs:
         uses: abatilo/actions-poetry@v2
         with:
           poetry-version: 1.5.1
-
-      # - name: Install poetry
-      #   run: |
-      #     curl -sSL https://install.python-poetry.org | python -
-      #     echo "$HOME/.poetry/bin" >> $GITHUB_PATH
-  
+ 
       - name: Poetry Install Dependencies
         run: |
           poetry install --no-interaction
@@ -38,7 +33,7 @@ jobs:
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
-          script-name: app/amazhist
+          script-name: app/amazhist.py
           include-package: |
             enlighten
             selenium.webdriver.support
