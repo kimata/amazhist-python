@@ -1,6 +1,7 @@
 # amazhist-python
 
-amazhist-python は，Amazon.co.jp の買い物履歴情報を取得し，Excel 形式で出力するソフトウェアです．
+amazhist-python は，Amazon.co.jp の買い物履歴情報を取得し，
+サムネイル付きの Excel 形式で出力するソフトウェアです．
 
 ## 準備
 
