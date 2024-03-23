@@ -47,10 +47,14 @@ jobs:
             coloredlogs
             yaml
           include-package-data: selenium
-          windows-product-name: amazhist
+
+          product-name: amazhist
+          file-version: 0.1.0
+          product-version: 0.1.0
+
           windows-icon-from-ico: img/icon.png
           macos-app-icon: img/icon.png
-          macos-app-name: amazhist
+
           standalone: true
           onefile: true
 
