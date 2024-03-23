@@ -46,9 +46,14 @@ jobs:
             logging.handlers
             coloredlogs
             yaml
+          msvc: 14.2
+          
           include-package-data: selenium
+          windows-product-name: amazhist
+          windows-file-description: Amazon の購買履歴を収集するツールです
           windows-icon-from-ico: img/icon.png
           macos-app-icon: img/icon.png
+          standalone: true
           onefile: true
 
       - name: Upload Artifacts
