@@ -55,7 +55,7 @@ poetry run app/amazhist.py
 Amazon 公式では購入履歴の CSV を提供するサービスが行われています．
 購入日・商品・価格等だけがあれば十分な場合はこちらを利用するのが便利です．
 
-利用するには，Amazon.co.jp のアカウントサービス → [データをリクエストする](https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html)
+利用するには，Amazon.co.jp の「アカウントサービス」 →「 [データをリクエストする](https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html)」
 から手続きを行います．
 
 ## ライセンス
