@@ -24,7 +24,7 @@ sudo apt install docker-compose
 ## 実行
 
 ```
-docker-compose up
+docker-compose run --rm amazhist
 ```
 
 ### 注意点

@@ -44,4 +44,6 @@ RUN chown -R ubuntu:ubuntu .
 
 USER ubuntu
 
+ENV TERM=xterm-256color
+
 CMD ["./app/amazhist.py"]
