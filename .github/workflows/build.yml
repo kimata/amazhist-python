@@ -46,6 +46,9 @@ jobs:
             logging.handlers
             coloredlogs
             yaml
+          include-package-data: selenium
+          windows-icon-from-ico: img/icon.png
+          macos-app-icon: img/icon.png
           onefile: true
 
       - name: Upload Artifacts
