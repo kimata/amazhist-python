@@ -48,7 +48,6 @@ jobs:
             yaml
           include-package-data: selenium
           windows-product-name: amazhist
-          windows-file-description: Amazon の購買履歴を収集するツールです
           windows-icon-from-ico: img/icon.png
           macos-app-icon: img/icon.png
           macos-app-name: amazhist
