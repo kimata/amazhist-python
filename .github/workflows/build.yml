@@ -1,3 +1,7 @@
+name: Build executable
+on:
+    push:
+
 jobs:
   build:
     strategy:
