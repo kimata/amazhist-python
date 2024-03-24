@@ -12,32 +12,31 @@ Options:
 """
 
 import logging
-import pathlib
-import sys
 import random
 
-sys.path.append(str(pathlib.Path(__file__).parent.parent / "lib"))
-
-import crawl_handle
-import store_amazon
-import order_history
-import selenium_util
+import store_amazon.handle
+import store_amazon.crawler
+import store_amazon.order_history
+import local_lib.selenium_util
 
 
 def execute(config, is_export_mode=False):
-    handle = crawl_handle.create(config)
+    handle = store_amazon.handle.create(config)
 
     if not is_export_mode:
         try:
-            store_amazon.fetch_order_item_list(handle)
+            store_amazon.crawler.fetch_order_item_list(handle)
         except:
-            driver, wait = crawl_handle.get_selenium_driver(handle)
-            selenium_util.dump_page(driver, int(random.random() * 100))
+            driver, wait = store_amazon.handle.get_selenium_driver(handle)
+            local_lib.selenium_util.dump_page(
+                driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+            )
+
             raise
 
-    order_history.generate_table_excel(handle, config["output"]["excel"]["table"])
+    store_amazon.order_history.generate_table_excel(handle, config["output"]["excel"]["table"])
 
-    crawl_handle.finish(handle)
+    store_amazon.handle.finish(handle)
 
 
 ######################################################################
@@ -45,17 +44,17 @@ if __name__ == "__main__":
     from docopt import docopt
     import traceback
 
-    import logger
-    from config import load_config
+    import local_lib.logger
+    import local_lib.config
 
     args = docopt(__doc__)
 
-    logger.init("amazhist", level=logging.INFO)
+    local_lib.logger.init("amazhist", level=logging.INFO)
 
     config_file = args["-c"]
     is_export_mode = args["-e"]
 
-    config = load_config(args["-c"])
+    config = local_lib.config.load(args["-c"])
 
     try:
         execute(config, is_export_mode)

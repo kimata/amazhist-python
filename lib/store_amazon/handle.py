@@ -7,10 +7,10 @@ import enlighten
 import datetime
 
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium_util import create_driver, clear_cache
 
-import store_amazon_const
-import serializer
+import store_amazon.const
+import local_lib.serializer
+import local_lib.selenium_util
 
 
 def create(config):
@@ -28,24 +28,47 @@ def create(config):
 
 
 def prepare_directory(handle):
-    pathlib.Path(handle["config"]["data"]["selenium"]).mkdir(parents=True, exist_ok=True)
-    pathlib.Path(handle["config"]["data"]["cache"]["thumb"]).mkdir(parents=True, exist_ok=True)
-    pathlib.Path(handle["config"]["data"]["cache"]["order"]).parent.mkdir(parents=True, exist_ok=True)
-    pathlib.Path(handle["config"]["output"]["captcha"]).parent.mkdir(parents=True, exist_ok=True)
-    pathlib.Path(handle["config"]["output"]["excel"]["table"]).parent.mkdir(parents=True, exist_ok=True)
+    get_selenium_data_dir_path(handle).mkdir(parents=True, exist_ok=True)
+    get_debug_dir_path(handle).mkdir(parents=True, exist_ok=True)
+    get_thumb_dir_path(handle).mkdir(parents=True, exist_ok=True)
+
+    get_caceh_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
+    get_captcha_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
+    get_excel_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
+
+
+def get_caceh_file_path(handle):
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["cache"]["order"])
+
+
+def get_excel_file_path(handle):
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["output"]["excel"]["table"])
+
+
+def get_thumb_dir_path(handle):
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["cache"]["thumb"])
+
+
+def get_selenium_data_dir_path(handle):
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["selenium"])
+
+
+def get_debug_dir_path(handle):
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["debug"])
+
+
+def get_captcha_file_path(handle):
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["output"]["captcha"])
 
 
 def get_selenium_driver(handle):
     if "selenium" in handle:
         return (handle["selenium"]["driver"], handle["selenium"]["wait"])
     else:
-        driver = create_driver(
-            pathlib.Path(os.path.dirname(__file__)).parent.name,
-            pathlib.Path(os.path.dirname(__file__)).parent / handle["config"]["data"]["selenium"],
-        )
+        driver = local_lib.selenium_util.create_driver("Amazhist", get_selenium_data_dir_path(handle))
         wait = WebDriverWait(driver, 5)
 
-        clear_cache(driver)
+        local_lib.selenium_util.clear_cache(driver)
 
         handle["selenium"] = {
             "driver": driver,
@@ -72,7 +95,7 @@ def get_thumb_path(handle, asin):
     if asin is None:
         return None
     else:
-        return pathlib.Path(handle["config"]["data"]["cache"]["thumb"]) / (asin + ".png")
+        return get_thumb_dir_path(handle) / (asin + ".png")
 
 
 def get_order_stat(handle, no):
@@ -139,14 +162,10 @@ def finish(handle):
     handle["progress_manager"].stop()
 
 
-def get_order_cache_path(handle):
-    return pathlib.Path(os.path.dirname(__file__)).parent / handle["config"]["data"]["cache"]["order"]
-
-
 def store_order_info(handle):
     handle["order"]["last_modified"] = datetime.datetime.now()
 
-    serializer.store(get_order_cache_path(handle), handle["order"])
+    local_lib.serializer.store(get_caceh_file_path(handle), handle["order"])
 
 
 def set_page_checked(handle, year, page):
@@ -173,8 +192,8 @@ def get_year_checked(handle, year):
 
 
 def load_order_info(handle):
-    handle["order"] = serializer.load(
-        get_order_cache_path(handle),
+    handle["order"] = local_lib.serializer.load(
+        get_caceh_file_path(handle),
         {
             "year_list": [],
             "year_count": {},
@@ -190,7 +209,7 @@ def load_order_info(handle):
     for time_filter in [
         datetime.datetime.now().year,
         get_cache_last_modified(handle).year,
-        store_amazon_const.ARCHIVE_LABEL,
+        store_amazon.const.ARCHIVE_LABEL,
     ]:
         if time_filter in handle["order"]["page_stat"]:
             del handle["order"]["page_stat"][time_filter]

@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "Amazon.co.jp の購入履歴情報を収集するスクリプトです．"
 authors = ["KIMATA Tetsuya <kimata@green-rabbit.net>"]
 
+packages = [
+    { include = "local_lib", from = "lib" },
+    { include = "store_amazon", from = "lib" }
+]
+
 [tool.poetry.dependencies]
 coloredlogs = "^15.0.1"
 docopt = "^0.6.2"

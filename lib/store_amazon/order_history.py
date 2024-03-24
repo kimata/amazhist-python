@@ -11,17 +11,7 @@ Options:
   -o EXCEL      : CONFIG を設定ファイルとして読み込んで実行します．[default: amazhist.xlsx]
 """
 
-import os
-import re
-import math
-import pathlib
-import datetime
-import io
-import random
 import logging
-import inspect
-import time
-import traceback
 
 import openpyxl
 import openpyxl.utils
@@ -30,8 +20,7 @@ import openpyxl.drawing.image
 import openpyxl.drawing.xdr
 import openpyxl.drawing.spreadsheet_drawing
 
-import crawl_handle
-from store_amazon import gen_order_url
+import store_amazon
 
 TABLE_HEADER = {
     "row": {
@@ -129,7 +118,7 @@ def set_item_cell_style(sheet, row, col, value, style):
 
 
 def insert_table_header(handle, sheet, row, style):
-    crawl_handle.set_status(handle, "テーブルのヘッダを設定しています...")
+    store_amazon.handle.set_status(handle, "テーブルのヘッダを設定しています...")
 
     for key in TABLE_HEADER["col"].keys():
         col = TABLE_HEADER["col"][key]["pos"]
@@ -153,7 +142,7 @@ def insert_table_header(handle, sheet, row, style):
 
 
 def insert_table_cell_image(handle, sheet, row, col, item):
-    thumb_path = crawl_handle.get_thumb_path(handle, item["asin"])
+    thumb_path = store_amazon.handle.get_thumb_path(handle, item["asin"])
 
     if (thumb_path is None) or (not thumb_path.exists()):
         return
@@ -243,11 +232,11 @@ def insert_table_item(handle, sheet, row, item, style):
         if key == "asin":
             sheet.cell(row, col).hyperlink = item["url"]
         if key == "no":
-            sheet.cell(row, col).hyperlink = gen_order_url(item["no"])
+            sheet.cell(row, col).hyperlink = store_amazon.crawler.gen_order_url(item["no"])
 
 
 def setting_table_view(handle, sheet, row_last):
-    crawl_handle.set_status(handle, "テーブルの表示設定しています...")
+    store_amazon.handle.set_status(handle, "テーブルの表示設定しています...")
 
     sheet.column_dimensions.group(
         openpyxl.utils.get_column_letter(TABLE_HEADER["col"]["image"]["pos"]),
@@ -269,7 +258,7 @@ def setting_table_view(handle, sheet, row_last):
 def insert_sum_row(handle, sheet, row_last, style):
     logging.info("Insert sum row")
 
-    crawl_handle.set_status(handle, "集計行を挿入しています...")
+    store_amazon.handle.set_status(handle, "集計行を挿入しています...")
 
     col = TABLE_HEADER["col"]["price"]["pos"]
     set_item_cell_style(
@@ -297,72 +286,72 @@ def generate_list_sheet(handle, book):
     row = TABLE_HEADER["row"]["pos"]
     insert_table_header(handle, sheet, row, style)
 
-    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 
-    item_list = crawl_handle.get_item_list(handle)
+    item_list = store_amazon.handle.get_item_list(handle)
 
-    crawl_handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
-    crawl_handle.set_status(handle, "購入商品の記載をしています...")
+    store_amazon.handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
+    store_amazon.handle.set_status(handle, "購入商品の記載をしています...")
 
     row += 1
     for item in item_list:
         sheet.row_dimensions[row].height = TABLE_HEADER["row"]["height"]
         insert_table_item(handle, sheet, row, item, style)
-        crawl_handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update()
+        store_amazon.handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update()
         row += 1
 
     row_last = row - 1
 
-    crawl_handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update()
-    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 
     # NOTE: 下記を行うと，ピボットテーブルの作成の邪魔になるのでコメントアウト
     # insert_sum_row(sheet, row_last, style)
     setting_table_view(handle, sheet, row_last)
 
-    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 
 
 def generate_table_excel(handle, excel_file):
-    crawl_handle.set_status(handle, "エクセルファイルの作成を開始します...")
-    crawl_handle.set_progress_bar(handle, STATUS_ALL, 5)
+    store_amazon.handle.set_status(handle, "エクセルファイルの作成を開始します...")
+    store_amazon.handle.set_progress_bar(handle, STATUS_ALL, 5)
 
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
     book._named_styles["Normal"].font = openpyxl.styles.Font(name="A-OTF UD新ゴ Pro R", size=12)
 
-    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 
     generate_list_sheet(handle, book)
 
-    crawl_handle.set_status(handle, "エクセルファイルを書き出しています...")
+    store_amazon.handle.set_status(handle, "エクセルファイルを書き出しています...")
 
     book.save(excel_file)
 
-    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 
     book.close()
 
-    crawl_handle.get_progress_bar(handle, STATUS_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 
     logging.info("Complete to Generate excel file")
 
 
 if __name__ == "__main__":
-    import logger
-    from config import load_config
     from docopt import docopt
+
+    import local_lib
 
     args = docopt(__doc__)
 
-    logger.init("test", level=logging.INFO)
+    local_lib.logger.init("test", level=logging.INFO)
 
-    config = load_config(args["-c"])
+    config = local_lib.config.load_config(args["-c"])
     excel_file = args["-o"]
 
-    handle = crawl_handle.create(config)
+    handle = store_amazon.handle.create(config)
 
     generate_table_excel(handle, excel_file)
 
-    crawl_handle.finish(handle)
+    store_amazon.handle.finish(handle)

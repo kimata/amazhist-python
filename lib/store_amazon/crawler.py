@@ -19,7 +19,6 @@ import re
 import math
 import pathlib
 import datetime
-import io
 import random
 import logging
 import inspect
@@ -32,10 +31,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 
-from selenium_util import dump_page, get_text
-
-import store_amazon_const
-import crawl_handle
+import local_lib.selenium_util
+import store_amazon.const
+import store_amazon.handle
 
 STATUS_ORDER_COUNT = "[collect] Order count"
 STATUS_ORDER_ITEM_ALL = "[collect] All orders"
@@ -50,14 +48,14 @@ DEBUG_DUMP = True
 
 
 def wait_for_loading(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     wait.until(EC.presence_of_all_elements_located)
     time.sleep(0.01)
 
 
 def resolve_captcha(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     logging.info("Try to resolve CAPTCHA")
 
@@ -65,11 +63,8 @@ def resolve_captcha(handle):
         if i != 0:
             logging.info("Retry to resolve CAPTCHA")
 
+        captcha_img_path = store_amazon.handle.get_captcha_file_path(handle)
         captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
-        captcha_img_path = (
-            pathlib.Path(pathlib.Path(os.path.dirname(__file__))).parent
-            / handle["config"]["output"]["captcha"]
-        )
 
         logging.info("Save image: {path}".format(path=captcha_img_path))
 
@@ -89,7 +84,9 @@ def resolve_captcha(handle):
             return
 
         logging.warning("Failed to resolve CAPTCHA")
-        dump_page(driver, int(random.random() * 100))
+        local_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        )
         time.sleep(1)
 
     logging.error("Give up to resolve CAPTCHA")
@@ -97,7 +94,7 @@ def resolve_captcha(handle):
 
 
 def execute_login(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     time.sleep(1)
 
@@ -128,7 +125,7 @@ def execute_login(handle):
 
 
 def keep_logged_on(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     if not re.match("Amazonサインイン", driver.title):
         return
@@ -146,29 +143,31 @@ def keep_logged_on(handle):
             return
 
         logging.warning("Failed to login")
-        dump_page(driver, int(random.random() * 100))
+        local_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        )
 
     logging.error("Give up to login")
     raise "ログインに失敗しました．"
 
 
 def gen_hist_url(year, page):
-    if year == store_amazon_const.ARCHIVE_LABEL:
-        return store_amazon_const.HIST_URL_IN_ARCHIVE.format(
-            start=store_amazon_const.ODER_COUNT_BY_PAGE * (page - 1)
+    if year == store_amazon.const.ARCHIVE_LABEL:
+        return store_amazon.const.HIST_URL_IN_ARCHIVE.format(
+            start=store_amazon.const.ODER_COUNT_BY_PAGE * (page - 1)
         )
     else:
-        return store_amazon_const.HIST_URL_BY_YEAR.format(
-            year=year, start=store_amazon_const.ODER_COUNT_BY_PAGE * (page - 1)
+        return store_amazon.const.HIST_URL_BY_YEAR.format(
+            year=year, start=store_amazon.const.ODER_COUNT_BY_PAGE * (page - 1)
         )
 
 
 def gen_order_url(no):
-    return store_amazon_const.HIST_URL_BY_ORDER_NO.format(no=no)
+    return store_amazon.const.HIST_URL_BY_ORDER_NO.format(no=no)
 
 
 def gen_target_text(year):
-    if year == store_amazon_const.ARCHIVE_LABEL:
+    if year == store_amazon.const.ARCHIVE_LABEL:
         return "Archive"
     else:
         return "Year {year}".format(year=year)
@@ -179,7 +178,7 @@ def gen_status_label_by_yeart(year):
 
 
 def visit_url(handle, url, file_name):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
     driver.get(url)
 
     wait_for_loading(handle)
@@ -194,7 +193,7 @@ def parse_date_digital(date_text):
 
 
 def parse_item_giftcard(handle, item_xpath):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     count = 1
 
@@ -217,20 +216,24 @@ def parse_item_giftcard(handle, item_xpath):
 
 
 def parse_item_default(handle, item_xpath):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
-    count = int(get_text(driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"))
+    count = int(
+        local_lib.selenium_util.get_text(
+            driver, item_xpath + "//span[contains(@class, 'item-view-qty')]", "1"
+        )
+    )
 
     price_text = driver.find_element(By.XPATH, item_xpath + "//span[contains(@class, 'a-color-price')]").text
     price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
 
-    seller = get_text(
+    seller = local_lib.selenium_util.get_text(
         driver,
         item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
         " アマゾンジャパン合同会社",
     ).split(" ", 2)[1]
 
-    condition = get_text(
+    condition = local_lib.selenium_util.get_text(
         driver,
         item_xpath
         + "//span[contains(@class, 'a-color-secondary') and contains(text(), 'コンディション：')]/following-sibling::span[1]",
@@ -247,7 +250,7 @@ def parse_item_default(handle, item_xpath):
 
 
 def fetch_item_category(handle, item_link):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     actions = ActionChains(driver)
 
@@ -272,7 +275,7 @@ def fetch_item_category(handle, item_link):
 
 
 def save_thumbnail(handle, item_xpath, asin):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     thumb_url = driver.find_element(By.XPATH, item_xpath + "/preceding-sibling::div//a/img").get_attribute(
         "src"
@@ -283,14 +286,14 @@ def save_thumbnail(handle, item_xpath, asin):
     driver.switch_to.window(driver.window_handles[-1])
     png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
 
-    with open(crawl_handle.get_thumb_path(handle, asin), "wb") as f:
+    with open(store_amazon.handle.get_thumb_path(handle, asin), "wb") as f:
         f.write(png_data)
     driver.close()
     driver.switch_to.window(driver.window_handles[0])
 
 
 def parse_item(handle, item_xpath):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     link = driver.find_element(
         By.XPATH,
@@ -319,7 +322,7 @@ def parse_item(handle, item_xpath):
 
 
 def parse_order_digital(handle, order_info):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
     date = parse_date_digital(date_text)
@@ -368,7 +371,7 @@ def parse_order_digital(handle, order_info):
 
     logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
 
-    crawl_handle.record_item(handle, item)
+    store_amazon.handle.record_item(handle, item)
 
     return True
 
@@ -376,7 +379,7 @@ def parse_order_digital(handle, order_info):
 def parse_order_default(handle, order_info):
     ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
 
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(
         By.XPATH, '//span[contains(@class, "order-date-invoice-item")][1]'
@@ -401,14 +404,14 @@ def parse_order_default(handle, order_info):
 
         logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
 
-        crawl_handle.record_item(handle, item)
+        store_amazon.handle.record_item(handle, item)
         is_unempty = True
 
     return is_unempty
 
 
 def parse_order(handle, order_info):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     logging.info(
         "Parse order: {date} - {no}".format(date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"])
@@ -423,7 +426,7 @@ def parse_order(handle, order_info):
 
 
 def parse_order_count(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     order_count_text = driver.find_element(By.XPATH, "//span[contains(@class, 'num-orders')]").text
 
@@ -445,11 +448,13 @@ def fetch_order_item_list_by_order_info(handle, order_info):
 def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
-    total_page = math.ceil(crawl_handle.get_order_count(handle, year) / store_amazon_const.ODER_COUNT_BY_PAGE)
+    total_page = math.ceil(
+        store_amazon.handle.get_order_count(handle, year) / store_amazon.const.ODER_COUNT_BY_PAGE
+    )
 
-    crawl_handle.set_status(
+    store_amazon.handle.set_status(
         handle,
         "注文履歴を解析しています... {target} {page}/{total_page} ページ".format(
             target=gen_target_text(year), page=page, total_page=total_page
@@ -503,7 +508,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     time.sleep(1)
 
     for order_info in order_list:
-        if not crawl_handle.get_order_stat(handle, order_info["no"]):
+        if not store_amazon.handle.get_order_stat(handle, order_info["no"]):
             is_skipped |= not fetch_order_item_list_by_order_info(handle, order_info)
         else:
             logging.info(
@@ -511,25 +516,25 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                     date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
                 )
             )
-        crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
-        crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
+        store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
+        store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
-        if year in [datetime.datetime.now().year, store_amazon_const.ARCHIVE_LABEL]:
-            last_item = crawl_handle.get_last_item(handle, year)
+        if year in [datetime.datetime.now().year, store_amazon.const.ARCHIVE_LABEL]:
+            last_item = store_amazon.handle.get_last_item(handle, year)
             if (
-                crawl_handle.get_year_checked(handle, year)
+                store_amazon.handle.get_year_checked(handle, year)
                 and (last_item != None)
                 and (last_item["no"] == order_info["no"])
             ):
                 logging.info("Latest order found, skipping analysis of subsequent pages")
                 for i in range(total_page):
-                    crawl_handle.set_page_checked(handle, year, i + 1)
+                    store_amazon.handle.set_page_checked(handle, year, i + 1)
 
     return (is_skipped, page == total_page)
 
 
 def fetch_year_list(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
     driver.find_element(
         By.XPATH, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
@@ -559,9 +564,9 @@ def fetch_year_list(handle):
     )
 
     if "非表示にした注文" in year_str_list:
-        year_list.append(store_amazon_const.ARCHIVE_LABEL)
+        year_list.append(store_amazon.const.ARCHIVE_LABEL)
 
-    crawl_handle.set_year_list(handle, year_list)
+    store_amazon.handle.set_year_list(handle, year_list)
 
     return year_list
 
@@ -569,14 +574,14 @@ def fetch_year_list(handle):
 def skip_order_item_list_by_year_page(handle, year, page):
     logging.info("Skip check order of {year} page {page} [cached]".format(year=year, page=page))
     incr_order = min(
-        crawl_handle.get_order_count(handle, year)
-        - crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).count,
-        store_amazon_const.ODER_COUNT_BY_PAGE,
+        store_amazon.handle.get_order_count(handle, year)
+        - store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).count,
+        store_amazon.const.ODER_COUNT_BY_PAGE,
     )
-    crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update(incr_order)
-    crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(incr_order)
+    store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update(incr_order)
+    store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(incr_order)
 
-    return incr_order != store_amazon_const.ODER_COUNT_BY_PAGE
+    return incr_order != store_amazon.const.ODER_COUNT_BY_PAGE
 
 
 def fetch_order_item_list_by_year(handle, year, start_page=1):
@@ -584,7 +589,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
     keep_logged_on(handle)
 
-    year_list = crawl_handle.get_year_list(handle)
+    year_list = store_amazon.handle.get_year_list(handle)
 
     logging.info(
         "Check order of {year} ({year_index}/{total_year})".format(
@@ -592,41 +597,41 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
         )
     )
 
-    crawl_handle.set_progress_bar(
+    store_amazon.handle.set_progress_bar(
         handle,
         gen_status_label_by_yeart(year),
-        crawl_handle.get_order_count(handle, year),
+        store_amazon.handle.get_order_count(handle, year),
     )
 
     page = start_page
     is_skipped = False
     while True:
-        if not crawl_handle.get_page_checked(handle, year, page):
+        if not store_amazon.handle.get_page_checked(handle, year, page):
             is_skipped_page, is_last = fetch_order_item_list_by_year_page(handle, year, page)
 
             if not is_skipped_page:
-                crawl_handle.set_page_checked(handle, year, page)
+                store_amazon.handle.set_page_checked(handle, year, page)
 
             is_skipped |= is_skipped_page
             time.sleep(1)
         else:
             is_last = skip_order_item_list_by_year_page(handle, year, page)
 
-        crawl_handle.store_order_info(handle)
+        store_amazon.handle.store_order_info(handle)
 
         if is_last:
             break
 
         page += 1
 
-    crawl_handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
+    store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
 
     if not is_skipped:
-        crawl_handle.set_year_checked(handle, year)
+        store_amazon.handle.set_year_checked(handle, year)
 
 
 def fetch_order_count_by_year(handle, year):
-    crawl_handle.set_status(
+    store_amazon.handle.set_status(
         handle,
         "注文件数を調べています... {target}".format(target=gen_target_text(year)),
     )
@@ -639,53 +644,55 @@ def fetch_order_count_by_year(handle, year):
 
 
 def fetch_order_count(handle):
-    year_list = crawl_handle.get_year_list(handle)
+    year_list = store_amazon.handle.get_year_list(handle)
 
     logging.info("Collect order count")
 
-    crawl_handle.set_progress_bar(handle, STATUS_ORDER_COUNT, len(year_list))
+    store_amazon.handle.set_progress_bar(handle, STATUS_ORDER_COUNT, len(year_list))
 
     total_count = 0
     for year in year_list:
-        if year == store_amazon_const.ARCHIVE_LABEL:
+        if year == store_amazon.const.ARCHIVE_LABEL:
             count = fetch_order_count_by_year(handle, year)
-            crawl_handle.set_order_count(handle, year, count)
+            store_amazon.handle.set_order_count(handle, year, count)
             logging.info("Archive: {count:,} orders".format(count=count))
-        elif year >= crawl_handle.get_cache_last_modified(handle).year:
+        elif year >= store_amazon.handle.get_cache_last_modified(handle).year:
             count = fetch_order_count_by_year(handle, year)
-            crawl_handle.set_order_count(handle, year, count)
+            store_amazon.handle.set_order_count(handle, year, count)
             logging.info("Year {year}: {count:,} orders".format(year=year, count=count))
         else:
-            count = crawl_handle.get_order_count(handle, year)
+            count = store_amazon.handle.get_order_count(handle, year)
             logging.info("Year {year}: {count:,} orders [cached]".format(year=year, count=count))
 
         total_count += count
-        crawl_handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
+        store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
 
     logging.info("Total order is {total_count:,}".format(total_count=total_count))
 
-    crawl_handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
-    crawl_handle.store_order_info(handle)
+    store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
+    store_amazon.handle.store_order_info(handle)
 
 
 def fetch_order_item_list_all_year(handle):
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
-    visit_url(handle, store_amazon_const.HIST_URL, inspect.currentframe().f_code.co_name)
+    visit_url(handle, store_amazon.const.HIST_URL, inspect.currentframe().f_code.co_name)
 
     keep_logged_on(handle)
 
     year_list = fetch_year_list(handle)
     fetch_order_count(handle)
 
-    crawl_handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, crawl_handle.get_total_order_count(handle))
+    store_amazon.handle.set_progress_bar(
+        handle, STATUS_ORDER_ITEM_ALL, store_amazon.handle.get_total_order_count(handle)
+    )
 
     for year in year_list:
         if (
             (year == datetime.datetime.now().year)
-            or (year == crawl_handle.get_cache_last_modified(handle).year)
+            or (year == store_amazon.handle.get_cache_last_modified(handle).year)
             or (type(year) is str)
-            or (not crawl_handle.get_year_checked(handle, year))
+            or (not store_amazon.handle.get_year_checked(handle, year))
         ):
             fetch_order_item_list_by_year(handle, year)
         else:
@@ -694,39 +701,41 @@ def fetch_order_item_list_all_year(handle):
                     year=year, year_index=year_list.index(year) + 1, total_year=len(year_list)
                 )
             )
-            crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(
-                crawl_handle.get_order_count(handle, year)
+            store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(
+                store_amazon.handle.get_order_count(handle, year)
             )
 
-    crawl_handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
+    store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
 
 def fetch_order_item_list(handle):
-    crawl_handle.set_status(handle, "巡回ロボットの準備をします...")
-    driver, wait = crawl_handle.get_selenium_driver(handle)
+    store_amazon.handle.set_status(handle, "巡回ロボットの準備をします...")
+    driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
-    crawl_handle.set_status(handle, "注文履歴の収集を開始します...")
+    store_amazon.handle.set_status(handle, "注文履歴の収集を開始します...")
 
     try:
         fetch_order_item_list_all_year(handle)
     except:
-        dump_page(driver, int(random.random() * 100))
+        local_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        )
         raise
 
-    crawl_handle.set_status(handle, "注文履歴の収集が完了しました．")
+    store_amazon.handle.set_status(handle, "注文履歴の収集が完了しました．")
 
 
 if __name__ == "__main__":
-    import logger
-    from config import load_config
     from docopt import docopt
+
+    import local_lib
 
     args = docopt(__doc__)
 
-    logger.init("test", level=logging.INFO)
+    local_lib.logger.init("test", level=logging.INFO)
 
-    config = load_config(args["-c"])
-    handle = crawl_handle.create(config)
+    config = local_lib.config.load_config(args["-c"])
+    handle = store_amazon.handle.create(config)
 
     try:
         if args["-n"] is not None:
@@ -741,14 +750,16 @@ if __name__ == "__main__":
             year = int(args["-y"])
             start_page = int(args["-s"])
 
-            crawl_handle.set_year_list(handle, [year])
+            store_amazon.handle.set_year_list(handle, [year])
 
             count = fetch_order_count_by_year(handle, year)
-            crawl_handle.set_order_count(handle, year, count)
-            crawl_handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, count)
+            store_amazon.handle.set_order_count(handle, year, count)
+            store_amazon.handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, count)
 
             fetch_order_item_list_by_year(handle, year, start_page)
     except:
-        driver, wait = crawl_handle.get_selenium_driver(handle)
+        driver, wait = store_amazon.handle.get_selenium_driver(handle)
         logging.error(traceback.format_exc())
-        dump_page(driver, int(random.random() * 100))
+        local_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        )

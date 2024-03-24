@@ -19,17 +19,12 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
-DATA_PATH = pathlib.Path(os.path.dirname(__file__)).parent / "data"
-DUMP_PATH = DATA_PATH / "debug"
-
 WAIT_RETRY_COUNT = 1
 
 
 def create_driver_impl(profile_name, data_path):
     chrome_data_path = data_path / "chrome"
     log_path = data_path / "log"
-
-    DATA_PATH.mkdir(parents=True, exist_ok=True)
 
     os.makedirs(chrome_data_path, exist_ok=True)
     os.makedirs(log_path, exist_ok=True)
@@ -64,7 +59,7 @@ def create_driver_impl(profile_name, data_path):
     return driver
 
 
-def create_driver(profile_name="Default", data_path=DATA_PATH):
+def create_driver(profile_name, data_path):
     # NOTE: 1回だけ自動リトライ
     try:
         return create_driver_impl(profile_name, data_path)
@@ -134,7 +129,7 @@ def wait_patiently(driver, wait, target):
     raise error
 
 
-def dump_page(driver, index, dump_path=DUMP_PATH):
+def dump_page(driver, index, dump_path):
     name = inspect.stack()[1].function.replace("<", "").replace(">", "")
 
     dump_path.mkdir(parents=True, exist_ok=True)
@@ -154,7 +149,7 @@ def clear_cache(driver):
     driver.execute_cdp_cmd("Network.clearBrowserCache", {})
 
 
-def clean_dump(dump_path=DUMP_PATH, keep_days=1):
+def clean_dump(dump_path, keep_days=1):
     if not dump_path.exists():
         return
 
