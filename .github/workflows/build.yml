@@ -46,6 +46,7 @@ jobs:
           product-version: 0.1.0
 
           windows-icon-from-ico: img/icon.png
+          macos-app-icon:  img/icon.png
 
           standalone: true
           onefile: true
