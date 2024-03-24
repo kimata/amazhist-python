@@ -40,7 +40,6 @@ jobs:
         with:
           nuitka-version: main
           script-name: app/amazhist.py
-          follow-imports : true
           include-package-data: selenium
 
           product-name: amazhist
