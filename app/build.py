@@ -8,6 +8,7 @@ Usage:
 """
 
 import subprocess
+import amazhist
 
 JOBS = 16
 
@@ -17,11 +18,11 @@ def build():
         "poetry run nuitka3 --follow-imports --include-package-data=selenium "
         "--product-name={name} --file-version={version} --product-version={version} "
         "--windows-icon-from-ico={icon_image} --macos-app-icon={icon_image} --jobs={jobs} "
-        "--standalone --onefile --output-dir=build --script-name=app/amazhist.py"
+        "--standalone --onefile --output-dir=build --script-name=app/amazhist.py "
     ).format(
         jobs=JOBS,
-        name="amazhist",
-        version="0.1.0",
+        name=amazhist.NAME,
+        version=amazhist.VERSION,
         icon_image="img/icon.png",
     )
 

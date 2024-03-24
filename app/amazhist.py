@@ -19,6 +19,9 @@ import store_amazon.crawler
 import store_amazon.order_history
 import local_lib.selenium_util
 
+NAME = "amazhist"
+VERSION = "0.1.0"
+
 
 def execute(config, is_export_mode=False):
     handle = store_amazon.handle.create(config)
