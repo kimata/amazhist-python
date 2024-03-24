@@ -1,0 +1,36 @@
+on:
+  workflow_run:
+    workflows: ["Build executable"]
+    types: [completed]
+
+jobs:
+  on-success:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    
+    steps:
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+          
+      - name: Display structure of downloaded files
+        run: ls -R
+          
+      # - 
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: "${{ matrix.binary }}"
+      #     path: "./assets/"
+
+      # - name: (Debug) Check dir
+      #   run: ls -l the-asset
