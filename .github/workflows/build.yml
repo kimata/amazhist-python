@@ -39,13 +39,6 @@ jobs:
           nuitka-version: main
           script-name: app/amazhist.py
           follow-imports : true
-          include-package: |
-            enlighten
-            selenium.webdriver.support
-            openpyxl
-            logging.handlers
-            coloredlogs
-            yaml
           include-package-data: selenium
 
           product-name: amazhist
