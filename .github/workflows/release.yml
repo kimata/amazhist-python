@@ -1,3 +1,4 @@
+name: Make release
 on:
   workflow_run:
     workflows: ["Build executable"]
