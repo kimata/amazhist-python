@@ -139,7 +139,7 @@ def dump_page(driver, index, dump_path):
 
     driver.save_screenshot(str(png_path))
 
-    with open(str(htm_path), "w") as f:
+    with open(str(htm_path), "w", encoding="utf-8") as f:
         f.write(driver.page_source)
 
     logging.info("page dump: {index:02d}.".format(index=index))
