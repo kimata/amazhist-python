@@ -75,6 +75,24 @@ jobs:
 
           no-deployment-flag: self-execution
 
+      - name: Check if secret exists
+        id: check_secret
+        shell: pwsh
+        run: |
+          if ("${{ secrets.PASSWORD }}" -ne "") {
+            Write-Output "secret_exists=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Output "secret_exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Sign code
+        if: (runner.os == 'Windows') && (steps.check_secret.outputs.secret_exists == 'true')
+        uses: kimata/code-sign-action@v1
+        with:
+          file: build/*.exe
+          certificate-data: ${{ secrets.CERTIFICATE }}
+          certificate-password: ${{ secrets.PASSWORD }}
+
       - name: Copy config
         run: cp config.example.yaml build/config.example.yaml
           
@@ -126,7 +144,7 @@ jobs:
             label: windows_x64
 
     runs-on: ubuntu-latest
-
+ 
     steps:
       - name: Define names
         run: |
