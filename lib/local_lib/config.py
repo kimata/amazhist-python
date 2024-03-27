@@ -33,7 +33,7 @@ def get_db_config(config):
 
 def load(config_path=CONFIG_PATH):
     path = str(abs_path(config_path))
-    with open(path, "r") as file:
+    with open(path, "r", encoding="utf-8") as file:
         config = yaml.load(file, Loader=yaml.SafeLoader)
         config["base_dir"] = abs_path(config_path).parent
         return config
