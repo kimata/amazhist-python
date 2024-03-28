@@ -319,7 +319,7 @@ def generate_table_excel(handle, excel_file):
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
-    book._named_styles["Normal"].font = openpyxl.styles.Font(name="A-OTF UD新ゴ Pro R", size=12)
+    book._named_styles["Normal"].font = store_amazon.handle.get_excel_font(handle)
 
     store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
 

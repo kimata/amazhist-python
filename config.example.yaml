@@ -24,6 +24,10 @@ output:
   captcha: output/captcha.png
 
   excel:
+    # フォント
+    font:
+      name: BIZ UDGothic
+      size: 12
     # 購入履歴が記載されたファイル
     table: output/amazhist.xlsx
 

@@ -6,6 +6,7 @@ import enlighten
 import datetime
 
 from selenium.webdriver.support.wait import WebDriverWait
+import openpyxl.styles
 
 import store_amazon.const
 import local_lib.serializer
@@ -34,6 +35,11 @@ def prepare_directory(handle):
     get_caceh_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
     get_captcha_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
     get_excel_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
+
+
+def get_excel_font(handle):
+    font_config = handle["config"]["output"]["excel"]["font"]
+    return openpyxl.styles.Font(name=font_config["name"], size=font_config["size"])
 
 
 def get_caceh_file_path(handle):
