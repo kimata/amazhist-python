@@ -14,15 +14,21 @@ import tempfile
 import traceback
 
 
-def store(file_path, data):
-    logging.debug("Store {file_path}".format(file_path=file_path))
+def store(file_path_str, data):
+    logging.debug("Store {file_path}".format(file_path=file_path_str))
 
+    file_path = pathlib.Path(file_path_str)
     try:
-        f = tempfile.NamedTemporaryFile(dir=str(pathlib.Path(file_path).parent), delete=False)
+        f = tempfile.NamedTemporaryFile(dir=str(file_path.parent), delete=False)
         pickle.dump(data, f)
         f.close()
 
-        pathlib.Path(f.name).rename(pathlib.Path(file_path))
+        # NOTE: Windows だと，存在するファイル名には rename できないので一旦別の名前に変えておく．
+        if file_path.exists():
+            file_path.rename(file_path.with_suffix(".old"))
+            file_path = pathlib.Path(file_path_str)
+
+        pathlib.Path(f.name).rename(file_path)
     except:
         logging.error(traceback.format_exc())
 
