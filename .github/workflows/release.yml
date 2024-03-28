@@ -69,6 +69,8 @@ jobs:
           product-version: ${{ needs.prepare.outputs.version }}
 
           include-package-data: selenium
+          # NOTE: Windows 向けで必要．動的に import しているモジュールがあるので，明示的に取り込む．
+          include-package: jinxed
 
           standalone: true
           onefile: true
