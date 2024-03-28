@@ -46,7 +46,7 @@ def execute(config, is_export_mode=False):
     except:
         logging.error(traceback.format_exc())
 
-    input("完了しました．何かキーを押すと終了します．")
+    input("完了しました．エンターを押すと終了します．")
 
 
 ######################################################################
