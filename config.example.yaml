@@ -22,7 +22,7 @@ data:
 output:
   # 画像認証画像
   captcha: output/captcha.png
-  
+
   excel:
     # 購入履歴が記載されたファイル
     table: output/amazhist.xlsx

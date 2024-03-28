@@ -14,10 +14,8 @@ Options:
   -n ORDER_NO   : 注文番号．
 """
 
-import os
 import re
 import math
-import pathlib
 import datetime
 import random
 import logging
