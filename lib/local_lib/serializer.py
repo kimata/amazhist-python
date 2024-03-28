@@ -12,6 +12,8 @@ import pathlib
 import pickle
 import tempfile
 import traceback
+import shutil
+import os
 
 
 def store(file_path_str, data):
@@ -23,12 +25,11 @@ def store(file_path_str, data):
         pickle.dump(data, f)
         f.close()
 
-        # NOTE: Windows だと，存在するファイル名には rename できないので一旦別の名前に変えておく．
         if file_path.exists():
-            file_path.rename(file_path.with_suffix(".old"))
-            file_path = pathlib.Path(file_path_str)
+            old_path = file_path.with_suffix(".old")
+            shutil.copy(file_path, old_path)
 
-        pathlib.Path(f.name).rename(file_path)
+        os.replace(f.name, file_path)
     except:
         logging.error(traceback.format_exc())
 
