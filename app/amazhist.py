@@ -23,23 +23,30 @@ NAME = "amazhist"
 VERSION = "0.1.0"
 
 
+def execute_fetch(handle):
+    try:
+        store_amazon.crawler.fetch_order_item_list(handle)
+    except:
+        driver, wait = store_amazon.handle.get_selenium_driver(handle)
+        local_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        )
+        raise
+
+
 def execute(config, is_export_mode=False):
     handle = store_amazon.handle.create(config)
 
-    if not is_export_mode:
-        try:
-            store_amazon.crawler.fetch_order_item_list(handle)
-        except:
-            driver, wait = store_amazon.handle.get_selenium_driver(handle)
-            local_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
-            )
+    try:
+        if not is_export_mode:
+            execute_fetch(handle)
+        store_amazon.order_history.generate_table_excel(handle, config["output"]["excel"]["table"])
 
-            raise
+        store_amazon.handle.finish(handle)
+    except:
+        logging.error(traceback.format_exc())
 
-    store_amazon.order_history.generate_table_excel(handle, config["output"]["excel"]["table"])
-
-    store_amazon.handle.finish(handle)
+    input("完了しました．何かキーを押すと終了します．")
 
 
 ######################################################################
