@@ -18,7 +18,8 @@ def build():
         "poetry run nuitka3 --follow-imports --include-package-data=selenium "
         "--product-name={name} --file-version={version} --product-version={version} "
         "--windows-icon-from-ico={icon_image} --macos-app-icon={icon_image} --jobs={jobs} "
-        "--standalone --onefile --output-dir=build --script-name=app/amazhist.py "
+        "--assume-yes-for-download --standalone --onefile --output-dir=build "
+        "--script-name=app/amazhist.py "
     ).format(
         jobs=JOBS,
         name=amazhist.NAME,
