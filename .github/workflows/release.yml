@@ -39,7 +39,6 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          architecture: 'x64'
 
       - name: Run image
         uses: abatilo/actions-poetry@v2
@@ -72,8 +71,8 @@ jobs:
           # NOTE: Windows 向けで必要．動的に import しているモジュールがあるので，明示的に取り込む．
           include-package: jinxed
 
-          windows-icon-from-ico: icon.png
-          macos-app-icon: icon.png
+          windows-icon-from-ico: img/icon.png
+          macos-app-icon: img/icon.png
           macos-app-name: ${{ env.PROJECT_NAME }}
           macos-create-app-bundle: false
 
