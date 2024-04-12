@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Amazon の購入履歴情報を取得します．
+Amazon の購入履歴情報をエクセルファイルに書き出します．
 
 Usage:
   order_history.py [-c CONFIG] [-o EXCEL]
@@ -39,6 +39,7 @@ TABLE_HEADER = {
             "pos": 3,
             "width": 70,
             "wrap": True,
+            "format": "@",
         },
         "image": {
             "label": "画像",
@@ -68,6 +69,7 @@ TABLE_HEADER = {
             "label": "売り手",
             "pos": 10,
             "width": 29,
+            "format": "@",
             "wrap": True,
         },
         "asin": {
@@ -142,7 +144,7 @@ def insert_table_header(handle, sheet, row, style):
 
 
 def insert_table_cell_image(handle, sheet, row, col, item):
-    thumb_path = store_amazon.handle.get_thumb_path(handle, item["asin"])
+    thumb_path = store_amazon.handle.get_thumb_path(handle, item)
 
     if (thumb_path is None) or (not thumb_path.exists()):
         return
@@ -189,7 +191,6 @@ def insert_table_cell_image(handle, sheet, row, col, item):
     marker_2 = openpyxl.drawing.spreadsheet_drawing.AnchorMarker(
         col=col, row=row, colOff=-col_offset_emu, rowOff=-row_offset_emu
     )
-    size = openpyxl.drawing.xdr.XDRPositiveSize2D(image_width_emu, image_height_emu)
 
     img.anchor = openpyxl.drawing.spreadsheet_drawing.TwoCellAnchor(_from=marker_1, to=marker_2)
 
@@ -334,6 +335,8 @@ def generate_table_excel(handle, excel_file):
     book.close()
 
     store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
+
+    store_amazon.handle.set_status(handle, "完了しました！")
 
     logging.info("Complete to Generate excel file")
 

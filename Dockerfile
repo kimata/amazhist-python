@@ -30,7 +30,7 @@ RUN locale-gen ja_JP.UTF-8
 RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="/root/.local/bin:$PATH"
 
-COPY pyproject.toml .
+COPY . .
 
 RUN poetry config virtualenvs.create false \
  && poetry install \
@@ -38,7 +38,6 @@ RUN poetry config virtualenvs.create false \
 
 RUN useradd -m ubuntu
 
-COPY . .
 RUN mkdir -p data
 RUN chown -R ubuntu:ubuntu .
 

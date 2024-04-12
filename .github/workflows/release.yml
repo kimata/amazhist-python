@@ -99,7 +99,7 @@ jobs:
           certificate-data: ${{ secrets.CERTIFICATE }}
           certificate-password: ${{ secrets.PASSWORD }}
 
-      - name: Copy config
+      - name: Copy bundle file
         run: |
           cp README.md build/README.md
           cp config.example.yaml build/config.example.yaml

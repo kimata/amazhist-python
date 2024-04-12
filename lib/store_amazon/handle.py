@@ -27,6 +27,14 @@ def create(config):
     return handle
 
 
+def get_login_user(handle):
+    return handle["config"]["login"]["user"]
+
+
+def get_login_pass(handle):
+    return handle["config"]["login"]["pass"]
+
+
 def prepare_directory(handle):
     get_selenium_data_dir_path(handle).mkdir(parents=True, exist_ok=True)
     get_debug_dir_path(handle).mkdir(parents=True, exist_ok=True)
@@ -96,11 +104,11 @@ def get_last_item(handle, time_filter):
     return next(filter(lambda item: item["order_time_filter"] == time_filter, get_item_list(handle)), None)
 
 
-def get_thumb_path(handle, asin):
-    if asin is None:
+def get_thumb_path(handle, item):
+    if item["asin"] is None:
         return None
     else:
-        return get_thumb_dir_path(handle) / (asin + ".png")
+        return get_thumb_dir_path(handle) / (item["asin"] + ".png")
 
 
 def get_order_stat(handle, no):
@@ -152,11 +160,9 @@ def set_status(handle, status):
             color="bold_bright_white_on_lightslategray",
             justify=enlighten.Justify.CENTER,
             status=status,
-            autorefresh=True,
-            min_delta=0.5,
         )
     else:
-        handle["status"].update(status=status)
+        handle["status"].update(status=status, force=True)
 
 
 def finish(handle):
