@@ -185,5 +185,19 @@ def log_memory_usage(driver):
     )
 
 
+class browser_tab:
+    def __init__(self, driver, url):
+        self.driver = driver
+        self.url = url
+
+    def __enter__(self):
+        self.driver.execute_script("window.open('{url}', '_blank');".format(url=self.url))
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.driver.close()
+        self.driver.switch_to.window(self.driver.window_handles[0])
+
+
 if __name__ == "__main__":
     clean_dump()
