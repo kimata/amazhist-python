@@ -1,11 +1,7 @@
 # amazhist-python
 
-amazhist-python は，Amazon.co.jp の買い物履歴情報を取得し，
+amazhist-python は，Amazon.co.jp の買い物履歴情報を収集し，
 サムネイル付きの Excel 形式で出力するソフトウェアです．
-
-実行すると下記のようなエクセルファイルを生成します．
-
-![生成サンプル](img/excel.png "生成サンプル")
 
 ## 動作環境
 
@@ -38,7 +34,6 @@ sudo apt install docker-compose
 以下のようにします．`build` は一回だけ実行すればOKです．
 
 ```
-docker-compose build
 docker-compose run --rm amazhist
 ```
 
@@ -47,7 +42,7 @@ docker-compose run --rm amazhist
 
 ![データ収集の様子](img/collect.gif "データ収集の様子")
 
-注文履歴の数が沢山ある場合，10時間以上がかかりますので，放置しておくのがオススメです．
+注文履歴の数が沢山ある場合，1時間以上がかかりますので，放置しておくのがオススメです．
 
 なお，何らかの事情で中断した場合，再度実行することで，途中から再開できます．
 コマンドを実行した後に注文履歴が増えた場合も，再度実行することで前回以降のデータからデータ収集を再開できます．
