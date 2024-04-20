@@ -44,6 +44,7 @@ def execute(config, is_export_mode=False):
 
         store_amazon.handle.finish(handle)
     except:
+        store_amazon.handle.set_status(handle, "エラーが発生しました", is_error=True)
         logging.error(traceback.format_exc())
 
     input("完了しました．エンターを押すと終了します．")
