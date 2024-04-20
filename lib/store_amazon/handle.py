@@ -28,11 +28,11 @@ def create(config):
 
 
 def get_login_user(handle):
-    return handle["config"]["login"]["user"]
+    return handle["config"]["login"]["amazon"]["user"]
 
 
 def get_login_pass(handle):
-    return handle["config"]["login"]["pass"]
+    return handle["config"]["login"]["amazon"]["pass"]
 
 
 def prepare_directory(handle):
@@ -51,7 +51,7 @@ def get_excel_font(handle):
 
 
 def get_caceh_file_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["cache"]["order"])
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["amazon"]["cache"]["order"])
 
 
 def get_excel_file_path(handle):
@@ -59,7 +59,7 @@ def get_excel_file_path(handle):
 
 
 def get_thumb_dir_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["cache"]["thumb"])
+    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["amazon"]["cache"]["thumb"])
 
 
 def get_selenium_data_dir_path(handle):

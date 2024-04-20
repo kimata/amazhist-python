@@ -524,7 +524,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                 for i in range(total_page):
                     store_amazon.handle.set_page_checked(handle, year, i + 1)
 
-    return (is_skipped, page == total_page)
+    return (is_skipped, page >= total_page)
 
 
 def fetch_year_list(handle):
@@ -579,6 +579,7 @@ def skip_order_item_list_by_year_page(handle, year, page):
     store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update(incr_order)
     store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(incr_order)
 
+    # NOTE: これ，状況によっては最終ページで成り立たないので，良くない
     return incr_order != store_amazon.const.ORDER_COUNT_PER_PAGE
 
 
