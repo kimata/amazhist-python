@@ -4,8 +4,8 @@
 Amazon の購入履歴情報を取得します．
 
 Usage:
-  store_amazon.py [-c CONFIG] [-y YEAR] [-s PAGE] [-n ORDER_NO]
-  store_amazon.py [-c CONFIG] -n ORDER_NO
+  crawler.py [-c CONFIG] [-y YEAR] [-s PAGE] [-n ORDER_NO]
+  crawler.py [-c CONFIG] -n ORDER_NO
 
 Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
