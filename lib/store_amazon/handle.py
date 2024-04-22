@@ -97,7 +97,7 @@ def record_item(handle, item):
 
 
 def get_item_list(handle):
-    return sorted(handle["order"]["item_list"], key=lambda x: x["date"], reverse=True)
+    return sorted(handle["order"]["item_list"], key=lambda x: x["date"])
 
 
 def get_last_item(handle, time_filter):
