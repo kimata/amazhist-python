@@ -101,7 +101,9 @@ def get_item_list(handle):
 
 
 def get_last_item(handle, time_filter):
-    return next(filter(lambda item: item["order_time_filter"] == time_filter, get_item_list(handle)), None)
+    return next(
+        filter(lambda item: item["order_time_filter"] == time_filter, reversed(get_item_list(handle))), None
+    )
 
 
 def get_thumb_path(handle, item):
