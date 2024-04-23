@@ -165,11 +165,11 @@ def insert_table_cell_image(handle, sheet, row, col, thumb_path, cell_width, cel
     sheet.add_image(img)
 
 
-def setting_table_view(handle, sheet, sheet_def, row_last):
+def setting_table_view(handle, sheet, sheet_def, row_last, is_hidden):
     sheet.column_dimensions.group(
         openpyxl.utils.get_column_letter(sheet_def["TABLE_HEADER"]["col"]["image"]["pos"]),
         openpyxl.utils.get_column_letter(sheet_def["TABLE_HEADER"]["col"]["image"]["pos"]),
-        hidden=False,
+        hidden=is_hidden,
     )
 
     sheet.freeze_panes = gen_text_pos(
@@ -232,6 +232,6 @@ def generate_list_sheet(
     update_seq_func()
 
     set_status_func(handle, "テーブルの表示設定しています...")
-    setting_table_view(handle, sheet, sheet_def, row_last)
+    setting_table_view(handle, sheet, sheet_def, row_last, not is_need_thumb)
 
     update_seq_func()
