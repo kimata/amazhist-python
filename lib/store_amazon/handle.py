@@ -107,7 +107,7 @@ def get_last_item(handle, time_filter):
 
 
 def get_thumb_path(handle, item):
-    if item["asin"] is None:
+    if ("asin" not in item) or (item["asin"] is None):
         return None
     else:
         return get_thumb_dir_path(handle) / (item["asin"] + ".png")
