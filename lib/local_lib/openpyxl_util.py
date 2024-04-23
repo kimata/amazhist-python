@@ -98,14 +98,20 @@ def insert_table_item(handle, sheet, row, item, is_need_thumb, thumb_path, sheet
         else:
             if (
                 ("optional" in sheet_def["TABLE_HEADER"]["col"][key])
-                and (not sheet_def["TABLE_HEADER"]["col"][key]["optional"])
-            ) or (key in item):
-                value = item[key]
+                and sheet_def["TABLE_HEADER"]["col"][key]["optional"]
+                and (key not in item)
+            ):
+                value = None
+            else:
+                if "value" in sheet_def["TABLE_HEADER"]["col"][key]:
+                    value = sheet_def["TABLE_HEADER"]["col"][key]["value"]
+                elif "formal_key" in sheet_def["TABLE_HEADER"]["col"][key]:
+                    value = item[sheet_def["TABLE_HEADER"]["col"][key]["formal_key"]]
+                else:
+                    value = item[key]
 
                 if "conv_func" in sheet_def["TABLE_HEADER"]["col"][key]:
                     value = sheet_def["TABLE_HEADER"]["col"][key]["conv_func"](value)
-            else:
-                value = None
 
             set_item_cell_style(sheet, row, col, value, cell_style)
 

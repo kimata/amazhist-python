@@ -28,68 +28,79 @@ import store_amazon.crawler
 STATUS_INSERT_ITEM = "[generate] Insert item"
 STATUS_ALL = "[generate] Excel file"
 
+SHOP_NAME = "アマゾン"
+
 SHEET_DEF = {
-    "SHEET_TITLE": "【アマゾン】購入",
+    "SHEET_TITLE": "【{shop_name}】購入".format(shop_name=SHOP_NAME),
     "TABLE_HEADER": {
         "row": {
             "pos": 2,
             "height": 80,
         },
         "col": {
+            "shop_name": {
+                "label": "ショップ",
+                "pos": 2,
+                "width": 15,
+                "format": "@",
+                "value": SHOP_NAME,
+            },
             "date": {
                 "label": "日付",
-                "pos": 2,
+                "pos": 3,
                 "width": 23,
                 "format": 'yyyy"年"mm"月"dd"日 ("aaa")"',
             },
             "name": {
                 "label": "商品名",
-                "pos": 3,
+                "pos": 4,
                 "width": 70,
                 "wrap": True,
                 "format": "@",
             },
             "image": {
                 "label": "画像",
-                "pos": 4,
+                "pos": 5,
                 "width": 12,
             },
             "count": {
                 "label": "数量",
-                "pos": 5,
+                "pos": 6,
                 "format": "0_ ",
                 "width": 8,
             },
             "price": {
                 "label": "価格",
-                "pos": 6,
+                "pos": 7,
                 "width": 16,
                 "format": '_ ¥* #,##0_ ;_ ¥* -#,##0_ ;_ ¥* "-"_ ;_ @_ ',  # NOTE: 末尾の空白要
             },
             "category": {
                 "label": "カテゴリ",
-                "pos": 7,
+                "pos": 8,
                 "length": 3,
                 "width": 20,
                 "wrap": True,
             },
             "seller": {
                 "label": "売り手",
-                "pos": 10,
+                "pos": 11,
                 "width": 29,
                 "format": "@",
                 "wrap": True,
             },
-            "asin": {
+            "id": {
+                # NOTE: Amazon 向けでは，他のショップで「id」としている内容を「asin」としているので，読み替える
+                "formal_key": "asin",
                 "label": "商品ID(ASIN)",
-                "pos": 11,
+                "pos": 12,
                 "width": 17,
                 "format": "@",
                 "link_func": lambda item: item["url"],
             },
             "no": {
                 "label": "注文番号",
-                "pos": 12,
+                "pos": 13,
                 "width": 28,
                 "format": "@",
                 "link_func": lambda item: store_amazon.crawler.gen_order_url(item["no"]),
