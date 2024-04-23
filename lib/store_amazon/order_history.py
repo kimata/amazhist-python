@@ -35,7 +35,7 @@ SHEET_DEF = {
     "TABLE_HEADER": {
         "row": {
             "pos": 2,
-            "height": 80,
+            "height": {"default": 80, "without_thumb": 25},
         },
         "col": {
             "shop_name": {
@@ -90,7 +90,7 @@ SHEET_DEF = {
                 "wrap": True,
             },
             "id": {
-                # NOTE: Amazon 向けでは，他のショップで「id」としている内容を「asin」としているので，読み替える
+                # NOTE: アマゾン向けでは，他のショップで「id」としている内容を「asin」としているので，読み替える
                 "formal_key": "asin",
                 "label": "商品ID(ASIN)",
                 "pos": 12,
@@ -116,13 +116,12 @@ def generate_sheet(handle, book, is_need_thumb=True):
     store_amazon.handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
 
     local_lib.openpyxl_util.generate_list_sheet(
-        handle,
         book,
         item_list,
         SHEET_DEF,
         is_need_thumb,
         lambda item: store_amazon.handle.get_thumb_path(handle, item),
-        store_amazon.handle.set_status,
+        lambda status: store_amazon.handle.set_status(handle, status),
         lambda: store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update(),
         lambda: store_amazon.handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update(),
     )
