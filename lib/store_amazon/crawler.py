@@ -417,12 +417,32 @@ def parse_order(handle, order_info):
     return is_unempty
 
 
-def parse_order_count(handle):
+def parse_order_count(handle, year):
+    ORDER_COUNT_XPATH = "//span[contains(@class, 'num-orders')]"
+    ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
+
     driver, wait = store_amazon.handle.get_selenium_driver(handle)
 
-    order_count_text = driver.find_element(By.XPATH, "//span[contains(@class, 'num-orders')]").text
+    # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
+    # あり得ないページ数を指定する．
+    visit_url(handle, gen_hist_url(year, 10000), inspect.currentframe().f_code.co_name)
 
-    return int(re.match(r"(\d+)", order_count_text).group(1))
+    if local_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
+        order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
+
+        return int(re.match(r"(\d+)", order_count_text).group(1))
+    else:
+        time.sleep(1)
+
+        # NOTE: 注文数が表示されない場合，注文数が少ない可能性が高いので，先頭のページを表示する．
+        visit_url(handle, gen_hist_url(year, 1), inspect.currentframe().f_code.co_name)
+
+        if local_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
+            logging.info(int(driver.find_elements(By.XPATH, ORDER_XPATH)))
+            return int(driver.find_elements(By.XPATH, ORDER_XPATH))
+        else:
+            logging.warning("Failed to get order count.")
+            return 0
 
 
 def fetch_order_item_list_by_order_info(handle, order_info):
@@ -633,11 +653,7 @@ def fetch_order_count_by_year(handle, year):
         "注文件数を調べています... {target}".format(target=gen_target_text(year)),
     )
 
-    # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
-    # あり得ないページ数を指定する．
-    visit_url(handle, gen_hist_url(year, 10000), inspect.currentframe().f_code.co_name)
-
-    return parse_order_count(handle)
+    return parse_order_count(handle, year)
 
 
 def fetch_order_count(handle):
