@@ -53,16 +53,16 @@ def wait_for_loading(handle, sec=2):
 def resolve_captcha(handle):
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    logging.info("Try to resolve CAPTCHA")
+    logging.info("画像認証の解決を試みます")
 
     for i in range(CAPTCHA_RETRY_COUNT):
         if i != 0:
-            logging.info("Retry to resolve CAPTCHA")
+            logging.info("画像認証の解決を再試行します")
 
         captcha_img_path = amazhist.handle.get_captcha_file_path(handle)
         captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
 
-        logging.info("Save image: {path}".format(path=captcha_img_path))
+        logging.info("画像を保存しました: {path}".format(path=captcha_img_path))
 
         with open(captcha_img_path, "wb") as f:
             f.write(captcha_png_data)
@@ -77,13 +77,13 @@ def resolve_captcha(handle):
         if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) == 0:
             return
 
-        logging.warning("Failed to resolve CAPTCHA")
+        logging.warning("画像認証の解決に失敗しました")
         my_lib.selenium_util.dump_page(
             driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )
         time.sleep(1)
 
-    logging.error("Give up to resolve CAPTCHA")
+    logging.error("画像認証の解決を諦めました")
     raise "画像認証を解決できませんでした．"
 
 
@@ -126,24 +126,24 @@ def keep_logged_on(handle):
     if not re.match("Amazonサインイン", driver.title):
         return
 
-    logging.info("Try to login")
+    logging.info("ログインを試みます")
 
     for i in range(LOGIN_RETRY_COUNT):
         if i != 0:
-            logging.info("Retry to login")
+            logging.info("ログインを再試行します")
 
         execute_login(handle)
 
         if not re.match("Amazonサインイン", driver.title):
-            logging.info("Login sccessful!")
+            logging.info("ログインに成功しました")
             return
 
-        logging.warning("Failed to login")
+        logging.warning("ログインに失敗しました")
         my_lib.selenium_util.dump_page(
             driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )
 
-    logging.error("Give up to login")
+    logging.error("ログインを諦めました")
     raise "ログインに失敗しました．"
 
 
@@ -324,9 +324,15 @@ def parse_item(handle, item_xpath):
             price = int(price_match.group(1).replace(",", ""))
         else:
             logging.warning("価格のパースに失敗しました: {text}".format(text=price_text))
+            my_lib.selenium_util.dump_page(
+                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            )
             price = 0
     else:
         logging.warning("価格が見つかりませんでした: {name}".format(name=name))
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+        )
         price = 0
 
     # 数量（デフォルト1）
@@ -448,7 +454,7 @@ def parse_order(handle, order_info):
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     logging.info(
-        "Parse order: {date} - {no}".format(date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"])
+        "注文をパースしています: {date} - {no}".format(date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"])
     )
 
     if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) != 0:
@@ -483,7 +489,7 @@ def parse_order_count(handle, year):
             logging.info(int(driver.find_elements(By.XPATH, ORDER_XPATH)))
             return int(driver.find_elements(By.XPATH, ORDER_XPATH))
         else:
-            logging.warning("Failed to get order count.")
+            logging.warning("注文件数の取得に失敗しました")
             return 0
 
 
@@ -524,7 +530,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     keep_logged_on(handle)
 
     logging.info(
-        "Check order of {year} page {page}/{total_page}".format(year=year, page=page, total_page=total_page)
+        "{year}年 {page}/{total_page} ページの注文を確認しています".format(year=year, page=page, total_page=total_page)
     )
     logging.info("URL: {url}".format(url=driver.current_url))
 
@@ -542,7 +548,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             != 0
         ):
             if retry < FETCH_RETRY_COUNT:
-                logging.warning("Something went wrong. Try retying...")
+                logging.warning("問題が発生しました。再試行します...")
                 time.sleep(1)
                 return fetch_order_item_list_by_year_page(handle, year, page, retry=0)
             else:
@@ -563,7 +569,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                 By.XPATH,
                 order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
             ).text
-            logging.info("キャンセル済みの注文をスキップ: {no}".format(no=no))
+            logging.info("キャンセル済みの注文をスキップしました: {no}".format(no=no))
             continue
 
         date_text = driver.find_element(
@@ -593,7 +599,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             is_skipped |= not fetch_order_item_list_by_order_info(handle, order_info)
         else:
             logging.info(
-                "Done order: {date} - {no} [cached]".format(
+                "注文処理済み: {date} - {no} [キャッシュ]".format(
                     date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
                 )
             )
@@ -607,7 +613,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                 and (last_item != None)
                 and (last_item["no"] == order_info["no"])
             ):
-                logging.info("Latest order found, skipping analysis of subsequent pages")
+                logging.info("最新の注文を見つけました。以降のページの解析をスキップします")
                 for i in range(total_page):
                     amazhist.handle.set_page_checked(handle, year, i + 1)
 
@@ -657,7 +663,7 @@ def fetch_year_list(handle):
 
 
 def skip_order_item_list_by_year_page(handle, year, page):
-    logging.info("Skip check order of {year} page {page} [cached]".format(year=year, page=page))
+    logging.info("{year}年 {page} ページの注文をスキップしました [キャッシュ]".format(year=year, page=page))
     incr_order = min(
         amazhist.handle.get_order_count(handle, year)
         - amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).count,
@@ -678,7 +684,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
     year_list = amazhist.handle.get_year_list(handle)
 
     logging.info(
-        "Check order of {year} ({year_index}/{total_year})".format(
+        "{year}年の注文を確認しています ({year_index}/{total_year})".format(
             year=year, year_index=year_list.index(year) + 1, total_year=len(year_list)
         )
     )
@@ -728,7 +734,7 @@ def fetch_order_count_by_year(handle, year):
 def fetch_order_count(handle):
     year_list = amazhist.handle.get_year_list(handle)
 
-    logging.info("Collect order count")
+    logging.info("注文件数を収集しています")
 
     amazhist.handle.set_progress_bar(handle, STATUS_ORDER_COUNT, len(year_list))
 
@@ -737,19 +743,19 @@ def fetch_order_count(handle):
         if year == amazhist.const.ARCHIVE_LABEL:
             count = fetch_order_count_by_year(handle, year)
             amazhist.handle.set_order_count(handle, year, count)
-            logging.info("Archive: {count:4,} orders".format(count=count))
+            logging.info("アーカイブ: {count:4,} 件".format(count=count))
         elif year >= amazhist.handle.get_cache_last_modified(handle).year:
             count = fetch_order_count_by_year(handle, year)
             amazhist.handle.set_order_count(handle, year, count)
-            logging.info("Year {year}: {count:4,} orders".format(year=year, count=count))
+            logging.info("{year}年: {count:4,} 件".format(year=year, count=count))
         else:
             count = amazhist.handle.get_order_count(handle, year)
-            logging.info("Year {year}: {count:4,} orders [cached]".format(year=year, count=count))
+            logging.info("{year}年: {count:4,} 件 [キャッシュ]".format(year=year, count=count))
 
         total_count += count
         amazhist.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
 
-    logging.info("Total order is {total_count:,}".format(total_count=total_count))
+    logging.info("合計注文数: {total_count:,} 件".format(total_count=total_count))
 
     amazhist.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
     amazhist.handle.store_order_info(handle)
@@ -775,7 +781,7 @@ def fetch_order_item_list_all_year(handle):
             fetch_order_item_list_by_year(handle, year)
         else:
             logging.info(
-                "Done order of {year} ({year_index}/{total_year}) [cached]".format(
+                "{year}年の注文処理済み ({year_index}/{total_year}) [キャッシュ]".format(
                     year=year, year_index=year_list.index(year) + 1, total_year=len(year_list)
                 )
             )
