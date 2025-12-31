@@ -1,0 +1,10 @@
+services:
+    amazhist:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        tty: true
+        stdin_open: true
+        volumes:
+            - ./data:/opt/amazhist/data
+            - ./output:/opt/amazhist/output
