@@ -22,13 +22,10 @@ import logging
 import inspect
 import time
 import traceback
-import platform
 import signal
 import sys
 
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
 
 import my_lib.selenium_util
 import amazhist.const
@@ -288,27 +285,18 @@ def parse_item_default(handle, item_xpath):
     }
 
 
-def fetch_item_category(handle, item_link):
+def fetch_item_category(handle, item_url):
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    actions = ActionChains(driver)
-
-    if platform.system() == "Darwin":
-        actions.key_down(Keys.COMMAND)
-    else:
-        actions.key_down(Keys.CONTROL)
-
-    actions.click(item_link)
-    actions.perform()
-
-    driver.switch_to.window(driver.window_handles[-1])
-
-    breadcrumb_list = driver.find_elements(By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a")
-    category = list(map(lambda x: x.text, breadcrumb_list))
-
-    time.sleep(1)
-    driver.close()
-    driver.switch_to.window(driver.window_handles[0])
+    category = []
+    try:
+        with my_lib.selenium_util.browser_tab(driver, item_url):
+            breadcrumb_list = driver.find_elements(
+                By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a"
+            )
+            category = [x.text for x in breadcrumb_list]
+    except Exception:
+        logging.warning("カテゴリの取得に失敗しました: {url}".format(url=item_url))
 
     return category
 
@@ -339,7 +327,7 @@ def parse_item(handle, item_xpath):
     asin = asin_match.group(1) if asin_match else None
 
     time.sleep(0.5)
-    category = fetch_item_category(handle, link)
+    category = fetch_item_category(handle, url)
 
     item = {
         "name": name,
@@ -425,7 +413,7 @@ def parse_order_digital(handle, order_info):
         name = link.text
         url = link.get_attribute("href")
         asin = re.match(r".*/dp/([^/]+)/", url).group(1)
-        category = fetch_item_category(handle, link)
+        category = fetch_item_category(handle, url)
     else:
         # NOTE: もう販売ページが存在しない場合．
         name = driver.find_element(By.XPATH, item_xpath + "/td[1]//b").text
