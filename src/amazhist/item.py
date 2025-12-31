@@ -19,12 +19,13 @@ import amazhist.handle
 import amazhist.parser
 
 
-def fetch_item_category(handle, item_url: str) -> list[str]:
+def fetch_item_category(handle, item_url: str, record_error: bool = True) -> list[str]:
     """商品ページからカテゴリ情報を取得
 
     Args:
         handle: アプリケーションハンドル
         item_url: 商品ページのURL
+        record_error: エラー発生時にエラーログに記録するか
 
     Returns:
         カテゴリのリスト（パンくずリスト）
@@ -44,13 +45,14 @@ def fetch_item_category(handle, item_url: str) -> list[str]:
             category = [x.text for x in breadcrumb_list]
     except Exception as e:
         logging.warning(f"カテゴリの取得に失敗しました: {item_url}")
-        amazhist.handle.record_error(
-            handle,
-            url=item_url,
-            error_type="fetch_error",
-            context="category",
-            message=str(e),
-        )
+        if record_error:
+            amazhist.handle.record_error(
+                handle,
+                url=item_url,
+                error_type="fetch_error",
+                context="category",
+                message=str(e),
+            )
 
     return category
 

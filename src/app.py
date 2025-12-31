@@ -4,12 +4,14 @@ Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして�
 
 Usage:
   amazhist.py [-c CONFIG] [-e] [-f] [-N]
+  amazhist.py [-c CONFIG] -r [-N]
   amazhist.py [-c CONFIG] -E [-a]
 
 Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
   -e            : データ収集は行わず，Excel ファイルの出力のみ行います．
   -f            : キャッシュを使わず，強制的にデータを収集し直します．
+  -r            : エラーが発生した注文・カテゴリ・サムネイルを再取得します．
   -N            : サムネイル画像を含めないようにします．
   -E            : エラーログを表示します．
   -a            : -E と共に使用し，解決済みエラーも含めて表示します．
@@ -46,6 +48,42 @@ def execute_fetch(handle):
                 driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
             )
             raise
+
+
+def execute_retry(handle):
+    """エラーが発生したアイテムを再取得"""
+    try:
+        amazhist.crawler.retry_failed_items(handle)
+    except Exception:
+        if not amazhist.crawler.is_shutdown_requested():
+            driver, wait = amazhist.handle.get_selenium_driver(handle)
+            my_lib.selenium_util.dump_page(
+                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            )
+            raise
+
+
+def execute_retry_mode(config, is_need_thumb=True):
+    """エラーが発生したアイテムを再取得して Excel を出力"""
+    handle = amazhist.handle.create(config)
+
+    try:
+        execute_retry(handle)
+
+        amazhist.history.generate_table_excel(
+            handle, amazhist.handle.get_excel_file_path(handle), is_need_thumb
+        )
+
+        amazhist.handle.finish(handle)
+    except Exception:
+        if amazhist.crawler.is_shutdown_requested():
+            amazhist.handle.finish(handle)
+        else:
+            amazhist.handle.set_status(handle, "❌ エラーが発生しました", is_error=True)
+            logging.error(traceback.format_exc())
+
+    amazhist.handle.pause_live(handle)
+    input("完了しました．エンターを押すと終了します．")
 
 
 def execute(config, is_export_mode=False, is_force_mode=False, is_need_thumb=True):
@@ -174,6 +212,7 @@ if __name__ == "__main__":
     config_file = args["-c"]
     is_export_mode = args["-e"]
     is_force_mode = args["-f"]
+    is_retry_mode = args["-r"]
     is_need_thumb = not args["-N"]
     is_show_error_log = args["-E"]
     is_show_all_errors = args["-a"]
@@ -182,5 +221,7 @@ if __name__ == "__main__":
 
     if is_show_error_log:
         show_error_log(config, show_all=is_show_all_errors)
+    elif is_retry_mode:
+        execute_retry_mode(config, is_need_thumb)
     else:
         execute(config, is_export_mode, is_force_mode, is_need_thumb)

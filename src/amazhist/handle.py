@@ -481,3 +481,33 @@ def clear_old_errors(handle, days: int = 30) -> int:
     """古い解決済みエラーを削除"""
     db: amazhist.database.Database = handle["db"]
     return db.clear_old_errors(days)
+
+
+def get_failed_order_numbers(handle) -> list[str]:
+    """エラーが発生した注文番号を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_failed_order_numbers()
+
+
+def get_failed_category_items(handle) -> list[dict]:
+    """カテゴリ取得に失敗したアイテムを取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_failed_category_items()
+
+
+def update_item_category(handle, url: str, category: list[str]) -> int:
+    """アイテムのカテゴリを更新"""
+    db: amazhist.database.Database = handle["db"]
+    return db.update_item_category(url, category)
+
+
+def get_failed_thumbnail_items(handle) -> list[dict]:
+    """サムネイル取得に失敗したアイテムを取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_failed_thumbnail_items()
+
+
+def mark_errors_resolved_by_order_no(handle, order_no: str) -> int:
+    """指定注文番号のエラーを全て解決済みにする"""
+    db: amazhist.database.Database = handle["db"]
+    return db.mark_errors_resolved_by_order_no(order_no)

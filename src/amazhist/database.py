@@ -312,6 +312,96 @@ class Database:
             )
         return [self._row_to_error(row) for row in cursor.fetchall()]
 
+    def get_failed_order_numbers(self) -> list[str]:
+        """エラーが発生した注文番号を取得
+
+        未解決のエラーで context が "order" のものから注文番号を取得します。
+
+        Returns:
+            注文番号のリスト
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT DISTINCT order_no FROM error_log WHERE resolved = 0 AND context = 'order' AND order_no IS NOT NULL"
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+    def get_failed_category_items(self) -> list[dict[str, Any]]:
+        """カテゴリ取得に失敗したアイテムを取得
+
+        未解決のエラーで context が "category" のものから URL を取得し、
+        対応するアイテム情報を返します。
+
+        Returns:
+            アイテム情報のリスト（url, error_id を含む）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT e.id as error_id, e.url, i.order_no, i.name, i.asin
+            FROM error_log e
+            LEFT JOIN items i ON e.url = i.url
+            WHERE e.resolved = 0 AND e.context = 'category'
+            """
+        )
+        return [
+            {
+                "error_id": row[0],
+                "url": row[1],
+                "order_no": row[2],
+                "name": row[3],
+                "asin": row[4],
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def update_item_category(self, url: str, category: list[str]) -> int:
+        """アイテムのカテゴリを更新
+
+        Args:
+            url: アイテムのURL
+            category: カテゴリのリスト
+
+        Returns:
+            更新した件数
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "UPDATE items SET category = ? WHERE url = ?",
+            (json.dumps(category, ensure_ascii=False), url),
+        )
+        conn.commit()
+        return cursor.rowcount
+
+    def get_failed_thumbnail_items(self) -> list[dict[str, Any]]:
+        """サムネイル取得に失敗したアイテムを取得
+
+        未解決のエラーで context が "thumbnail" のものから URL を取得し、
+        対応するアイテム情報を返します。
+
+        Returns:
+            アイテム情報のリスト（error_id, url, asin, item_name を含む）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT e.id as error_id, e.url as thumb_url, e.item_name, i.asin, i.url as item_url
+            FROM error_log e
+            LEFT JOIN items i ON e.item_name = i.name
+            WHERE e.resolved = 0 AND e.context = 'thumbnail'
+            """
+        )
+        return [
+            {
+                "error_id": row[0],
+                "thumb_url": row[1],
+                "name": row[2],
+                "asin": row[3],
+                "item_url": row[4],
+            }
+            for row in cursor.fetchall()
+        ]
+
     def get_all_errors(self, limit: int = 100) -> list[dict[str, Any]]:
         """全エラー一覧を取得（最新順）
 
@@ -351,6 +441,23 @@ class Database:
         cursor = conn.execute(
             "UPDATE error_log SET resolved = 1 WHERE url = ? AND resolved = 0",
             (url,),
+        )
+        conn.commit()
+        return cursor.rowcount
+
+    def mark_errors_resolved_by_order_no(self, order_no: str) -> int:
+        """指定注文番号のエラーを全て解決済みにする
+
+        Args:
+            order_no: 注文番号
+
+        Returns:
+            解決済みにしたエラーの件数
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "UPDATE error_log SET resolved = 1 WHERE order_no = ? AND resolved = 0",
+            (order_no,),
         )
         conn.commit()
         return cursor.rowcount
