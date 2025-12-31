@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "docopt-ng>=0.9.0",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@e514804",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@e5148042076e097971a5e4321d79a054e3419db7",
     "coloredlogs>=15.0.1",
     "docopt>=0.6.2",
     "pyyaml>=6.0.1",
@@ -63,7 +63,6 @@ warn_return_any = false
 warn_unused_ignores = true
 warn_unused_configs = true
 ignore_missing_imports = true
-
 
 [tool.pyright]
 venvPath = "."
