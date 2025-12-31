@@ -26,6 +26,7 @@ import time
 import traceback
 
 import my_lib.selenium_util
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 
 import amazhist.const
@@ -38,6 +39,7 @@ _STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
 _STATUS_ORDER_ITEM_BY_TARGET = "[収集] {target}"
 
 _CAPTCHA_RETRY_COUNT = 2
+_URL_ACCESS_RETRY_COUNT = 3
 
 
 def _get_caller_name() -> str:
@@ -226,10 +228,23 @@ def _gen_status_label_by_year(year):
     return _STATUS_ORDER_ITEM_BY_TARGET.format(target=_gen_target_text(year))
 
 
-def visit_url(handle, url, caller_name):
-    """URLにアクセス"""
+def visit_url(handle, url, caller_name, retry_count=0):
+    """URLにアクセス
+
+    TimeoutException が発生した場合はリトライします。
+    """
     driver, wait = amazhist.handle.get_selenium_driver(handle)
-    driver.get(url)
+
+    try:
+        driver.get(url)
+    except TimeoutException as e:
+        if retry_count < _URL_ACCESS_RETRY_COUNT:
+            logging.warning(f"タイムアウトが発生しました。リトライします... ({retry_count + 1}/{_URL_ACCESS_RETRY_COUNT})")
+            time.sleep(2)
+            return visit_url(handle, url, caller_name, retry_count + 1)
+        else:
+            logging.error(f"タイムアウトが {_URL_ACCESS_RETRY_COUNT} 回発生しました。処理を中断します。")
+            raise
 
     _wait_for_loading(handle)
 
