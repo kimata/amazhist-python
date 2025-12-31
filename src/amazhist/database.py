@@ -7,7 +7,10 @@ import datetime
 import json
 import pathlib
 import sqlite3
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import amazhist.item
 
 SQLITE_MAGIC = b"SQLite format 3\x00"
 
@@ -53,8 +56,20 @@ class Database:
         return self._conn
 
     # --- 商品 ---
-    def upsert_item(self, item: dict[str, Any]) -> None:
-        """商品を挿入または更新"""
+    def upsert_item(self, item: amazhist.item.Item | dict[str, Any]) -> None:
+        """商品を挿入または更新
+
+        Args:
+            item: 商品情報（Item dataclass または dict）
+        """
+        # Item dataclass の場合は dict に変換
+        import amazhist.item
+
+        if isinstance(item, amazhist.item.Item):
+            item_dict = item.to_dict()
+        else:
+            item_dict = item
+
         conn = self._get_conn()
         conn.execute(
             """
@@ -64,19 +79,21 @@ class Database:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                item["no"],
-                item["date"].isoformat() if isinstance(item["date"], datetime.datetime) else item["date"],
-                item["name"],
-                item.get("url"),
-                item.get("asin"),
-                item.get("count", 1),
-                item.get("price", 0),
-                json.dumps(item.get("category", []), ensure_ascii=False),
-                item.get("seller"),
-                item.get("condition"),
-                item.get("kind"),
-                str(item.get("order_time_filter", "")),
-                item.get("order_page"),
+                item_dict["no"],
+                item_dict["date"].isoformat()
+                if isinstance(item_dict["date"], datetime.datetime)
+                else item_dict["date"],
+                item_dict["name"],
+                item_dict.get("url"),
+                item_dict.get("asin"),
+                item_dict.get("count", 1),
+                item_dict.get("price", 0),
+                json.dumps(item_dict.get("category", []), ensure_ascii=False),
+                item_dict.get("seller"),
+                item_dict.get("condition"),
+                item_dict.get("kind"),
+                str(item_dict.get("order_time_filter", "")),
+                item_dict.get("order_page"),
             ),
         )
         conn.commit()
@@ -87,7 +104,7 @@ class Database:
         cursor = conn.execute("SELECT 1 FROM items WHERE order_no = ?", (order_no,))
         return cursor.fetchone() is not None
 
-    def get_item_list(self) -> list[dict[str, Any]]:
+    def get_item_list(self) -> list[amazhist.item.Item]:
         """商品リストを取得（date 順）"""
         conn = self._get_conn()
         cursor = conn.execute("SELECT * FROM items ORDER BY date")
@@ -100,7 +117,7 @@ class Database:
         result = cursor.fetchone()
         return result[0] if result else 0
 
-    def get_last_item_by_filter(self, time_filter: str | int) -> dict[str, Any] | None:
+    def get_last_item_by_filter(self, time_filter: str | int) -> amazhist.item.Item | None:
         """指定した time_filter の最後の商品を取得"""
         conn = self._get_conn()
         cursor = conn.execute(
@@ -110,23 +127,31 @@ class Database:
         row = cursor.fetchone()
         return self._row_to_item(row) if row else None
 
-    def _row_to_item(self, row: sqlite3.Row) -> dict[str, Any]:
-        """Row を item dict に変換"""
-        return {
-            "no": row["order_no"],
-            "date": self._parse_datetime(row["date"]),
-            "name": row["name"],
-            "url": row["url"],
-            "asin": row["asin"],
-            "count": row["count"] or 1,
-            "price": row["price"] or 0,
-            "category": json.loads(row["category"]) if row["category"] else [],
-            "seller": row["seller"],
-            "condition": row["condition"],
-            "kind": row["kind"],
-            "order_time_filter": self._parse_time_filter(row["order_time_filter"]),
-            "order_page": row["order_page"],
-        }
+    def _row_to_item(self, row: sqlite3.Row) -> amazhist.item.Item:
+        """Row を Item に変換"""
+        import amazhist.item
+
+        date = self._parse_datetime(row["date"])
+        if date is None:
+            date = datetime.datetime(1970, 1, 1)
+
+        category = json.loads(row["category"]) if row["category"] else []
+
+        return amazhist.item.Item(
+            name=row["name"],
+            date=date,
+            no=row["order_no"],
+            url=row["url"],
+            asin=row["asin"],
+            count=row["count"] or 1,
+            price=row["price"] or 0,
+            category=tuple(category),
+            seller=row["seller"] or "",
+            condition=row["condition"] or "",
+            kind=row["kind"] or "Normal",
+            order_time_filter=self._parse_time_filter(row["order_time_filter"]),
+            order_page=row["order_page"],
+        )
 
     @staticmethod
     def _parse_time_filter(value: str | None) -> int | None:

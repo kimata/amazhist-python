@@ -257,35 +257,35 @@ def visit_url(handle: amazhist.handle.Handle, url, caller_name):
     )
 
 
-def _fetch_order_item_list_by_order_info(handle: amazhist.handle.Handle, order_info):
+def _fetch_order_item_list_by_order(handle: amazhist.handle.Handle, order: amazhist.order.Order):
     driver, wait = handle.get_selenium_driver()
 
     try:
-        visit_url(handle, order_info["url"], _get_caller_name())
+        visit_url(handle, order.url, _get_caller_name())
         _keep_logged_on(handle)
     except TimeoutException as e:
-        logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order_info['no']}")
+        logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order.no}")
         handle.record_error(
-            url=order_info["url"],
+            url=order.url,
             error_type=amazhist.const.ERROR_TYPE_TIMEOUT,
             context="order",
             message=str(e),
-            order_no=order_info["no"],
+            order_no=order.no,
         )
         time.sleep(1)
         return False
 
-    if not amazhist.order.parse_order(handle, order_info):
-        logging.warning("注文のパースに失敗しました: {no}".format(no=order_info["no"]))
+    if not amazhist.order.parse_order(handle, order):
+        logging.warning("注文のパースに失敗しました: {no}".format(no=order.no))
         my_lib.selenium_util.dump_page(
             driver, int(random.random() * 100), handle.config.debug_dir_path
         )
         handle.record_error(
-            url=order_info["url"],
+            url=order.url,
             error_type="parse_error",
             context="order",
             message="注文のパースに失敗しました",
-            order_no=order_info["no"],
+            order_no=order.no,
         )
         time.sleep(1)
         return False
@@ -384,18 +384,21 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
         ).text
 
         url = driver.find_element(By.XPATH, order_details_xpath).get_attribute("href")
+        if url is None:
+            logging.warning(f"URL が取得できませんでした: {no}")
+            continue
 
-        order_list.append({"date": date, "no": no, "url": url, "time_filter": year, "page": page})
+        order_list.append(amazhist.order.Order(date=date, no=no, url=url, time_filter=year, page=page))
 
     time.sleep(1)
 
-    for order_info in order_list:
-        if not handle.get_order_stat(order_info["no"]):
-            is_skipped |= not _fetch_order_item_list_by_order_info(handle, order_info)
+    for order in order_list:
+        if not handle.get_order_stat(order.no):
+            is_skipped |= not _fetch_order_item_list_by_order(handle, order)
         else:
             logging.info(
                 "注文処理済み: {date} - {no} [キャッシュ]".format(
-                    date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
+                    date=order.date.strftime("%Y-%m-%d"), no=order.no
                 )
             )
         handle.get_progress_bar(_gen_status_label_by_year(year)).update()
@@ -417,7 +420,7 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
             if (
                 handle.get_year_checked(year)
                 and (last_item is not None)
-                and (last_item["no"] == order_info["no"])
+                and (last_item.no == order.no)
             ):
                 logging.info("最新の注文を見つけました。以降のページの解析をスキップします")
                 for i in range(total_page):
@@ -655,19 +658,19 @@ def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
 
         handle.set_status(f"🔄 注文を再取得しています: {no}")
 
-        order_info = {
-            "no": no,
-            "url": gen_order_url(no),
-            "date": datetime.datetime.now(),
-            "time_filter": None,
-            "page": None,
-        }
+        order = amazhist.order.Order(
+            date=datetime.datetime.now(),
+            no=no,
+            url=gen_order_url(no),
+            time_filter=None,
+            page=None,
+        )
 
         try:
-            visit_url(handle, order_info["url"], _get_caller_name())
+            visit_url(handle, order.url, _get_caller_name())
             _keep_logged_on(handle)
 
-            if amazhist.order.parse_order(handle, order_info):
+            if amazhist.order.parse_order(handle, order):
                 handle.mark_errors_resolved_by_order_no(no)
                 logging.info(f"注文の再取得に成功しました: {no}")
                 success_count += 1
@@ -769,8 +772,7 @@ def _retry_failed_thumbnails(handle: amazhist.handle.Handle) -> tuple[int, int]:
         handle.set_status(f"🔄 サムネイルを再取得しています: {name[:30]}")
 
         try:
-            item_for_thumb = {"asin": asin}
-            amazhist.item._save_thumbnail(handle, item_for_thumb, thumb_url)
+            amazhist.item._save_thumbnail(handle, asin, thumb_url)
             handle.mark_error_resolved(item["error_id"])
             logging.info(f"サムネイルの再取得に成功しました: {name}")
             success_count += 1
@@ -850,7 +852,7 @@ if __name__ == "__main__":
             _keep_logged_on(handle)
 
             amazhist.order.parse_order(
-                handle, {"date": datetime.datetime.now(), "no": no, "page": 1, "time_filter": None}
+                handle, amazhist.order.Order(date=datetime.datetime.now(), no=no, url=gen_order_url(no), page=1, time_filter=None)
             )
         elif args["-y"] is None:
             fetch_order_item_list(handle)

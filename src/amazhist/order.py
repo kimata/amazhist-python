@@ -6,10 +6,12 @@
 """
 from __future__ import annotations
 
+import datetime
 import inspect
 import logging
 import re
 import time
+from dataclasses import dataclass
 
 import my_lib.selenium_util
 from selenium.webdriver.common.by import By
@@ -22,6 +24,17 @@ import amazhist.item
 import amazhist.parser
 
 
+@dataclass(frozen=True)
+class Order:
+    """注文情報"""
+
+    date: datetime.datetime
+    no: str
+    url: str
+    time_filter: int | None = None  # _retry_failed_orders で None
+    page: int | None = None  # _retry_failed_orders で None
+
+
 def _get_caller_name() -> str:
     """呼び出し元の関数名を取得"""
     frame = inspect.currentframe()
@@ -30,12 +43,12 @@ def _get_caller_name() -> str:
     return frame.f_back.f_code.co_name
 
 
-def _parse_order_digital(handle: amazhist.handle.Handle, order_info: dict) -> bool:
+def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
     """デジタル注文をパース
 
     Args:
         handle: アプリケーションハンドル
-        order_info: 注文情報
+        order: 注文情報
 
     Returns:
         パースに成功したか
@@ -72,35 +85,35 @@ def _parse_order_digital(handle: amazhist.handle.Handle, order_info: dict) -> bo
     condition = "新品"
     kind = "Digital"
 
-    item = {
-        "date": date,
-        "no": no,
-        "name": name,
-        "url": url,
-        "asin": asin,
-        "count": count,
-        "price": price,
-        "category": category,
-        "seller": seller,
-        "condition": condition,
-        "kind": kind,
-        "order_time_filter": order_info["time_filter"],
-        "order_page": order_info["page"],
-    }
+    item = amazhist.item.Item(
+        name=name,
+        date=date,
+        no=no,
+        url=url,
+        asin=asin,
+        count=count,
+        price=price,
+        category=tuple(category),
+        seller=seller,
+        condition=condition,
+        kind=kind,
+        order_time_filter=order.time_filter,
+        order_page=order.page,
+    )
 
-    logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
+    logging.info("{name} {price:,}円".format(name=item.name, price=item.price))
 
     handle.record_item(item)
 
     return True
 
 
-def _parse_order_default(handle: amazhist.handle.Handle, order_info: dict) -> bool:
+def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
     """通常の注文をパース
 
     Args:
         handle: アプリケーションハンドル
-        order_info: 注文情報
+        order: 注文情報
 
     Returns:
         パースに成功したか（1つ以上の商品を取得できたか）
@@ -108,22 +121,6 @@ def _parse_order_default(handle: amazhist.handle.Handle, order_info: dict) -> bo
     ITEM_XPATH = '//div[@data-component="purchasedItems"]'
 
     driver, wait = handle.get_selenium_driver()
-
-    date_text = driver.find_element(
-        By.XPATH, '//div[@data-component="orderDate"]//span'
-    ).text.strip().split()[0]
-    date = amazhist.parser.parse_date(date_text)
-
-    no = driver.find_element(
-        By.XPATH, '//div[@data-component="orderId"]//span'
-    ).text.strip()
-
-    item_base = {
-        "date": date,
-        "no": no,
-        "order_time_filter": order_info["time_filter"],
-        "order_page": order_info["page"],
-    }
 
     is_unempty = False
     for i in range(len(driver.find_elements(By.XPATH, ITEM_XPATH))):
@@ -133,14 +130,12 @@ def _parse_order_default(handle: amazhist.handle.Handle, order_info: dict) -> bo
 
         item_xpath = "(" + ITEM_XPATH + f")[{i + 1}]"
 
-        item = amazhist.item.parse_item(handle, item_xpath)
+        item = amazhist.item.parse_item(handle, item_xpath, order)
         if item is None:
             # シャットダウン要求により中断
             break
 
-        item |= item_base
-
-        logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
+        logging.info("{name} {price:,}円".format(name=item.name, price=item.price))
 
         handle.record_item(item)
         is_unempty = True
@@ -148,27 +143,27 @@ def _parse_order_default(handle: amazhist.handle.Handle, order_info: dict) -> bo
     return is_unempty
 
 
-def parse_order(handle: amazhist.handle.Handle, order_info: dict) -> bool:
+def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
     """注文をパース
 
     注文の種類（デジタル/通常）を判別し、適切なパース関数を呼び出します。
 
     Args:
         handle: アプリケーションハンドル
-        order_info: 注文情報
+        order: 注文情報
 
     Returns:
         パースに成功したか
     """
     driver, wait = handle.get_selenium_driver()
 
-    date_str = order_info["date"].strftime("%Y-%m-%d")
-    logging.info(f"注文をパースしています: {date_str} - {order_info['no']}")
+    date_str = order.date.strftime("%Y-%m-%d")
+    logging.info(f"注文をパースしています: {date_str} - {order.no}")
 
     if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) != 0:
-        is_unempty = _parse_order_digital(handle, order_info)
+        is_unempty = _parse_order_digital(handle, order)
     else:
-        is_unempty = _parse_order_default(handle, order_info)
+        is_unempty = _parse_order_default(handle, order)
 
     return is_unempty
 

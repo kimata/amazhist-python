@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
     from selenium.webdriver.support.wait import WebDriverWait
 
+    import amazhist.item
+
 import amazhist.config
 import amazhist.database
 
@@ -235,22 +237,23 @@ class Handle:
         return self.config.login.amazon.password
 
     # --- 商品関連 ---
-    def record_item(self, item: dict[str, Any]) -> None:
+    def record_item(self, item: amazhist.item.Item) -> None:
         """商品を記録"""
         self.db.upsert_item(item)
 
-    def get_item_list(self) -> list[dict[str, Any]]:
+    def get_item_list(self) -> list[amazhist.item.Item]:
         """商品リストを取得（date順）"""
         return self.db.get_item_list()
 
-    def get_last_item(self, time_filter: str | int) -> dict[str, Any] | None:
+    def get_last_item(self, time_filter: str | int) -> amazhist.item.Item | None:
         """指定した time_filter の最後の商品を取得"""
         return self.db.get_last_item_by_filter(time_filter)
 
-    def get_thumb_path(self, item: Any) -> pathlib.Path | None:
-        if ("asin" not in item) or (item["asin"] is None):
+    def get_thumb_path(self, asin: str | None) -> pathlib.Path | None:
+        """サムネイル画像のパスを取得"""
+        if asin is None:
             return None
-        return self.config.thumb_dir_path / (item["asin"] + ".png")
+        return self.config.thumb_dir_path / (asin + ".png")
 
     def get_order_stat(self, no: str) -> bool:
         """注文が処理済みか確認（ignore_cache時は常にFalse）"""

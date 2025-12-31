@@ -6,10 +6,14 @@
 """
 from __future__ import annotations
 
+import dataclasses
+import datetime
 import logging
 import random
 import re
 import time
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import my_lib.selenium_util
 from selenium.webdriver.common.by import By
@@ -19,6 +23,44 @@ import amazhist.const
 import amazhist.crawler
 import amazhist.handle
 import amazhist.parser
+
+if TYPE_CHECKING:
+    import amazhist.order
+
+
+@dataclass(frozen=True)
+class Item:
+    """商品情報"""
+
+    name: str
+    date: datetime.datetime
+    no: str  # order_no
+    url: str | None = None  # 販売ページが存在しない場合 None
+    asin: str | None = None  # URL から抽出できない場合 None
+    count: int = 1
+    price: int = 0
+    category: tuple[str, ...] = ()  # frozen のため tuple
+    seller: str = ""
+    condition: str = ""
+    kind: str = "Normal"
+    order_time_filter: int | None = None  # _retry_failed_orders 経由で None
+    order_page: int | None = None  # _retry_failed_orders 経由で None
+
+    def __getitem__(self, key: str) -> Any:
+        """辞書風アクセスを可能にする（my_lib.openpyxl_util 用）"""
+        return getattr(self, key)
+
+    def __contains__(self, key: object) -> bool:
+        """キーの存在確認を可能にする（my_lib.openpyxl_util 用）"""
+        if not isinstance(key, str):
+            return False
+        return hasattr(self, key)
+
+    def to_dict(self) -> dict[str, Any]:
+        """辞書に変換（DB保存用）"""
+        result = dataclasses.asdict(self)
+        result["category"] = list(result["category"])  # tuple → list
+        return result
 
 
 def fetch_item_category(handle: amazhist.handle.Handle, item_url: str, record_error: bool = True) -> list[str]:
@@ -63,12 +105,12 @@ def fetch_item_category(handle: amazhist.handle.Handle, item_url: str, record_er
         return []
 
 
-def _save_thumbnail(handle: amazhist.handle.Handle, item: dict, thumb_url: str) -> None:
+def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url: str) -> None:
     """サムネイル画像を保存
 
     Args:
         handle: アプリケーションハンドル
-        item: 商品情報（asin を含む）
+        asin: 商品の ASIN（サムネイルのファイル名に使用）
         thumb_url: サムネイル画像のURL
     """
     # シャットダウン要求時はスキップ
@@ -77,7 +119,7 @@ def _save_thumbnail(handle: amazhist.handle.Handle, item: dict, thumb_url: str) 
 
     driver, wait = handle.get_selenium_driver()
 
-    thumb_path = handle.get_thumb_path(item)
+    thumb_path = handle.get_thumb_path(asin)
     if thumb_path is None:
         return
 
@@ -88,15 +130,16 @@ def _save_thumbnail(handle: amazhist.handle.Handle, item: dict, thumb_url: str) 
             f.write(png_data)
 
 
-def parse_item(handle: amazhist.handle.Handle, item_xpath: str) -> dict | None:
+def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.order.Order) -> Item | None:
     """商品情報をパース（新形式）
 
     Args:
         handle: アプリケーションハンドル
         item_xpath: 商品要素のXPath
+        order: 注文情報
 
     Returns:
-        商品情報の辞書、シャットダウン時は None
+        商品情報、シャットダウン時は None
     """
     # シャットダウン要求時はスキップ
     if amazhist.crawler.is_shutdown_requested():
@@ -119,13 +162,6 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str) -> dict | None:
     time.sleep(0.5)
     category = fetch_item_category(handle, url) if url else []
 
-    item = {
-        "name": name,
-        "url": url,
-        "asin": asin,
-        "category": category,
-    }
-
     # サムネイル画像
     thumb_url = driver.find_element(
         By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
@@ -134,7 +170,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str) -> dict | None:
     if thumb_url:
         try:
             my_lib.selenium_util.with_retry(
-                lambda: _save_thumbnail(handle, item, thumb_url),
+                lambda: _save_thumbnail(handle, asin, thumb_url),
                 max_retries=amazhist.const.RETRY_THUMBNAIL,
                 delay=amazhist.const.RETRY_DELAY_DEFAULT,
             )
@@ -184,13 +220,21 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str) -> dict | None:
     # コンディション（デフォルト新品）
     condition = "新品"
 
-    return item | {
-        "count": count,
-        "price": price,
-        "seller": seller,
-        "condition": condition,
-        "kind": "Normal",
-    }
+    return Item(
+        name=name,
+        date=order.date,
+        no=order.no,
+        url=url if url else None,
+        asin=asin,
+        count=count,
+        price=price,
+        category=tuple(category),
+        seller=seller,
+        condition=condition,
+        kind="Normal",
+        order_time_filter=order.time_filter,
+        order_page=order.page,
+    )
 
 
 def _parse_item_giftcard(handle: amazhist.handle.Handle, item_xpath: str) -> dict:
