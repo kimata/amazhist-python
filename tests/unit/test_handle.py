@@ -53,20 +53,20 @@ class TestHandleCreation:
 
             assert handle is not None
             assert handle.config is not None
-            assert handle.force_mode is False
+            assert handle.ignore_cache is False
 
             handle.finish()
 
-    def test_create_handle_force_mode(self, mock_config, tmp_path):
-        """Handle の作成（強制モード）"""
+    def test_create_handle_ignore_cache(self, mock_config, tmp_path):
+        """Handle の作成（キャッシュ無視モード）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             handle = amazhist.handle.Handle(
-                config=amazhist.config.Config.load(mock_config), force_mode=True
+                config=amazhist.config.Config.load(mock_config), ignore_cache=True
             )
 
-            assert handle.force_mode is True
+            assert handle.ignore_cache is True
 
             handle.finish()
 
@@ -261,6 +261,20 @@ class TestHandleProgressBar:
 
         assert progress_bar.count == 1
 
+    def test_progress_bar_update_with_advance(self, handle):
+        """プログレスバーを複数進める"""
+        handle.set_progress_bar("テスト", 100)
+        progress_bar = handle.get_progress_bar("テスト")
+
+        progress_bar.update(advance=5)
+
+        assert progress_bar.count == 5
+
+    def test_get_progress_bar_nonexistent(self, handle):
+        """存在しないプログレスバーを取得"""
+        with pytest.raises(KeyError):
+            handle.get_progress_bar("存在しないキー")
+
 
 class TestHandleStatus:
     """Handle のステータステスト"""
@@ -320,8 +334,8 @@ class TestHandleStatus:
         assert handle._status_is_error is True
 
 
-class TestHandleForceMode:
-    """Handle の force_mode テスト"""
+class TestHandleIgnoreCache:
+    """Handle の ignore_cache テスト"""
 
     @pytest.fixture
     def mock_config(self, tmp_path):
@@ -354,13 +368,13 @@ class TestHandleForceMode:
         }
 
     @pytest.fixture
-    def handle_force(self, mock_config, tmp_path):
-        """force_mode=True の Handle インスタンス"""
+    def handle_ignore_cache(self, mock_config, tmp_path):
+        """ignore_cache=True の Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(
-                config=amazhist.config.Config.load(mock_config), force_mode=True
+                config=amazhist.config.Config.load(mock_config), ignore_cache=True
             )
             # モック DB を設定
             h._db = unittest.mock.MagicMock()
@@ -370,24 +384,24 @@ class TestHandleForceMode:
             yield h
             h.finish()
 
-    def test_get_order_stat_force_mode(self, handle_force):
-        """force_mode 時は常に False"""
-        result = handle_force.get_order_stat("ORDER-001")
+    def test_get_order_stat_ignore_cache(self, handle_ignore_cache):
+        """ignore_cache 時は常に False"""
+        result = handle_ignore_cache.get_order_stat("ORDER-001")
         assert result is False
-        # DB が True を返しても force_mode では False
-        handle_force._db.exists_order.assert_not_called()
+        # DB が True を返しても ignore_cache では False
+        handle_ignore_cache._db.exists_order.assert_not_called()
 
-    def test_get_page_checked_force_mode(self, handle_force):
-        """force_mode 時は常に False"""
-        result = handle_force.get_page_checked(2025, 1)
+    def test_get_page_checked_ignore_cache(self, handle_ignore_cache):
+        """ignore_cache 時は常に False"""
+        result = handle_ignore_cache.get_page_checked(2025, 1)
         assert result is False
-        handle_force._db.is_page_checked.assert_not_called()
+        handle_ignore_cache._db.is_page_checked.assert_not_called()
 
-    def test_get_year_checked_force_mode(self, handle_force):
-        """force_mode 時は常に False"""
-        result = handle_force.get_year_checked(2025)
+    def test_get_year_checked_ignore_cache(self, handle_ignore_cache):
+        """ignore_cache 時は常に False"""
+        result = handle_ignore_cache.get_year_checked(2025)
         assert result is False
-        handle_force._db.is_year_checked.assert_not_called()
+        handle_ignore_cache._db.is_year_checked.assert_not_called()
 
 
 class TestHandleDatabase:
