@@ -1,27 +1,162 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-import pathlib
-import functools
-import enlighten
-import datetime
+from __future__ import annotations
 
-from selenium.webdriver.support.wait import WebDriverWait
+import datetime
+import functools
+import logging
+import os
+import pathlib
+import time
+from typing import Any
+
+import my_lib.selenium_util
+import my_lib.serializer
 import openpyxl.styles
+import rich.console
+import rich.live
+import rich.progress
+import rich.table
+import rich.text
+from selenium.webdriver.support.wait import WebDriverWait
 
 import amazhist.const
-import my_lib.serializer
-import my_lib.selenium_util
+
+# ステータスバーの色定義
+STATUS_STYLE_NORMAL = "bold #FFFFFF on #e47911"  # Amazon オレンジ
+STATUS_STYLE_ERROR = "bold white on red"
+
+
+class _DisplayRenderable:
+    """Live 表示用の動的 renderable クラス"""
+
+    def __init__(self, handle: dict) -> None:
+        self._handle = handle
+
+    def __rich__(self) -> Any:
+        """Rich が描画時に呼び出すメソッド"""
+        return _create_display(self._handle)
+
+
+class ProgressTask:
+    """Rich Progress のタスクを管理するクラス"""
+
+    def __init__(self, handle: dict, task_id: rich.progress.TaskID, total: int) -> None:
+        self._handle = handle
+        self._task_id = task_id
+        self._total = total
+        self._count = 0
+
+    @property
+    def total(self) -> int:
+        return self._total
+
+    @property
+    def count(self) -> int:
+        return self._count
+
+    def update(self, advance: int = 1) -> None:
+        """プログレスを進める"""
+        self._count += advance
+        if self._handle["rich"]["progress"] is not None:
+            self._handle["rich"]["progress"].update(self._task_id, advance=advance)
+            _refresh_display(self._handle)
+
+
+def _init_progress(handle: dict) -> None:
+    """Progress と Live を初期化"""
+    console = handle["rich"]["console"]
+
+    # 非TTY環境では Live を使用しない
+    if not console.is_terminal:
+        return
+
+    handle["rich"]["progress"] = rich.progress.Progress(
+        rich.progress.TextColumn("[bold]{task.description:<31}"),
+        rich.progress.BarColumn(bar_width=None),
+        rich.progress.TaskProgressColumn(),
+        rich.progress.TextColumn("{task.completed:>5} / {task.total:<5}"),
+        rich.progress.TimeElapsedColumn(),
+        console=console,
+        expand=True,
+    )
+    handle["rich"]["start_time"] = time.time()
+    handle["rich"]["display_renderable"] = _DisplayRenderable(handle)
+    handle["rich"]["live"] = rich.live.Live(
+        handle["rich"]["display_renderable"],
+        console=console,
+        refresh_per_second=4,
+    )
+    handle["rich"]["live"].start()
+
+
+def _create_status_bar(handle: dict) -> rich.table.Table:
+    """ステータスバーを作成（左: タイトル、中央: 進捗、右: 時間）"""
+    style = STATUS_STYLE_ERROR if handle["rich"]["status_is_error"] else STATUS_STYLE_NORMAL
+    elapsed = time.time() - handle["rich"]["start_time"]
+    elapsed_str = f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
+
+    # ターミナル幅を取得し、明示的に幅を制限
+    # NOTE: tmux 環境では幅計算が実際と異なることがあるため、余裕を持たせる
+    console = handle["rich"]["console"]
+    terminal_width = console.width
+    if os.environ.get("TMUX"):
+        terminal_width -= 2
+
+    table = rich.table.Table(
+        show_header=False,
+        show_edge=False,
+        box=None,
+        padding=0,
+        expand=False,  # expand=False にして幅を明示的に制御
+        width=terminal_width,  # ターミナル幅に制限
+        style=style,
+    )
+    table.add_column("title", justify="left", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
+    table.add_column("status", justify="center", ratio=3, no_wrap=True, overflow="ellipsis", style=style)
+    table.add_column("time", justify="right", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
+
+    table.add_row(
+        rich.text.Text(" アマゾン ", style=style),
+        rich.text.Text(handle["rich"]["status_text"], style=style),
+        rich.text.Text(f" {elapsed_str} ", style=style),
+    )
+
+    return table
+
+
+def _create_display(handle: dict) -> Any:
+    """表示内容を作成"""
+    status_bar = _create_status_bar(handle)
+    progress = handle["rich"]["progress"]
+    if progress is not None and len(progress.tasks) > 0:
+        return rich.console.Group(status_bar, progress)
+    return status_bar
+
+
+def _refresh_display(handle: dict) -> None:
+    """表示を強制的に再描画"""
+    live = handle["rich"]["live"]
+    if live is not None:
+        live.refresh()
 
 
 def create(config):
     handle = {
-        "progress_manager": enlighten.get_manager(),
+        "rich": {
+            "console": rich.console.Console(),
+            "progress": None,
+            "live": None,
+            "start_time": time.time(),
+            "status_text": "",
+            "status_is_error": False,
+            "display_renderable": None,
+        },
         "progress_bar": {},
         "config": config,
     }
 
+    _init_progress(handle)
     load_order_info(handle)
-
     prepare_directory(handle)
 
     return handle
@@ -142,35 +277,35 @@ def get_year_list(handle):
 
 
 def set_progress_bar(handle, desc, total):
-    BAR_FORMAT = (
-        "{desc:31s}{desc_pad}{percentage:3.0f}% |{bar}| {count:5d} / {total:5d} "
-        + "[{elapsed}<{eta}, {rate:6.2f}{unit_pad}{unit}/s]"
-    )
-    COUNTER_FORMAT = (
-        "{desc:30s}{desc_pad}{count:5d} {unit}{unit_pad}[{elapsed}, {rate:6.2f}{unit_pad}{unit}/s]{fill}"
-    )
+    """プログレスバーを作成"""
+    progress = handle["rich"]["progress"]
 
-    handle["progress_bar"][desc] = handle["progress_manager"].counter(
-        total=total, desc=desc, bar_format=BAR_FORMAT, counter_format=COUNTER_FORMAT
-    )
+    if progress is None:
+        # 非TTY環境でもダミーのProgressTaskを作成（KeyError防止）
+        handle["progress_bar"][desc] = ProgressTask(handle, rich.progress.TaskID(-1), total)
+        return
+
+    task_id = progress.add_task(desc, total=total)
+    handle["progress_bar"][desc] = ProgressTask(handle, task_id, total)
+    _refresh_display(handle)
 
 
 def set_status(handle, status, is_error=False):
-    if is_error:
-        color = "bold_bright_white_on_red"
-    else:
-        color = "bold_bright_white_on_lightslategray"
+    """ステータスを更新"""
+    handle["rich"]["status_text"] = status
+    handle["rich"]["status_is_error"] = is_error
 
-    if "status" not in handle:
-        handle["status"] = handle["progress_manager"].status_bar(
-            status_format="アマゾン{fill}{status}{fill}{elapsed}",
-            color=color,
-            justify=enlighten.Justify.CENTER,
-            status=status,
-        )
-    else:
-        handle["status"].color = color
-        handle["status"].update(status=status, force=True)
+    console = handle["rich"]["console"]
+
+    # 非TTY環境では logging で出力
+    if not console.is_terminal:
+        if is_error:
+            logging.error(status)
+        else:
+            logging.info(status)
+        return
+
+    _refresh_display(handle)
 
 
 def finish(handle):
@@ -178,7 +313,10 @@ def finish(handle):
         handle["selenium"]["driver"].quit()
         handle.pop("selenium")
 
-    handle["progress_manager"].stop()
+    live = handle["rich"]["live"]
+    if live is not None:
+        live.stop()
+        handle["rich"]["live"] = None
 
 
 def store_order_info(handle):
