@@ -1,102 +1,153 @@
-# amazhist-python
+# 📊 amazhist-python
 
-Amazon.co.jp の買い物履歴情報を収集し、サムネイル付きの Excel 形式で出力するツール
+Amazon.co.jp の購入履歴を収集し、サムネイル付きの Excel ファイルとして出力するツール
 
 [![Test Status](https://github.com/kimata/amazhist-python/actions/workflows/test.yaml/badge.svg)](https://github.com/kimata/amazhist-python/actions/workflows/test.yaml)
 [![Test Report](https://img.shields.io/badge/Test_Report-pytest.html-blue)](https://kimata.github.io/amazhist-python/pytest.html)
 [![Coverage Status](https://coveralls.io/repos/github/kimata/amazhist-python/badge.svg?branch=main)](https://coveralls.io/github/kimata/amazhist-python?branch=main)
 
-## 動作環境
+## 📋 概要
 
-基本的には，Python と Selenium が動作する環境であれば動作します．
-下記の環境での動作を確認しています．
+Amazon.co.jp の購入履歴を自動的に収集し、見やすい Excel 形式で出力します。
+
+### 主な特徴
+
+- 🛒 **購入履歴の収集** - Amazon.co.jp の注文履歴を自動取得
+- 🖼️ **サムネイル付き出力** - 商品画像付きの Excel ファイルを生成
+- 📦 **詳細情報の取得** - 商品名、価格、数量、カテゴリ、販売者、ASIN を収集
+- 🔄 **途中再開対応** - 中断しても途中から再開可能
+- 🔁 **エラーリトライ** - 失敗した項目のみを再取得可能
+- 📝 **エラーログ管理** - エラー状況の確認・管理機能
+
+### 出力サンプル
+
+![出力サンプル](img/excel.png)
+
+### データ収集の様子
+
+![データ収集の様子](img/collect.gif)
+
+## 🖥️ 動作環境
+
+Python と Selenium が動作する環境で動作します。
 
 - Linux (Ubuntu 22.04)
 - Windows 11
 
-## 設定
+## 🚀 セットアップ
 
-同封されている `config.example.yaml` を `config.yaml` に名前変更して，下記の部分を書き換えます．
+### 1. 設定ファイルの準備
 
-```yaml:config.yaml
-  user: Amazon.co.jp のユーザ名
-  pass: Amazon.co.jp のパスワード
+```bash
+cp config.example.yaml config.yaml
 ```
-## Linux での動かし方
 
-### 必要なパッケージのインストール
+`config.yaml` を編集して、Amazon.co.jp のログイン情報を設定：
 
-実行に際して Docker を使用しますので，インストールします．
-Ubuntu の場合，以下のようにします．
-
+```yaml
+login:
+  amazon:
+    user: Amazon.co.jp のユーザ名
+    pass: Amazon.co.jp のパスワード
 ```
+
+## 💻 実行方法
+
+### Docker を使用する場合（推奨）
+
+```bash
+# Docker のインストール（未インストールの場合）
 sudo apt install docker.io docker-compose-v2
-```
-### 実行
 
-以下のようにします．
-
-```
+# 実行
 docker compose run --rm amazhist
 ```
 
-下記のような感じで，動作ログが表示されながらデータ収集が行われ，
-データ収取が完了すると `output` ディレクトリに Excel ファイルが生成されます．
+### Docker を使用しない場合
 
-![データ収集の様子](img/collect.gif "データ収集の様子")
+#### uv を使用（推奨）
 
-注文履歴の数が沢山ある場合，1時間以上がかかりますので，放置しておくのがオススメです．
+```bash
+# uv のインストール（未インストールの場合）
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-なお，何らかの事情で中断した場合，再度実行することで，途中から再開できます．
-コマンドを実行した後に注文履歴が増えた場合も，再度実行することで前回以降のデータからデータ収集を再開できます．
-
-### Docker を使いたくない場合
-
-[Poetry](https://python-poetry.org/) と Google Chrome がインストールされた環境であれば，
-下記のようにして Docker を使わずに実行することもできます．
-
+# 依存関係のインストールと実行
+uv sync
+uv run python src/app.py
 ```
+
+#### Poetry を使用
+
+```bash
 poetry install
-poetry run app/amazhist.py
+poetry run python src/app.py
 ```
 
-## Windows での動かし方
+### Windows で実行する場合
 
-### 準備
+[リリースページ](https://github.com/kimata/amazhist-python/releases) から `amazhist-windows_x64-binary-*.zip` をダウンロードし、中に入っている `amazhist.exe` を実行してください。
 
-[リリースページ](https://github.com/kimata/amazhist-python/releases) から「amazhist-windows_x64-binary-*.zip」を
-ダウンロードします．
+> ⚠️ **注意**: 環境によってはウィルス判定されることがあります。これは Python スクリプトを [Nuitka](https://nuitka.net/) で実行ファイルに変換していることが原因です。検疫されてしまった場合は、Windows Defender の設定を一時的に変更してください。
 
-#### 注意
+### コマンドラインオプション
 
-環境によってはファイルがウィルス判定されることがあります．
-これは，Python スクリプトを [Nuitka](https://nuitka.net/) を使って実行ファイルを生成していることが原因です．
+```bash
+# 設定ファイルを指定
+uv run python src/app.py -c custom-config.yaml
 
-ウィルス判定されてしまった場合は，検疫されないように Windows Defender の設定を一時的に変更お願いします．
+# データ収集せず Excel 出力のみ
+uv run python src/app.py -e
 
-### 実行
+# 強制的に全データを再収集
+uv run python src/app.py -f
 
-`amazhist.exe` をダブルクリックすればOKです．
+# エラーが発生した項目のみ再取得
+uv run python src/app.py -r
 
-## FAQ
+# サムネイル画像なしで出力
+uv run python src/app.py -N
 
-### データの収集が途中で止まる
+# エラーログを表示
+uv run python src/app.py -E
 
-稀に画像認証を求められることがあります．その場合，下記のようなメッセージが表示されますので，
-画像を確認してそこに書かれている文字列を入力してください．(最後に ENTER が必要です)
+# 解決済みエラーも含めて表示
+uv run python src/app.py -E -a
+```
+
+## ⏱️ 実行時間について
+
+注文履歴の数が多い場合、1時間以上かかることがあります。放置しておくことをお勧めします。
+
+中断した場合でも、再度実行することで途中から再開できます。また、新しい注文が増えた場合も、前回以降のデータのみを収集します。
+
+## ❓ FAQ
+
+### 画像認証を求められる
+
+稀に画像認証（CAPTCHA）を求められることがあります。その場合、以下のようなメッセージが表示されます：
 
 ```
-「output/captcha.png」に書かれているテキストを入力してくだい:
+「output/captcha.png」に書かれているテキストを入力してください:
 ```
 
-## 参考
+画像ファイルを確認し、表示されている文字列を入力してください（最後に Enter が必要です）。
 
-Amazon 公式では購入履歴の CSV を提供するサービスが行われています．
-購入日・商品・価格等だけがあれば十分な場合はこちらを利用するのが便利です．
+## 📚 参考
 
-利用するには，Amazon.co.jp の「アカウントサービス」 →「 [データをリクエストする](https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html)」
-から手続きを行います．
+Amazon 公式では購入履歴の CSV を提供するサービスがあります。購入日・商品・価格等の基本情報だけで十分な場合はこちらが便利です。
 
-## ライセンス
+**利用方法**: Amazon.co.jp の「アカウントサービス」→「[データをリクエストする](https://www.amazon.co.jp/hz/privacy-central/data-requests/preview.html)」
 
-Apache License Version 2.0 を適用します．
+## 📝 ライセンス
+
+Apache License Version 2.0
+
+---
+
+<div align="center">
+
+**⭐ このプロジェクトが役に立った場合は、Star をお願いします！**
+
+[🐛 Issue 報告](https://github.com/kimata/amazhist-python/issues)
+
+</div>
