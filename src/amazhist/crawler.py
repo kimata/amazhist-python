@@ -307,10 +307,13 @@ def parse_item(handle, item_xpath):
     }
 
     # サムネイル画像
-    thumb_url = driver.find_element(
-        By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
-    ).get_attribute("src")
-    save_thumbnail(handle, item, thumb_url)
+    try:
+        thumb_url = driver.find_element(
+            By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
+        ).get_attribute("src")
+        save_thumbnail(handle, item, thumb_url)
+    except Exception as e:
+        logging.warning("サムネイル画像の取得に失敗しました: {name} ({error})".format(name=name, error=str(e)))
 
     # 価格
     price_elem = driver.find_elements(
