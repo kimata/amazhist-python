@@ -39,8 +39,13 @@ _STATUS_ORDER_COUNT = "[収集] 年数"
 _STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
 _STATUS_ORDER_ITEM_BY_TARGET = "[収集] {target}"
 
-_CAPTCHA_RETRY_COUNT = 2
-_URL_ACCESS_RETRY_COUNT = 3
+
+class LoginError(Exception):
+    """ログイン失敗を示す例外"""
+
+
+class CaptchaError(Exception):
+    """CAPTCHA解決失敗を示す例外"""
 
 
 def _get_caller_name() -> str:
@@ -49,10 +54,6 @@ def _get_caller_name() -> str:
     if frame is None or frame.f_back is None:
         return "unknown"
     return frame.f_back.f_code.co_name
-
-
-_LOGIN_RETRY_COUNT = 2
-_FETCH_RETRY_COUNT = 1
 
 # Graceful shutdown 用のフラグとハンドル
 _shutdown_requested = False
@@ -117,10 +118,7 @@ def _resolve_captcha(handle):
 
     logging.info("画像認証の解決を試みます")
 
-    for i in range(_CAPTCHA_RETRY_COUNT):
-        if i != 0:
-            logging.info("画像認証の解決を再試行します")
-
+    def _try_solve():
         captcha_img_path = amazhist.handle.get_captcha_file_path(handle)
         captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
 
@@ -129,24 +127,29 @@ def _resolve_captcha(handle):
         with open(captcha_img_path, "wb") as f:
             f.write(captcha_png_data)
 
-        captcha_text = input(f"「{captcha_img_path}」に書かれているテキストを入力してくだい: ")
+        captcha_text = input(f"「{captcha_img_path}」に書かれているテキストを入力してください: ")
 
         driver.find_element(By.XPATH, '//input[@name="cvf_captcha_input"]').send_keys(captcha_text.strip())
         driver.find_element(By.XPATH, '//input[@type="submit"]').click()
 
         _wait_for_loading(handle)
 
-        if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) == 0:
-            return
+        if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) != 0:
+            my_lib.selenium_util.dump_page(
+                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            )
+            raise CaptchaError("CAPTCHA未解決")
 
-        logging.warning("画像認証の解決に失敗しました")
-        my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+    try:
+        my_lib.selenium_util.with_retry(
+            _try_solve,
+            max_retries=amazhist.const.RETRY_CAPTCHA,
+            exceptions=(CaptchaError,),
+            on_retry=lambda attempt, e: logging.info("画像認証の解決を再試行します"),
         )
-        time.sleep(1)
-
-    logging.error("画像認証の解決を諦めました")
-    raise Exception("画像認証を解決できませんでした．")
+    except CaptchaError:
+        logging.error("画像認証の解決を諦めました")
+        raise Exception("画像認証を解決できませんでした．")
 
 
 def _execute_login(handle):
@@ -190,23 +193,25 @@ def _keep_logged_on(handle):
 
     logging.info("ログインを試みます")
 
-    for i in range(_LOGIN_RETRY_COUNT):
-        if i != 0:
-            logging.info("ログインを再試行します")
-
+    def _try_login():
         _execute_login(handle)
+        if re.match("Amazonサインイン", driver.title):
+            my_lib.selenium_util.dump_page(
+                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            )
+            raise LoginError("ログイン失敗")
 
-        if not re.match("Amazonサインイン", driver.title):
-            logging.info("ログインに成功しました")
-            return
-
-        logging.warning("ログインに失敗しました")
-        my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+    try:
+        my_lib.selenium_util.with_retry(
+            _try_login,
+            max_retries=amazhist.const.RETRY_LOGIN,
+            exceptions=(LoginError,),
+            on_retry=lambda attempt, e: logging.info("ログインを再試行します"),
         )
-
-    logging.error("ログインを諦めました")
-    raise Exception("ログインに失敗しました．")
+        logging.info("ログインに成功しました")
+    except LoginError:
+        logging.error("ログインを諦めました")
+        raise Exception("ログインに失敗しました．")
 
 
 def gen_hist_url(year: int, page: int) -> str:
@@ -229,25 +234,26 @@ def _gen_status_label_by_year(year):
     return _STATUS_ORDER_ITEM_BY_TARGET.format(target=_gen_target_text(year))
 
 
-def visit_url(handle, url, caller_name, retry_count=0):
+def visit_url(handle, url, caller_name):
     """URLにアクセス
 
     TimeoutException が発生した場合はリトライします。
     """
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    try:
+    def _load_page():
         driver.get(url)
-    except TimeoutException as e:
-        if retry_count < _URL_ACCESS_RETRY_COUNT:
-            logging.warning(f"タイムアウトが発生しました。リトライします... ({retry_count + 1}/{_URL_ACCESS_RETRY_COUNT})")
-            time.sleep(2)
-            return visit_url(handle, url, caller_name, retry_count + 1)
-        else:
-            logging.error(f"タイムアウトが {_URL_ACCESS_RETRY_COUNT} 回発生しました。処理を中断します。")
-            raise
+        _wait_for_loading(handle)
 
-    _wait_for_loading(handle)
+    my_lib.selenium_util.with_retry(
+        _load_page,
+        max_retries=amazhist.const.RETRY_URL_ACCESS,
+        delay=amazhist.const.RETRY_DELAY_TIMEOUT,
+        exceptions=(TimeoutException,),
+        on_retry=lambda attempt, e: logging.warning(
+            f"タイムアウト。リトライします ({attempt}/{amazhist.const.RETRY_URL_ACCESS})"
+        ),
+    )
 
 
 def _fetch_order_item_list_by_order_info(handle, order_info):
@@ -311,10 +317,10 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             )
             != 0
         ):
-            if retry < _FETCH_RETRY_COUNT:
+            if retry < amazhist.const.RETRY_FETCH:
                 logging.warning("問題が発生しました。再試行します...")
-                time.sleep(1)
-                return _fetch_order_item_list_by_year_page(handle, year, page, retry=0)
+                time.sleep(amazhist.const.RETRY_DELAY_DEFAULT)
+                return _fetch_order_item_list_by_year_page(handle, year, page, retry=retry + 1)
             else:
                 continue
 

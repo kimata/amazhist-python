@@ -291,6 +291,52 @@ class Database:
         conn.commit()
         return cursor.lastrowid or 0
 
+    def get_unresolved_error_by_url(self, url: str, context: str) -> dict[str, Any] | None:
+        """URL とコンテキストで未解決エラーを検索
+
+        Args:
+            url: エラーが発生したURL
+            context: エラーのコンテキスト
+
+        Returns:
+            エラー情報（見つからない場合は None）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT * FROM error_log WHERE url = ? AND context = ? AND resolved = 0 LIMIT 1",
+            (url, context),
+        )
+        row = cursor.fetchone()
+        return self._row_to_error(row) if row else None
+
+    def record_or_update_error(
+        self,
+        url: str,
+        error_type: str,
+        context: str,
+        message: str | None = None,
+        order_no: str | None = None,
+        item_name: str | None = None,
+    ) -> int:
+        """エラーを記録または更新（既存エラーがあれば retry_count を増加）
+
+        Args:
+            url: エラーが発生したURL
+            error_type: エラーの種類
+            context: エラーのコンテキスト
+            message: エラーメッセージ
+            order_no: 関連する注文番号
+            item_name: 関連する商品名
+
+        Returns:
+            エラーログのID
+        """
+        existing = self.get_unresolved_error_by_url(url, context)
+        if existing:
+            self.increment_retry_count(existing["id"])
+            return existing["id"]
+        return self.record_error(url, error_type, context, message, order_no, item_name)
+
     def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
         """未解決のエラー一覧を取得
 

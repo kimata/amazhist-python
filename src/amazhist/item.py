@@ -14,6 +14,7 @@ import time
 import my_lib.selenium_util
 from selenium.webdriver.common.by import By
 
+import amazhist.const
 import amazhist.crawler
 import amazhist.handle
 import amazhist.parser
@@ -36,25 +37,30 @@ def fetch_item_category(handle, item_url: str, record_error: bool = True) -> lis
 
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    category = []
-    try:
+    def _fetch():
         with my_lib.selenium_util.browser_tab(driver, item_url):
-            breadcrumb_list = driver.find_elements(
-                By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a"
-            )
-            category = [x.text for x in breadcrumb_list]
+            return [
+                x.text
+                for x in driver.find_elements(By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a")
+            ]
+
+    try:
+        return my_lib.selenium_util.with_retry(
+            _fetch,
+            max_retries=amazhist.const.RETRY_CATEGORY,
+            delay=amazhist.const.RETRY_DELAY_DEFAULT,
+        )
     except Exception as e:
         logging.warning(f"カテゴリの取得に失敗しました: {item_url}")
         if record_error:
             amazhist.handle.record_error(
                 handle,
                 url=item_url,
-                error_type="fetch_error",
+                error_type=amazhist.const.ERROR_TYPE_FETCH,
                 context="category",
                 message=str(e),
             )
-
-    return category
+        return []
 
 
 def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
@@ -126,23 +132,22 @@ def parse_item(handle, item_xpath: str) -> dict | None:
     ).get_attribute("src")
 
     if thumb_url:
-        for retry in range(3):
-            try:
-                _save_thumbnail(handle, item, thumb_url)
-                break
-            except Exception as e:
-                if retry < 2:
-                    time.sleep(1)
-                else:
-                    logging.warning(f"サムネイル画像の取得に失敗しました: {name} ({str(e)})")
-                    amazhist.handle.record_error(
-                        handle,
-                        url=thumb_url,
-                        error_type="fetch_error",
-                        context="thumbnail",
-                        message=str(e),
-                        item_name=name,
-                    )
+        try:
+            my_lib.selenium_util.with_retry(
+                lambda: _save_thumbnail(handle, item, thumb_url),
+                max_retries=amazhist.const.RETRY_THUMBNAIL,
+                delay=amazhist.const.RETRY_DELAY_DEFAULT,
+            )
+        except Exception as e:
+            logging.warning(f"サムネイル画像の取得に失敗しました: {name} ({e})")
+            amazhist.handle.record_error(
+                handle,
+                url=thumb_url,
+                error_type=amazhist.const.ERROR_TYPE_FETCH,
+                context="thumbnail",
+                message=str(e),
+                item_name=name,
+            )
 
     # 価格
     price_elem = driver.find_elements(
