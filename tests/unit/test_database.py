@@ -219,3 +219,146 @@ class TestDatabaseMetadata:
         db.set_year_status(2025, order_count=150)
 
         assert db.get_total_order_count() == 300
+
+
+class TestDatabaseErrorLog:
+    """Database エラーログのテスト"""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Database インスタンス"""
+        db_path = tmp_path / "test.db"
+        database = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        yield database
+        database.close()
+
+    def test_record_error(self, db):
+        """エラーの記録"""
+        error_id = db.record_error(
+            url="https://example.com/order/123",
+            error_type="parse_error",
+            context="order",
+            message="注文のパースに失敗しました",
+            order_no="503-1234567-8901234",
+        )
+
+        assert error_id > 0
+
+        errors = db.get_unresolved_errors()
+        assert len(errors) == 1
+        assert errors[0]["url"] == "https://example.com/order/123"
+        assert errors[0]["error_type"] == "parse_error"
+        assert errors[0]["context"] == "order"
+        assert errors[0]["order_no"] == "503-1234567-8901234"
+        assert errors[0]["resolved"] is False
+
+    def test_record_error_with_item_name(self, db):
+        """商品名付きエラーの記録"""
+        db.record_error(
+            url="https://example.com/thumb/abc.jpg",
+            error_type="fetch_error",
+            context="thumbnail",
+            message="Timeout",
+            item_name="テスト商品",
+        )
+
+        errors = db.get_unresolved_errors()
+        assert len(errors) == 1
+        assert errors[0]["item_name"] == "テスト商品"
+        assert errors[0]["context"] == "thumbnail"
+
+    def test_get_unresolved_errors_filter_by_context(self, db):
+        """コンテキストでフィルタ"""
+        db.record_error(url="url1", error_type="error", context="order")
+        db.record_error(url="url2", error_type="error", context="thumbnail")
+        db.record_error(url="url3", error_type="error", context="order")
+
+        order_errors = db.get_unresolved_errors(context="order")
+        assert len(order_errors) == 2
+
+        thumb_errors = db.get_unresolved_errors(context="thumbnail")
+        assert len(thumb_errors) == 1
+
+    def test_mark_error_resolved(self, db):
+        """エラーを解決済みにする"""
+        error_id = db.record_error(url="url1", error_type="error", context="order")
+
+        assert db.get_error_count(resolved=False) == 1
+        assert db.get_error_count(resolved=True) == 0
+
+        db.mark_error_resolved(error_id)
+
+        assert db.get_error_count(resolved=False) == 0
+        assert db.get_error_count(resolved=True) == 1
+
+    def test_mark_errors_resolved_by_url(self, db):
+        """URL でエラーを一括解決済みにする"""
+        db.record_error(url="url1", error_type="error", context="order")
+        db.record_error(url="url1", error_type="error", context="order")
+        db.record_error(url="url2", error_type="error", context="order")
+
+        count = db.mark_errors_resolved_by_url("url1")
+
+        assert count == 2
+        assert db.get_error_count(resolved=False) == 1
+        assert db.get_error_count(resolved=True) == 2
+
+    def test_increment_retry_count(self, db):
+        """リトライ回数のインクリメント"""
+        error_id = db.record_error(url="url1", error_type="error", context="order")
+
+        errors = db.get_unresolved_errors()
+        assert errors[0]["retry_count"] == 0
+
+        db.increment_retry_count(error_id)
+        db.increment_retry_count(error_id)
+
+        errors = db.get_unresolved_errors()
+        assert errors[0]["retry_count"] == 2
+
+    def test_get_all_errors(self, db):
+        """全エラー取得（解決済み含む）"""
+        error_id = db.record_error(url="url1", error_type="error", context="order")
+        db.record_error(url="url2", error_type="error", context="order")
+        db.mark_error_resolved(error_id)
+
+        all_errors = db.get_all_errors()
+        assert len(all_errors) == 2
+
+        unresolved = db.get_unresolved_errors()
+        assert len(unresolved) == 1
+
+    def test_get_error_count(self, db):
+        """エラー件数取得"""
+        db.record_error(url="url1", error_type="error", context="order")
+        error_id = db.record_error(url="url2", error_type="error", context="order")
+        db.record_error(url="url3", error_type="error", context="order")
+        db.mark_error_resolved(error_id)
+
+        assert db.get_error_count() == 3
+        assert db.get_error_count(resolved=False) == 2
+        assert db.get_error_count(resolved=True) == 1
+
+    def test_clear_old_errors(self, db):
+        """古いエラーの削除"""
+        # 古いエラーを手動で挿入（通常の record_error は現在時刻を使う）
+        conn = db._get_conn()
+        old_date = (datetime.datetime.now() - datetime.timedelta(days=60)).isoformat()
+        conn.execute(
+            """
+            INSERT INTO error_log (url, error_type, context, created_at, resolved)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            ("old_url", "error", "order", old_date, 1),
+        )
+        conn.commit()
+
+        # 新しい解決済みエラー
+        error_id = db.record_error(url="new_url", error_type="error", context="order")
+        db.mark_error_resolved(error_id)
+
+        # 30日以上前の解決済みエラーを削除
+        deleted = db.clear_old_errors(days=30)
+
+        assert deleted == 1
+        assert db.get_error_count() == 1

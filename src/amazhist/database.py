@@ -249,6 +249,175 @@ class Database:
         """最終更新日時を設定"""
         self.set_metadata("last_modified", dt.isoformat())
 
+    # --- エラーログ ---
+    def record_error(
+        self,
+        url: str,
+        error_type: str,
+        context: str,
+        message: str | None = None,
+        order_no: str | None = None,
+        item_name: str | None = None,
+    ) -> int:
+        """エラーを記録
+
+        Args:
+            url: エラーが発生したURL
+            error_type: エラーの種類（"timeout", "parse_error", "not_found" など）
+            context: エラーのコンテキスト（"order", "item", "thumbnail", "category" など）
+            message: エラーメッセージ
+            order_no: 関連する注文番号
+            item_name: 関連する商品名
+
+        Returns:
+            挿入されたエラーログのID
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            INSERT INTO error_log (url, error_type, error_message, context, order_no, item_name, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                url,
+                error_type,
+                message,
+                context,
+                order_no,
+                item_name,
+                datetime.datetime.now().isoformat(),
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid or 0
+
+    def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
+        """未解決のエラー一覧を取得
+
+        Args:
+            context: フィルタするコンテキスト（None の場合は全て）
+
+        Returns:
+            エラーログのリスト
+        """
+        conn = self._get_conn()
+        if context:
+            cursor = conn.execute(
+                "SELECT * FROM error_log WHERE resolved = 0 AND context = ? ORDER BY created_at DESC",
+                (context,),
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT * FROM error_log WHERE resolved = 0 ORDER BY created_at DESC"
+            )
+        return [self._row_to_error(row) for row in cursor.fetchall()]
+
+    def get_all_errors(self, limit: int = 100) -> list[dict[str, Any]]:
+        """全エラー一覧を取得（最新順）
+
+        Args:
+            limit: 取得件数の上限
+
+        Returns:
+            エラーログのリスト
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT * FROM error_log ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [self._row_to_error(row) for row in cursor.fetchall()]
+
+    def mark_error_resolved(self, error_id: int) -> None:
+        """エラーを解決済みにする
+
+        Args:
+            error_id: エラーログのID
+        """
+        conn = self._get_conn()
+        conn.execute("UPDATE error_log SET resolved = 1 WHERE id = ?", (error_id,))
+        conn.commit()
+
+    def mark_errors_resolved_by_url(self, url: str) -> int:
+        """指定URLのエラーを全て解決済みにする
+
+        Args:
+            url: URL
+
+        Returns:
+            解決済みにしたエラーの件数
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "UPDATE error_log SET resolved = 1 WHERE url = ? AND resolved = 0",
+            (url,),
+        )
+        conn.commit()
+        return cursor.rowcount
+
+    def increment_retry_count(self, error_id: int) -> None:
+        """リトライ回数をインクリメント
+
+        Args:
+            error_id: エラーログのID
+        """
+        conn = self._get_conn()
+        conn.execute("UPDATE error_log SET retry_count = retry_count + 1 WHERE id = ?", (error_id,))
+        conn.commit()
+
+    def clear_old_errors(self, days: int = 30) -> int:
+        """古い解決済みエラーを削除
+
+        Args:
+            days: 何日前より古いエラーを削除するか
+
+        Returns:
+            削除した件数
+        """
+        conn = self._get_conn()
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
+        cursor = conn.execute(
+            "DELETE FROM error_log WHERE resolved = 1 AND created_at < ?",
+            (cutoff,),
+        )
+        conn.commit()
+        return cursor.rowcount
+
+    def get_error_count(self, resolved: bool | None = None) -> int:
+        """エラー件数を取得
+
+        Args:
+            resolved: True=解決済み, False=未解決, None=全て
+
+        Returns:
+            件数
+        """
+        conn = self._get_conn()
+        if resolved is None:
+            cursor = conn.execute("SELECT COUNT(*) FROM error_log")
+        else:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM error_log WHERE resolved = ?",
+                (1 if resolved else 0,),
+            )
+        result = cursor.fetchone()
+        return result[0] if result else 0
+
+    def _row_to_error(self, row: sqlite3.Row) -> dict[str, Any]:
+        """Row を error dict に変換"""
+        return {
+            "id": row["id"],
+            "url": row["url"],
+            "error_type": row["error_type"],
+            "error_message": row["error_message"],
+            "context": row["context"],
+            "order_no": row["order_no"],
+            "item_name": row["item_name"],
+            "created_at": self._parse_datetime(row["created_at"]),
+            "retry_count": row["retry_count"],
+            "resolved": bool(row["resolved"]),
+        }
+
     # --- ユーティリティ ---
     @staticmethod
     def _parse_datetime(value: str | None) -> datetime.datetime | None:

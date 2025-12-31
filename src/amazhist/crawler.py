@@ -243,6 +243,14 @@ def _fetch_order_item_list_by_order_info(handle, order_info):
         my_lib.selenium_util.dump_page(
             driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )
+        amazhist.handle.record_error(
+            handle,
+            url=order_info["url"],
+            error_type="parse_error",
+            context="order",
+            message="注文のパースに失敗しました",
+            order_no=order_info["no"],
+        )
         time.sleep(1)
         return False
 

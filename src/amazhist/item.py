@@ -42,8 +42,15 @@ def fetch_item_category(handle, item_url: str) -> list[str]:
                 By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a"
             )
             category = [x.text for x in breadcrumb_list]
-    except Exception:
+    except Exception as e:
         logging.warning(f"カテゴリの取得に失敗しました: {item_url}")
+        amazhist.handle.record_error(
+            handle,
+            url=item_url,
+            error_type="fetch_error",
+            context="category",
+            message=str(e),
+        )
 
     return category
 
@@ -121,6 +128,14 @@ def parse_item(handle, item_xpath: str) -> dict | None:
                 time.sleep(1)
             else:
                 logging.warning(f"サムネイル画像の取得に失敗しました: {name} ({str(e)})")
+                amazhist.handle.record_error(
+                    handle,
+                    url=thumb_url,
+                    error_type="fetch_error",
+                    context="thumbnail",
+                    message=str(e),
+                    item_name=name,
+                )
 
     # 価格
     price_elem = driver.find_elements(

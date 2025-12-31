@@ -431,3 +431,61 @@ def get_year_checked(handle, year):
 
 def get_progress_bar(handle, desc):
     return handle["progress_bar"][desc]
+
+
+# --- エラーログ ---
+def record_error(
+    handle,
+    url: str,
+    error_type: str,
+    context: str,
+    message: str | None = None,
+    order_no: str | None = None,
+    item_name: str | None = None,
+) -> int:
+    """エラーを記録
+
+    Args:
+        handle: アプリケーションハンドル
+        url: エラーが発生したURL
+        error_type: エラーの種類（"timeout", "parse_error", "not_found" など）
+        context: エラーのコンテキスト（"order", "item", "thumbnail", "category" など）
+        message: エラーメッセージ
+        order_no: 関連する注文番号
+        item_name: 関連する商品名
+
+    Returns:
+        挿入されたエラーログのID
+    """
+    db: amazhist.database.Database = handle["db"]
+    return db.record_error(url, error_type, context, message, order_no, item_name)
+
+
+def get_unresolved_errors(handle, context: str | None = None) -> list:
+    """未解決のエラー一覧を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_unresolved_errors(context)
+
+
+def get_all_errors(handle, limit: int = 100) -> list:
+    """全エラー一覧を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_all_errors(limit)
+
+
+def get_error_count(handle, resolved: bool | None = None) -> int:
+    """エラー件数を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_error_count(resolved)
+
+
+def mark_error_resolved(handle, error_id: int) -> None:
+    """エラーを解決済みにする"""
+    db: amazhist.database.Database = handle["db"]
+    db.mark_error_resolved(error_id)
+
+
+def clear_old_errors(handle, days: int = 30) -> int:
+    """古い解決済みエラーを削除"""
+    db: amazhist.database.Database = handle["db"]
+    return db.clear_old_errors(days)

@@ -41,7 +41,23 @@ CREATE TABLE IF NOT EXISTS page_status (
     PRIMARY KEY (year, page)
 );
 
+-- エラーログテーブル
+CREATE TABLE IF NOT EXISTS error_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    error_type TEXT NOT NULL,
+    error_message TEXT,
+    context TEXT NOT NULL,
+    order_no TEXT,
+    item_name TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    retry_count INTEGER DEFAULT 0,
+    resolved INTEGER DEFAULT 0
+);
+
 -- インデックス
 CREATE INDEX IF NOT EXISTS idx_items_date ON items(date);
 CREATE INDEX IF NOT EXISTS idx_items_order_no ON items(order_no);
 CREATE INDEX IF NOT EXISTS idx_items_asin ON items(asin);
+CREATE INDEX IF NOT EXISTS idx_error_log_resolved ON error_log(resolved);
+CREATE INDEX IF NOT EXISTS idx_error_log_context ON error_log(context);
