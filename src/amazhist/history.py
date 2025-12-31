@@ -141,7 +141,8 @@ def generate_table_excel(handle, excel_file, is_need_thumb=True):
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
-    book._named_styles["Normal"].font = amazhist.handle.get_excel_font(handle)
+    # NOTE: Normal スタイルのフォントを変更するための標準的な方法
+    book._named_styles["Normal"].font = amazhist.handle.get_excel_font(handle)  # type: ignore[attr-defined]
 
     amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 1. Workbook作成
 

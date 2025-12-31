@@ -129,14 +129,14 @@ class Database:
         }
 
     @staticmethod
-    def _parse_time_filter(value: str | None) -> int | str | None:
+    def _parse_time_filter(value: str | None) -> int | None:
         """time_filter を適切な型に変換"""
-        if value is None:
+        if value is None or value == "":
             return None
         try:
             return int(value)
         except ValueError:
-            return value
+            return None
 
     # --- 年ステータス ---
     def set_year_status(self, year: str | int, order_count: int | None = None, checked: bool | None = None) -> None:
@@ -178,13 +178,13 @@ class Database:
         row = cursor.fetchone()
         return bool(row["checked"]) if row else False
 
-    def get_year_list(self) -> list[int | str]:
+    def get_year_list(self) -> list[int]:
         """年リストを取得"""
         value = self.get_metadata("year_list", "[]")
         year_list = json.loads(value)
         return [x for x in (self._parse_time_filter(str(y)) for y in year_list) if x is not None]
 
-    def set_year_list(self, year_list: list[int | str]) -> None:
+    def set_year_list(self, year_list: list[int]) -> None:
         """年リストを設定"""
         self.set_metadata("year_list", json.dumps(year_list))
 

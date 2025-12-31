@@ -195,7 +195,6 @@ def _init_database(handle: dict) -> None:
     for time_filter in [
         datetime.datetime.now().year,
         get_cache_last_modified(handle).year,
-        amazhist.const.ARCHIVE_LABEL,
     ]:
         db.clear_page_status(time_filter)
 
@@ -275,7 +274,7 @@ def record_item(handle, item):
     db.upsert_item(item)
 
 
-def get_item_list(handle):
+def get_item_list(handle) -> list[dict[str, Any]]:
     """商品リストを取得（date順）"""
     db: amazhist.database.Database = handle["db"]
     return db.get_item_list()

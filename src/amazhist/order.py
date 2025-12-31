@@ -172,12 +172,12 @@ def parse_order(handle, order_info: dict) -> bool:
     return is_unempty
 
 
-def parse_order_count(handle, year) -> int:
+def parse_order_count(handle, year: int) -> int:
     """指定年の注文件数を取得
 
     Args:
         handle: アプリケーションハンドル
-        year: 年（または amazhist.const.ARCHIVE_LABEL）
+        year: 年
 
     Returns:
         注文件数

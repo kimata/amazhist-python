@@ -206,28 +206,20 @@ def _keep_logged_on(handle):
     raise Exception("ログインに失敗しました．")
 
 
-def gen_hist_url(year, page):
+def gen_hist_url(year: int, page: int) -> str:
     """履歴ページのURLを生成"""
-    if year == amazhist.const.ARCHIVE_LABEL:
-        return amazhist.const.HIST_URL_IN_ARCHIVE.format(
-            start=amazhist.const.ORDER_COUNT_PER_PAGE * (page - 1)
-        )
-    else:
-        return amazhist.const.HIST_URL_BY_YEAR.format(
-            year=year, start=amazhist.const.ORDER_COUNT_PER_PAGE * (page - 1)
-        )
+    return amazhist.const.HIST_URL_BY_YEAR.format(
+        year=year, start=amazhist.const.ORDER_COUNT_PER_PAGE * (page - 1)
+    )
 
 
-def gen_order_url(no):
+def gen_order_url(no: str) -> str:
     """注文詳細ページのURLを生成"""
     return amazhist.const.HIST_URL_BY_ORDER_NO.format(no=no)
 
 
-def _gen_target_text(year):
-    if year == amazhist.const.ARCHIVE_LABEL:
-        return "過去"
-    else:
-        return f"{year}年"
+def _gen_target_text(year: int) -> str:
+    return f"{year}年"
 
 
 def _gen_status_label_by_year(year):
@@ -371,7 +363,7 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             amazhist.handle.store_order_info(handle)
             return (True, True)
 
-        if year in [datetime.datetime.now().year, amazhist.const.ARCHIVE_LABEL]:
+        if year == datetime.datetime.now().year:
             last_item = amazhist.handle.get_last_item(handle, year)
             if (
                 amazhist.handle.get_year_checked(handle, year)
@@ -419,9 +411,6 @@ def fetch_year_list(handle):
             )
         )
     )
-
-    if "非表示にした注文" in year_str_list:
-        year_list.append(amazhist.const.ARCHIVE_LABEL)
 
     amazhist.handle.set_year_list(handle, year_list)
 
@@ -506,11 +495,7 @@ def _fetch_order_count(handle):
 
     total_count = 0
     for year in year_list:
-        if year == amazhist.const.ARCHIVE_LABEL:
-            count = _fetch_order_count_by_year(handle, year)
-            amazhist.handle.set_order_count(handle, year, count)
-            logging.info(f"アーカイブ: {count:4,} 件")
-        elif year >= amazhist.handle.get_cache_last_modified(handle).year:
+        if year >= amazhist.handle.get_cache_last_modified(handle).year:
             count = _fetch_order_count_by_year(handle, year)
             amazhist.handle.set_order_count(handle, year, count)
             logging.info(f"{year}年: {count:4,} 件")
