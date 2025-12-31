@@ -26,18 +26,18 @@ Amazon.co.jp の買い物履歴情報を収集し、サムネイル付きの Exc
 
 ### 必要なパッケージのインストール
 
-実行に際して `docker-compose` を使用しますので，インストールします．
+実行に際して Docker を使用しますので，インストールします．
 Ubuntu の場合，以下のようにします．
 
 ```
-sudo apt install docker-compose
+sudo apt install docker.io docker-compose-v2
 ```
 ### 実行
 
-以下のようにします．`build` は一回だけ実行すればOKです．
+以下のようにします．
 
 ```
-docker-compose run --rm amazhist
+docker compose run --rm amazhist
 ```
 
 下記のような感じで，動作ログが表示されながらデータ収集が行われ，
