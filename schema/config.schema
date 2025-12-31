@@ -1,0 +1,112 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "login": {
+            "type": "object",
+            "properties": {
+                "amazon": {
+                    "type": "object",
+                    "properties": {
+                        "user": {
+                            "type": "string"
+                        },
+                        "pass": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "user",
+                        "pass"
+                    ]
+                }
+            },
+            "required": [
+                "amazon"
+            ]
+        },
+        "data": {
+            "type": "object",
+            "properties": {
+                "selenium": {
+                    "type": "string"
+                },
+                "debug": {
+                    "type": "string"
+                },
+                "amazon": {
+                    "type": "object",
+                    "properties": {
+                        "cache": {
+                            "type": "object",
+                            "properties": {
+                                "order": {
+                                    "type": "string"
+                                },
+                                "thumb": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "order",
+                                "thumb"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "cache"
+                    ]
+                }
+            },
+            "required": [
+                "selenium",
+                "debug",
+                "amazon"
+            ]
+        },
+        "output": {
+            "type": "object",
+            "properties": {
+                "captcha": {
+                    "type": "string"
+                },
+                "excel": {
+                    "type": "object",
+                    "properties": {
+                        "font": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                },
+                                "size": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": [
+                                "name",
+                                "size"
+                            ]
+                        },
+                        "table": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "font",
+                        "table"
+                    ]
+                }
+            },
+            "required": [
+                "captcha",
+                "excel"
+            ]
+        }
+    },
+    "required": [
+        "login",
+        "data",
+        "output"
+    ]
+}
