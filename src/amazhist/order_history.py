@@ -25,8 +25,8 @@ import my_lib.openpyxl_util
 import amazhist.handle
 import amazhist.crawler
 
-STATUS_INSERT_ITEM = "[generate] Insert item"
-STATUS_ALL = "[generate] Excel file"
+STATUS_INSERT_ITEM = "[生成] 注文商品"
+STATUS_ALL = "[生成] Excel"
 
 SHOP_NAME = "アマゾン"
 

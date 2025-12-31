@@ -31,9 +31,9 @@ import my_lib.selenium_util
 import amazhist.const
 import amazhist.handle
 
-STATUS_ORDER_COUNT = "[collect] Count of year"
-STATUS_ORDER_ITEM_ALL = "[collect] All orders"
-STATUS_ORDER_ITEM_BY_TARGET = "[collect] {target} orders"
+STATUS_ORDER_COUNT = "[収集] 年数"
+STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
+STATUS_ORDER_ITEM_BY_TARGET = "[収集] {target}"
 
 CAPTCHA_RETRY_COUNT = 2
 LOGIN_RETRY_COUNT = 2
@@ -203,9 +203,9 @@ def gen_order_url(no):
 
 def gen_target_text(year):
     if year == amazhist.const.ARCHIVE_LABEL:
-        return "Archive"
+        return "過去"
     else:
-        return "Year {year}".format(year=year)
+        return "{year}年".format(year=year)
 
 
 def gen_status_label_by_yeart(year):
