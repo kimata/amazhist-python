@@ -22,6 +22,7 @@ dependencies = [
     "pillow>=10.2.0",
     "imageio>=2.34.0",
     "jinxed>=1.2.1",
+    "undetected-chromedriver>=3.5.5",
 ]
 
 [dependency-groups]
