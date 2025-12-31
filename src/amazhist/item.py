@@ -14,6 +14,7 @@ import time
 import my_lib.selenium_util
 from selenium.webdriver.common.by import By
 
+import amazhist.crawler
 import amazhist.handle
 import amazhist.parser
 
@@ -28,6 +29,10 @@ def fetch_item_category(handle, item_url: str) -> list[str]:
     Returns:
         カテゴリのリスト（パンくずリスト）
     """
+    # シャットダウン要求時はスキップ
+    if amazhist.crawler.is_shutdown_requested():
+        return []
+
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     category = []
@@ -51,6 +56,10 @@ def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
         item: 商品情報（asin を含む）
         thumb_url: サムネイル画像のURL
     """
+    # シャットダウン要求時はスキップ
+    if amazhist.crawler.is_shutdown_requested():
+        return
+
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     with my_lib.selenium_util.browser_tab(driver, thumb_url):
@@ -60,7 +69,7 @@ def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
             f.write(png_data)
 
 
-def parse_item(handle, item_xpath: str) -> dict:
+def parse_item(handle, item_xpath: str) -> dict | None:
     """商品情報をパース（新形式）
 
     Args:
@@ -68,8 +77,12 @@ def parse_item(handle, item_xpath: str) -> dict:
         item_xpath: 商品要素のXPath
 
     Returns:
-        商品情報の辞書
+        商品情報の辞書、シャットダウン時は None
     """
+    # シャットダウン要求時はスキップ
+    if amazhist.crawler.is_shutdown_requested():
+        return None
+
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     # 商品名とリンク

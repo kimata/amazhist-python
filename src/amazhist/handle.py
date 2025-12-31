@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime
-import functools
 import logging
 import os
 import pathlib
@@ -10,7 +9,6 @@ import time
 from typing import Any
 
 import my_lib.selenium_util
-import my_lib.serializer
 import openpyxl.styles
 import rich.console
 import rich.live
@@ -20,6 +18,11 @@ import rich.text
 from selenium.webdriver.support.wait import WebDriverWait
 
 import amazhist.const
+import amazhist.database
+import amazhist.migrate
+
+# SQLite スキーマファイルのパス
+SQLITE_SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
 
 # ステータスバーの色定義
 STATUS_STYLE_NORMAL = "bold #FFFFFF on #e47911"  # Amazon オレンジ
@@ -116,7 +119,7 @@ def _create_status_bar(handle: dict) -> rich.table.Table:
     table.add_column("time", justify="right", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
 
     table.add_row(
-        rich.text.Text(" アマゾン ", style=style),
+        rich.text.Text(" 🛒 アマゾン ", style=style),
         rich.text.Text(handle["rich"]["status_text"], style=style),
         rich.text.Text(f" {elapsed_str} ", style=style),
     )
@@ -140,7 +143,21 @@ def _refresh_display(handle: dict) -> None:
         live.refresh()
 
 
-def create(config):
+def pause_live(handle: dict) -> None:
+    """Live 表示を一時停止（input() の前に呼び出す）"""
+    live = handle["rich"]["live"]
+    if live is not None:
+        live.stop()
+
+
+def resume_live(handle: dict) -> None:
+    """Live 表示を再開（input() の後に呼び出す）"""
+    live = handle["rich"]["live"]
+    if live is not None:
+        live.start()
+
+
+def create(config, force_mode=False):
     handle = {
         "rich": {
             "console": rich.console.Console(),
@@ -153,13 +170,41 @@ def create(config):
         },
         "progress_bar": {},
         "config": config,
+        "db": None,
+        "force_mode": force_mode,
     }
 
-    _init_progress(handle)
-    load_order_info(handle)
     prepare_directory(handle)
+    _init_progress(handle)
+    _init_database(handle)
+
+    if force_mode:
+        logging.info("強制収集モード: キャッシュを無視してデータを収集します")
 
     return handle
+
+
+def _init_database(handle: dict) -> None:
+    """データベースを初期化（必要に応じてマイグレーションを実行）"""
+    cache_path = get_cache_file_path(handle)
+
+    # pickle から SQLite へのマイグレーションが必要か確認
+    if amazhist.migrate.needs_migration(cache_path):
+        logging.info("pickle ファイルを検出しました。SQLite へ移行します...")
+        if not amazhist.migrate.migrate_pickle_to_sqlite(cache_path, cache_path, SQLITE_SCHEMA_PATH):
+            raise RuntimeError("マイグレーションに失敗しました")
+
+    # データベースを開く
+    handle["db"] = amazhist.database.open_database(cache_path, SQLITE_SCHEMA_PATH)
+
+    # NOTE: 再開した時には巡回すべきなのでページステータスを削除しておく
+    db = handle["db"]
+    for time_filter in [
+        datetime.datetime.now().year,
+        get_cache_last_modified(handle).year,
+        amazhist.const.ARCHIVE_LABEL,
+    ]:
+        db.clear_page_status(time_filter)
 
 
 def get_login_user(handle):
@@ -175,7 +220,7 @@ def prepare_directory(handle):
     get_debug_dir_path(handle).mkdir(parents=True, exist_ok=True)
     get_thumb_dir_path(handle).mkdir(parents=True, exist_ok=True)
 
-    get_caceh_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
+    get_cache_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
     get_captcha_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
     get_excel_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
 
@@ -185,8 +230,13 @@ def get_excel_font(handle):
     return openpyxl.styles.Font(name=font_config["name"], size=font_config["size"])
 
 
-def get_caceh_file_path(handle):
+def get_cache_file_path(handle):
     return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["amazon"]["cache"]["order"])
+
+
+# NOTE: 後方互換性のためのエイリアス（typo）
+def get_caceh_file_path(handle):
+    return get_cache_file_path(handle)
 
 
 def get_excel_file_path(handle):
@@ -227,18 +277,21 @@ def get_selenium_driver(handle):
 
 
 def record_item(handle, item):
-    handle["order"]["item_list"].append(item)
-    handle["order"]["order_no_stat"][item["no"]] = True
+    """商品を記録"""
+    db: amazhist.database.Database = handle["db"]
+    db.upsert_item(item)
 
 
 def get_item_list(handle):
-    return sorted(handle["order"]["item_list"], key=lambda x: x["date"])
+    """商品リストを取得（date順）"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_item_list()
 
 
 def get_last_item(handle, time_filter):
-    return next(
-        filter(lambda item: item["order_time_filter"] == time_filter, reversed(get_item_list(handle))), None
-    )
+    """指定した time_filter の最後の商品を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_last_item_by_filter(time_filter)
 
 
 def get_thumb_path(handle, item):
@@ -249,31 +302,47 @@ def get_thumb_path(handle, item):
 
 
 def get_order_stat(handle, no):
-    return no in handle["order"]["order_no_stat"]
+    """注文が処理済みか確認（force_mode時は常にFalse）"""
+    if handle.get("force_mode", False):
+        return False
+    db: amazhist.database.Database = handle["db"]
+    return db.exists_order(no)
 
 
 def set_year_list(handle, year_list):
-    handle["order"]["year_list"] = year_list
+    """年リストを設定"""
+    db: amazhist.database.Database = handle["db"]
+    db.set_year_list(year_list)
 
 
 def set_order_count(handle, year, order_count):
-    handle["order"]["year_count"][year] = order_count
+    """年の注文数を設定"""
+    db: amazhist.database.Database = handle["db"]
+    db.set_year_status(year, order_count=order_count)
 
 
 def get_cache_last_modified(handle):
-    return handle["order"]["last_modified"]
+    """キャッシュの最終更新日時を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_last_modified()
 
 
 def get_order_count(handle, year):
-    return handle["order"]["year_count"][year]
+    """年の注文数を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_year_order_count(year)
 
 
 def get_total_order_count(handle):
-    return functools.reduce(lambda a, b: a + b, handle["order"]["year_count"].values())
+    """全注文数を取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_total_order_count()
 
 
 def get_year_list(handle):
-    return handle["order"]["year_list"]
+    """年リストを取得"""
+    db: amazhist.database.Database = handle["db"]
+    return db.get_year_list()
 
 
 def set_progress_bar(handle, desc, total):
@@ -309,6 +378,7 @@ def set_status(handle, status, is_error=False):
 
 
 def finish(handle):
+    """終了処理"""
     if "selenium" in handle:
         handle["selenium"]["driver"].quit()
         handle.pop("selenium")
@@ -318,58 +388,45 @@ def finish(handle):
         live.stop()
         handle["rich"]["live"] = None
 
+    # データベースを閉じる
+    if handle["db"] is not None:
+        handle["db"].close()
+        handle["db"] = None
+
 
 def store_order_info(handle):
-    handle["order"]["last_modified"] = datetime.datetime.now()
-
-    my_lib.serializer.store(get_caceh_file_path(handle), handle["order"])
+    """注文情報を保存（最終更新日時を更新）"""
+    db: amazhist.database.Database = handle["db"]
+    db.set_last_modified(datetime.datetime.now())
 
 
 def set_page_checked(handle, year, page):
-    if year in handle["order"]["page_stat"]:
-        handle["order"]["page_stat"][year][page] = True
-    else:
-        handle["order"]["page_stat"][year] = {page: True}
+    """ページの処理完了フラグを設定"""
+    db: amazhist.database.Database = handle["db"]
+    db.set_page_checked(year, page, True)
 
 
 def get_page_checked(handle, year, page):
-    if (year in handle["order"]["page_stat"]) and (page in handle["order"]["page_stat"][year]):
-        return handle["order"]["page_stat"][year][page]
-    else:
+    """ページが処理済みか確認（force_mode時は常にFalse）"""
+    if handle.get("force_mode", False):
         return False
+    db: amazhist.database.Database = handle["db"]
+    return db.is_page_checked(year, page)
 
 
 def set_year_checked(handle, year):
-    handle["order"]["year_stat"][year] = True
+    """年の処理完了フラグを設定"""
+    db: amazhist.database.Database = handle["db"]
+    db.set_year_status(year, checked=True)
     store_order_info(handle)
 
 
 def get_year_checked(handle, year):
-    return year in handle["order"]["year_stat"]
-
-
-def load_order_info(handle):
-    handle["order"] = my_lib.serializer.load(
-        get_caceh_file_path(handle),
-        {
-            "year_list": [],
-            "year_count": {},
-            "year_stat": {},
-            "page_stat": {},
-            "item_list": [],
-            "order_no_stat": {},
-            "last_modified": datetime.datetime(1994, 7, 5),
-        },
-    )
-
-    # NOTE: 再開した時には巡回すべきなので削除しておく
-    for time_filter in [
-        datetime.datetime.now().year,
-        get_cache_last_modified(handle).year,
-        amazhist.const.ARCHIVE_LABEL,
-    ]:
-        if time_filter in handle["order"]["page_stat"]:
-            del handle["order"]["page_stat"][time_filter]
+    """年が処理済みか確認（force_mode時は常にFalse）"""
+    if handle.get("force_mode", False):
+        return False
+    db: amazhist.database.Database = handle["db"]
+    return db.is_year_checked(year)
 
 
 def get_progress_bar(handle, desc):

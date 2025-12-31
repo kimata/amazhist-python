@@ -41,13 +41,14 @@ _CAPTCHA_RETRY_COUNT = 2
 _LOGIN_RETRY_COUNT = 2
 _FETCH_RETRY_COUNT = 1
 
-# Graceful shutdown 用のフラグ
+# Graceful shutdown 用のフラグとハンドル
 _shutdown_requested = False
+_current_handle = None
 
 
 def _signal_handler(signum, frame):
     """Ctrl+C シグナルハンドラ"""
-    global _shutdown_requested
+    global _shutdown_requested, _current_handle
 
     # 既にシャットダウンリクエスト中の場合は強制終了
     if _shutdown_requested:
@@ -55,15 +56,27 @@ def _signal_handler(signum, frame):
         sys.exit(1)
 
     try:
+        # Rich Live を一時停止して入力を受け付ける
+        if _current_handle is not None:
+            amazhist.handle.pause_live(_current_handle)
+
         response = input("\n終了しますか？(y/N): ").strip().lower()
         if response == "y":
             _shutdown_requested = True
+            # urllib3 の接続エラー WARNING を抑制
+            logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
             logging.info("終了リクエストを受け付けました。現在の処理が完了次第終了します...")
         else:
             logging.info("処理を継続します")
+
+        # Rich Live を再開
+        if _current_handle is not None:
+            amazhist.handle.resume_live(_current_handle)
     except EOFError:
         # 入力が取得できない場合は継続
         logging.info("処理を継続します")
+        if _current_handle is not None:
+            amazhist.handle.resume_live(_current_handle)
 
 
 def setup_signal_handler():
@@ -247,7 +260,7 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
 
     amazhist.handle.set_status(
         handle,
-        f"注文履歴を解析しています... {_gen_target_text(year)} {page}/{total_page} ページ",
+        f"🔍 注文履歴を解析しています... {_gen_target_text(year)} {page}/{total_page} ページ",
     )
 
     visit_url(handle, gen_hist_url(year, page), inspect.currentframe().f_code.co_name)
@@ -279,7 +292,7 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             else:
                 continue
 
-        # キャンセル済みの注文はスキップ
+        # キャンセル済みの注文はスキップ（プログレスバーは更新する）
         if (
             len(
                 driver.find_elements(
@@ -295,6 +308,9 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                 order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
             ).text
             logging.info(f"キャンセル済みの注文をスキップしました: {no}")
+            # キャンセル済みでも「確認した」としてプログレスを更新
+            amazhist.handle.get_progress_bar(handle, _gen_status_label_by_year(year)).update()
+            amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_ITEM_ALL).update()
             continue
 
         date_text = driver.find_element(
@@ -450,8 +466,6 @@ def _fetch_order_item_list_by_year(handle, year, start_page=1):
 
         page += 1
 
-    amazhist.handle.get_progress_bar(handle, _gen_status_label_by_year(year)).update()
-
     if not is_skipped and not is_shutdown_requested():
         amazhist.handle.set_year_checked(handle, year)
 
@@ -459,7 +473,7 @@ def _fetch_order_item_list_by_year(handle, year, start_page=1):
 def _fetch_order_count_by_year(handle, year):
     amazhist.handle.set_status(
         handle,
-        f"注文件数を調べています... {_gen_target_text(year)}",
+        f"🔍 注文件数を調べています... {_gen_target_text(year)}",
     )
 
     return amazhist.order.parse_order_count(handle, year)
@@ -491,7 +505,6 @@ def _fetch_order_count(handle):
 
     logging.info(f"合計注文数: {total_count:,} 件")
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_COUNT).update()
     amazhist.handle.store_order_info(handle)
 
 
@@ -525,19 +538,20 @@ def _fetch_order_item_list_all_year(handle):
                 amazhist.handle.get_order_count(handle, year)
             )
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_ITEM_ALL).update()
-
 
 def fetch_order_item_list(handle):
     """注文履歴を収集"""
-    amazhist.handle.set_status(handle, "巡回ロボットの準備をします...")
+    global _current_handle
+
+    amazhist.handle.set_status(handle, "🤖 巡回ロボットの準備をします...")
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    # シグナルハンドラを設定
+    # シグナルハンドラを設定（handle を保存してシグナルハンドラからアクセス可能にする）
+    _current_handle = handle
     setup_signal_handler()
     reset_shutdown_flag()
 
-    amazhist.handle.set_status(handle, "注文履歴の収集を開始します...")
+    amazhist.handle.set_status(handle, "📥 注文履歴の収集を開始します...")
 
     try:
         _fetch_order_item_list_all_year(handle)
@@ -549,9 +563,9 @@ def fetch_order_item_list(handle):
         raise
 
     if is_shutdown_requested():
-        amazhist.handle.set_status(handle, "注文履歴の収集を中断しました．")
+        amazhist.handle.set_status(handle, "🛑 注文履歴の収集を中断しました")
     else:
-        amazhist.handle.set_status(handle, "注文履歴の収集が完了しました．")
+        amazhist.handle.set_status(handle, "✅ 注文履歴の収集が完了しました")
 
 
 if __name__ == "__main__":

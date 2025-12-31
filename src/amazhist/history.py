@@ -127,31 +127,39 @@ def _generate_sheet(handle, book, is_need_thumb=True):
 
 
 def generate_table_excel(handle, excel_file, is_need_thumb=True):
-    amazhist.handle.set_status(handle, "エクセルファイルの作成を開始します...")
-    amazhist.handle.set_progress_bar(handle, _STATUS_ALL, 5)
+    amazhist.handle.set_status(handle, "📊 エクセルファイルの作成を開始します...")
+
+    # プログレスバーのステップ:
+    # 1. Workbook作成
+    # 2. ヘッダー設定 (generate_list_sheet内)
+    # 3. アイテム挿入完了 (generate_list_sheet内)
+    # 4. テーブル設定 (generate_list_sheet内)
+    # 5. ファイル保存
+    # 6. ファイルクローズ
+    amazhist.handle.set_progress_bar(handle, _STATUS_ALL, 6)
 
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
     book._named_styles["Normal"].font = amazhist.handle.get_excel_font(handle)
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 1. Workbook作成
 
-    _generate_sheet(handle, book, is_need_thumb)
+    _generate_sheet(handle, book, is_need_thumb)  # 2, 3, 4 は generate_list_sheet 内
 
     book.remove(book.worksheets[0])
 
-    amazhist.handle.set_status(handle, "エクセルファイルを書き出しています...")
+    amazhist.handle.set_status(handle, "💾 エクセルファイルを書き出しています...")
 
     book.save(excel_file)
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 5. ファイル保存
 
     book.close()
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 6. ファイルクローズ
 
-    amazhist.handle.set_status(handle, "完了しました！")
+    amazhist.handle.set_status(handle, "🎉 完了しました！")
 
     logging.info("Complete to Generate excel file")
 

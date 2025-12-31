@@ -15,6 +15,7 @@ import my_lib.selenium_util
 from selenium.webdriver.common.by import By
 
 import amazhist.const
+import amazhist.crawler
 import amazhist.handle
 import amazhist.item
 import amazhist.parser
@@ -116,9 +117,17 @@ def _parse_order_default(handle, order_info: dict) -> bool:
 
     is_unempty = False
     for i in range(len(driver.find_elements(By.XPATH, ITEM_XPATH))):
+        # シャットダウン要求時は終了
+        if amazhist.crawler.is_shutdown_requested():
+            break
+
         item_xpath = "(" + ITEM_XPATH + f")[{i + 1}]"
 
         item = amazhist.item.parse_item(handle, item_xpath)
+        if item is None:
+            # シャットダウン要求により中断
+            break
+
         item |= item_base
 
         logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
@@ -164,9 +173,6 @@ def parse_order_count(handle, year) -> int:
     Returns:
         注文件数
     """
-    # NOTE: crawler.py からインポートを避けるため、ここでローカルインポート
-    import amazhist.crawler
-
     ORDER_COUNT_XPATH = "//span[contains(@class, 'num-orders')]"
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
