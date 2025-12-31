@@ -310,27 +310,12 @@ def parse_item(handle, item_xpath):
     thumb_url = driver.find_element(
         By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
     ).get_attribute("src")
-    current_url = driver.current_url
 
     for retry in range(3):
         try:
             save_thumbnail(handle, item, thumb_url)
             break
         except Exception as e:
-            # ブラウザの状態を回復
-            try:
-                # 余分なタブを閉じて最初のウィンドウに戻る
-                while len(driver.window_handles) > 1:
-                    driver.switch_to.window(driver.window_handles[-1])
-                    driver.close()
-                driver.switch_to.window(driver.window_handles[0])
-                # 元のページに戻る
-                if driver.current_url != current_url:
-                    driver.get(current_url)
-                    time.sleep(2)
-            except Exception:
-                pass
-
             if retry < 2:
                 time.sleep(1)
             else:
