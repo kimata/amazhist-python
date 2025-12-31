@@ -19,7 +19,6 @@ from selenium.webdriver.support.wait import WebDriverWait
 
 import amazhist.const
 import amazhist.database
-import amazhist.migrate
 
 # SQLite スキーマファイルのパス
 SQLITE_SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
@@ -185,14 +184,8 @@ def create(config, force_mode=False):
 
 
 def _init_database(handle: dict) -> None:
-    """データベースを初期化（必要に応じてマイグレーションを実行）"""
+    """データベースを初期化"""
     cache_path = get_cache_file_path(handle)
-
-    # pickle から SQLite へのマイグレーションが必要か確認
-    if amazhist.migrate.needs_migration(cache_path):
-        logging.info("pickle ファイルを検出しました。SQLite へ移行します...")
-        if not amazhist.migrate.migrate_pickle_to_sqlite(cache_path, cache_path, SQLITE_SCHEMA_PATH):
-            raise RuntimeError("マイグレーションに失敗しました")
 
     # データベースを開く
     handle["db"] = amazhist.database.open_database(cache_path, SQLITE_SCHEMA_PATH)

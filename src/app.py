@@ -163,6 +163,7 @@ if __name__ == "__main__":
     import my_lib.logger
     from docopt import docopt
 
+    assert __doc__ is not None
     args = docopt(__doc__)
 
     # TTY環境ではシンプルなログフォーマットを使用（Rich の表示と干渉しないため）
