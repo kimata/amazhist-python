@@ -390,6 +390,11 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
         handle.get_progress_bar(_gen_status_label_by_year(year)).update()
         handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
 
+        # デバッグモードでは1件だけ処理して終了
+        if handle.debug_mode:
+            logging.info("デバッグモード: 1件の注文を処理したため終了します")
+            return (is_skipped, True)
+
         # シャットダウンリクエストがあれば終了
         if is_shutdown_requested():
             logging.info("シャットダウンリクエストにより処理を中断します")
@@ -503,9 +508,13 @@ def _fetch_order_item_list_by_year(handle: amazhist.handle.Handle, year, start_p
         if is_last:
             break
 
+        # デバッグモードでは1ページだけ処理して終了
+        if handle.debug_mode:
+            break
+
         page += 1
 
-    if not is_skipped and not is_shutdown_requested():
+    if not is_skipped and not is_shutdown_requested() and not handle.debug_mode:
         handle.set_year_checked(year)
 
 
@@ -564,6 +573,10 @@ def _fetch_order_item_list_all_year(handle: amazhist.handle.Handle):
             or (not handle.get_year_checked(year))
         ):
             _fetch_order_item_list_by_year(handle, year)
+
+            # デバッグモードでは1年だけ処理して終了
+            if handle.debug_mode:
+                break
         else:
             logging.info(
                 f"{year}年の注文処理済み ({year_list.index(year) + 1}/{len(year_list)}) [キャッシュ]"
@@ -574,7 +587,11 @@ def _fetch_order_item_list_all_year(handle: amazhist.handle.Handle):
 
 
 def fetch_order_item_list(handle: amazhist.handle.Handle):
-    """注文履歴を収集"""
+    """注文履歴を収集
+
+    Args:
+        handle: アプリケーションハンドル
+    """
     global _current_handle
 
     handle.set_status("🤖 巡回ロボットの準備をします...")

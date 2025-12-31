@@ -3,7 +3,7 @@
 Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして出力します．
 
 Usage:
-  amazhist.py [-c CONFIG] [-e] [-f] [-N]
+  amazhist.py [-c CONFIG] [-e] [-f] [-N] [-D] [-R]
   amazhist.py [-c CONFIG] -r [-N]
   amazhist.py [-c CONFIG] -E [-a]
 
@@ -13,6 +13,8 @@ Options:
   -f            : キャッシュを使わず，強制的にデータを収集し直します．
   -r            : エラーが発生した注文・カテゴリ・サムネイルを再取得します．
   -N            : サムネイル画像を含めないようにします．
+  -D            : デバッグモードで動作します（1件のみ収集，キャッシュ無視，終了待ち無し）．
+  -R            : ブラウザ起動失敗時にプロファイルを削除します．
   -E            : エラーログを表示します．
   -a            : -E と共に使用し，解決済みエラーも含めて表示します．
 """
@@ -87,8 +89,24 @@ def execute_retry_mode(config, is_need_thumb=True):
     input("完了しました．エンターを押すと終了します．")
 
 
-def execute(config, is_export_mode=False, is_force_mode=False, is_need_thumb=True):
-    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config), force_mode=is_force_mode)
+def execute(
+    config,
+    is_export_mode: bool = False,
+    ignore_cache: bool = False,
+    is_need_thumb: bool = True,
+    debug_mode: bool = False,
+    clear_profile_on_browser_error: bool = False,
+):
+    # デバッグモードではキャッシュ無視を有効化
+    if debug_mode:
+        ignore_cache = True
+
+    handle = amazhist.handle.Handle(
+        config=amazhist.config.Config.load(config),
+        ignore_cache=ignore_cache,
+        debug_mode=debug_mode,
+        clear_profile_on_browser_error=clear_profile_on_browser_error,
+    )
 
     try:
         if not is_export_mode:
@@ -107,8 +125,9 @@ def execute(config, is_export_mode=False, is_force_mode=False, is_need_thumb=Tru
             handle.set_status("❌ エラーが発生しました", is_error=True)
             logging.error(traceback.format_exc())
 
-    handle.pause_live()
-    input("完了しました．エンターを押すと終了します．")
+    if not handle.debug_mode:
+        handle.pause_live()
+        input("完了しました．エンターを押すと終了します．")
 
 
 def show_error_log(config, show_all=False):
@@ -205,16 +224,23 @@ if __name__ == "__main__":
     assert __doc__ is not None
     args = docopt(__doc__)
 
+    debug_mode: bool = args["-D"]
+
     # TTY環境ではシンプルなログフォーマットを使用（Rich の表示と干渉しないため）
     log_format = my_lib.logger.SIMPLE_FORMAT if sys.stdout.isatty() else None
 
-    my_lib.logger.init("amazhist", level=logging.INFO, log_format=log_format)
+    my_lib.logger.init(
+        "amazhist",
+        level=logging.DEBUG if debug_mode else logging.INFO,
+        log_format=log_format,
+    )
 
     config_file = args["-c"]
     is_export_mode = args["-e"]
-    is_force_mode = args["-f"]
+    ignore_cache = args["-f"]
     is_retry_mode = args["-r"]
     is_need_thumb = not args["-N"]
+    clear_profile_on_browser_error: bool = args["-R"]
     is_show_error_log = args["-E"]
     is_show_all_errors = args["-a"]
 
@@ -225,4 +251,11 @@ if __name__ == "__main__":
     elif is_retry_mode:
         execute_retry_mode(config, is_need_thumb)
     else:
-        execute(config, is_export_mode, is_force_mode, is_need_thumb)
+        execute(
+            config,
+            is_export_mode,
+            ignore_cache,
+            is_need_thumb,
+            debug_mode,
+            clear_profile_on_browser_error,
+        )

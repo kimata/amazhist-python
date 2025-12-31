@@ -78,7 +78,9 @@ class ProgressTask:
 @dataclass
 class Handle:
     config: amazhist.config.Config
-    force_mode: bool = False
+    ignore_cache: bool = False
+    debug_mode: bool = False
+    clear_profile_on_browser_error: bool = False
     selenium: SeleniumInfo | None = None
     _db: amazhist.database.Database | None = field(default=None, repr=False)
 
@@ -99,8 +101,8 @@ class Handle:
         self._init_database()
         self._init_progress()
 
-        if self.force_mode:
-            logging.info("強制収集モード: キャッシュを無視してデータを収集します")
+        if self.ignore_cache:
+            logging.info("キャッシュ無視モード: キャッシュを無視してデータを収集します")
 
     def _init_database(self) -> None:
         """データベースを初期化"""
@@ -133,7 +135,9 @@ class Handle:
             rich.progress.BarColumn(bar_width=None),
             rich.progress.TaskProgressColumn(),
             rich.progress.TextColumn("{task.completed:>5} / {task.total:<5}"),
+            rich.progress.TextColumn("経過:"),
             rich.progress.TimeElapsedColumn(),
+            rich.progress.TextColumn("残り:"),
             rich.progress.TimeRemainingColumn(),
             console=self._console,
             expand=True,
@@ -207,16 +211,21 @@ class Handle:
         if self.selenium is not None:
             return (self.selenium.driver, self.selenium.wait)
 
-        driver = my_lib.selenium_util.create_driver(
-            "Amazhist", self.config.selenium_data_dir_path, use_subprocess=False
-        )
-        wait = selenium.webdriver.support.wait.WebDriverWait(driver, 5)
+        try:
+            driver = my_lib.selenium_util.create_driver(
+                "Amazhist", self.config.selenium_data_dir_path, use_subprocess=False
+            )
+            wait = selenium.webdriver.support.wait.WebDriverWait(driver, 5)
 
-        my_lib.selenium_util.clear_cache(driver)
+            my_lib.selenium_util.clear_cache(driver)
 
-        self.selenium = SeleniumInfo(driver=driver, wait=wait)
+            self.selenium = SeleniumInfo(driver=driver, wait=wait)
 
-        return (driver, wait)
+            return (driver, wait)
+        except Exception as e:
+            if self.clear_profile_on_browser_error:
+                my_lib.selenium_util.delete_profile("Amazhist", self.config.selenium_data_dir_path)
+            raise my_lib.selenium_util.SeleniumError(f"Selenium の起動に失敗しました: {e}") from e
 
     # --- ログイン情報 ---
     def get_login_user(self) -> str:
@@ -244,8 +253,8 @@ class Handle:
         return self.config.thumb_dir_path / (item["asin"] + ".png")
 
     def get_order_stat(self, no: str) -> bool:
-        """注文が処理済みか確認（force_mode時は常にFalse）"""
-        if self.force_mode:
+        """注文が処理済みか確認（ignore_cache時は常にFalse）"""
+        if self.ignore_cache:
             return False
         return self.db.exists_order(no)
 
@@ -280,8 +289,8 @@ class Handle:
         self.db.set_page_checked(year, page, True)
 
     def get_page_checked(self, year: int, page: int) -> bool:
-        """ページが処理済みか確認（force_mode時は常にFalse）"""
-        if self.force_mode:
+        """ページが処理済みか確認（ignore_cache時は常にFalse）"""
+        if self.ignore_cache:
             return False
         return self.db.is_page_checked(year, page)
 
@@ -291,8 +300,8 @@ class Handle:
         self.store_order_info()
 
     def get_year_checked(self, year: int) -> bool:
-        """年が処理済みか確認（force_mode時は常にFalse）"""
-        if self.force_mode:
+        """年が処理済みか確認（ignore_cache時は常にFalse）"""
+        if self.ignore_cache:
             return False
         return self.db.is_year_checked(year)
 
