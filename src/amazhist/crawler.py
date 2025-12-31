@@ -672,10 +672,10 @@ def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
                 logging.info(f"注文の再取得に成功しました: {no}")
                 success_count += 1
             else:
-                logging.info(f"注文の再取得をスキップしました: {no}")
+                logging.warning(f"注文の再取得をスキップしました: {no}")
                 fail_count += 1
         except Exception as e:
-            logging.info(f"注文の再取得をスキップしました: {no} ({e})")
+            logging.warning(f"注文の再取得をスキップしました: {no} ({e})")
             fail_count += 1
 
         handle.get_progress_bar("[再取得] 注文").update()
@@ -721,10 +721,10 @@ def _retry_failed_categories(handle: amazhist.handle.Handle) -> tuple[int, int]:
                 logging.info(f"カテゴリの再取得に成功しました: {name}")
                 success_count += 1
             else:
-                logging.info(f"カテゴリの再取得をスキップしました（空）: {name}")
+                logging.warning(f"カテゴリの再取得をスキップしました（空）: {name}")
                 fail_count += 1
         except Exception as e:
-            logging.info(f"カテゴリの再取得をスキップしました: {name} ({e})")
+            logging.warning(f"カテゴリの再取得をスキップしました: {name} ({e})")
             fail_count += 1
 
         handle.get_progress_bar("[再取得] カテゴリ").update()
@@ -761,7 +761,7 @@ def _retry_failed_thumbnails(handle: amazhist.handle.Handle) -> tuple[int, int]:
         asin = item.get("asin")
 
         if not asin:
-            logging.info(f"ASIN が不明のためスキップしました: {name}")
+            logging.warning(f"ASIN が不明のためスキップしました: {name}")
             handle.get_progress_bar("[再取得] サムネイル").update()
             fail_count += 1
             continue
@@ -775,7 +775,7 @@ def _retry_failed_thumbnails(handle: amazhist.handle.Handle) -> tuple[int, int]:
             logging.info(f"サムネイルの再取得に成功しました: {name}")
             success_count += 1
         except Exception as e:
-            logging.info(f"サムネイルの再取得をスキップしました: {name} ({e})")
+            logging.warning(f"サムネイルの再取得をスキップしました: {name} ({e})")
             fail_count += 1
 
         handle.get_progress_bar("[再取得] サムネイル").update()
