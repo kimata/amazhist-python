@@ -1,29 +1,47 @@
-[tool.poetry]
-name = "Amazhist Python"
+[project]
+name = "amazhist-python"
 version = "0.1.0"
 description = "Amazon.co.jp の購入履歴情報を収集するスクリプトです．"
-authors = ["KIMATA Tetsuya <kimata@green-rabbit.net>"]
-
-packages = [
-    { include = "local_lib", from = "lib" },
-    { include = "store_amazon", from = "lib" }
+authors = [
+    { name = "KIMATA Tetsuya", email = "kimata@green-rabbit.net" }
 ]
 
-[tool.poetry.dependencies]
-coloredlogs = "^15.0.1"
-docopt = "^0.6.2"
-python = "^3.10"
-pyyaml = "^6.0.1"
-selenium = "^4.18.1"
-pyprind = "^2.11.3"
-enlighten = "^1.12.4"
-openpyxl = "^3.1.2"
-pillow = "^10.2.0"
-imageio = "^2.34.0"
-jinxed = "^1.2.1"
+readme = "README.md"
+requires-python = ">=3.10"
 
-[tool.poetry.group.dev.dependencies]
-nuitka = "^2.1.3"
+dependencies = [
+    "coloredlogs>=15.0.1",
+    "docopt>=0.6.2",
+    "pyyaml>=6.0.1",
+    "selenium>=4.18.1",
+    "pyprind>=2.11.3",
+    "enlighten>=1.12.4",
+    "openpyxl>=3.1.2",
+    "pillow>=10.2.0",
+    "imageio>=2.34.0",
+    "jinxed>=1.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "nuitka>=2.1.3",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lib/local_lib", "lib/store_amazon"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -46,22 +64,7 @@ branch = true
 exclude_lines = [
   "pragma: no cover",
   "if __name__ == .__main__.:",
-
-  # 以下，未使用関数
 ]
 
 [tool.coverage.html]
 directory = "tests/evidence/coverage"
-
-[tool.black]
-target-version = ['py310']
-line-length = 110
-
-[tool.isort]
-profile = "black"
-line_length = 110
-include_trailing_comma = true
-
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
