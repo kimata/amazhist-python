@@ -1,7 +1,10 @@
 # amazhist-python
 
-amazhist-python は，Amazon.co.jp の買い物履歴情報を収集し，
-サムネイル付きの Excel 形式で出力するソフトウェアです．
+Amazon.co.jp の買い物履歴情報を収集し、サムネイル付きの Excel 形式で出力するツール
+
+[![Test Status](https://github.com/kimata/amazhist-python/actions/workflows/test.yaml/badge.svg)](https://github.com/kimata/amazhist-python/actions/workflows/test.yaml)
+[![Test Report](https://img.shields.io/badge/Test_Report-pytest.html-blue)](https://kimata.github.io/amazhist-python/pytest.html)
+[![Coverage Status](https://coveralls.io/repos/github/kimata/amazhist-python/badge.svg?branch=main)](https://coveralls.io/github/kimata/amazhist-python?branch=main)
 
 ## 動作環境
 

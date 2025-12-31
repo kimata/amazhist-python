@@ -21,6 +21,7 @@ import openpyxl.drawing.xdr
 import openpyxl.styles
 import openpyxl.utils
 
+import amazhist.config
 import amazhist.crawler
 import amazhist.handle
 
@@ -109,25 +110,25 @@ _SHEET_DEF = {
 }
 
 
-def _generate_sheet(handle, book, is_need_thumb=True):
-    item_list = amazhist.handle.get_item_list(handle)
+def _generate_sheet(handle: amazhist.handle.Handle, book, is_need_thumb=True):
+    item_list = handle.get_item_list()
 
-    amazhist.handle.set_progress_bar(handle, _STATUS_INSERT_ITEM, len(item_list))
+    handle.set_progress_bar(_STATUS_INSERT_ITEM, len(item_list))
 
     my_lib.openpyxl_util.generate_list_sheet(
         book,
         item_list,
         _SHEET_DEF,
         is_need_thumb,
-        lambda item: amazhist.handle.get_thumb_path(handle, item),
-        lambda status: amazhist.handle.set_status(handle, status),
-        lambda: amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update(),
-        lambda: amazhist.handle.get_progress_bar(handle, _STATUS_INSERT_ITEM).update(),
+        lambda item: handle.get_thumb_path(item),
+        lambda status: handle.set_status(status),
+        lambda: handle.get_progress_bar(_STATUS_ALL).update(),
+        lambda: handle.get_progress_bar(_STATUS_INSERT_ITEM).update(),
     )
 
 
-def generate_table_excel(handle, excel_file, is_need_thumb=True):
-    amazhist.handle.set_status(handle, "📊 エクセルファイルの作成を開始します...")
+def generate_table_excel(handle: amazhist.handle.Handle, excel_file, is_need_thumb=True):
+    handle.set_status("📊 エクセルファイルの作成を開始します...")
 
     # プログレスバーのステップ:
     # 1. Workbook作成
@@ -136,31 +137,31 @@ def generate_table_excel(handle, excel_file, is_need_thumb=True):
     # 4. テーブル設定 (generate_list_sheet内)
     # 5. ファイル保存
     # 6. ファイルクローズ
-    amazhist.handle.set_progress_bar(handle, _STATUS_ALL, 6)
+    handle.set_progress_bar(_STATUS_ALL, 6)
 
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
     # NOTE: Normal スタイルのフォントを変更するための標準的な方法
-    book._named_styles["Normal"].font = amazhist.handle.get_excel_font(handle)  # type: ignore[attr-defined]
+    book._named_styles["Normal"].font = handle.config.excel_font  # pyright: ignore[reportAttributeAccessIssue]
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 1. Workbook作成
+    handle.get_progress_bar(_STATUS_ALL).update()  # 1. Workbook作成
 
     _generate_sheet(handle, book, is_need_thumb)  # 2, 3, 4 は generate_list_sheet 内
 
     book.remove(book.worksheets[0])
 
-    amazhist.handle.set_status(handle, "💾 エクセルファイルを書き出しています...")
+    handle.set_status("💾 エクセルファイルを書き出しています...")
 
     book.save(excel_file)
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 5. ファイル保存
+    handle.get_progress_bar(_STATUS_ALL).update()  # 5. ファイル保存
 
     book.close()
 
-    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()  # 6. ファイルクローズ
+    handle.get_progress_bar(_STATUS_ALL).update()  # 6. ファイルクローズ
 
-    amazhist.handle.set_status(handle, "🎉 完了しました！")
+    handle.set_status("🎉 完了しました！")
 
     logging.info("Complete to Generate excel file")
 
@@ -179,8 +180,8 @@ if __name__ == "__main__":
     excel_file = args["-o"]
     is_need_thumb = not args["-N"]
 
-    handle = amazhist.handle.create(config)
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
 
     generate_table_excel(handle, excel_file, is_need_thumb)
 
-    amazhist.handle.finish(handle)
+    handle.finish()

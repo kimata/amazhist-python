@@ -29,6 +29,7 @@ import my_lib.selenium_util
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 
+import amazhist.config
 import amazhist.const
 import amazhist.handle
 import amazhist.item
@@ -72,7 +73,7 @@ def _signal_handler(signum, frame):
     try:
         # Rich Live を一時停止して入力を受け付ける
         if _current_handle is not None:
-            amazhist.handle.pause_live(_current_handle)
+            _current_handle.pause_live()
 
         response = input("\n終了しますか？(y/N): ").strip().lower()
         if response == "y":
@@ -85,12 +86,12 @@ def _signal_handler(signum, frame):
 
         # Rich Live を再開
         if _current_handle is not None:
-            amazhist.handle.resume_live(_current_handle)
+            _current_handle.resume_live()
     except EOFError:
         # 入力が取得できない場合は継続
         logging.info("処理を継続します")
         if _current_handle is not None:
-            amazhist.handle.resume_live(_current_handle)
+            _current_handle.resume_live()
 
 
 def setup_signal_handler():
@@ -113,13 +114,13 @@ def _wait_for_loading(handle, sec=2):
     time.sleep(sec)
 
 
-def _resolve_captcha(handle):
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+def _resolve_captcha(handle: amazhist.handle.Handle):
+    driver, wait = handle.get_selenium_driver()
 
     logging.info("画像認証の解決を試みます")
 
     def _try_solve():
-        captcha_img_path = amazhist.handle.get_captcha_file_path(handle)
+        captcha_img_path = handle.config.captcha_file_path
         captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
 
         logging.info(f"画像を保存しました: {captcha_img_path}")
@@ -136,7 +137,7 @@ def _resolve_captcha(handle):
 
         if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) != 0:
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
             raise CaptchaError("CAPTCHA未解決")
 
@@ -152,15 +153,15 @@ def _resolve_captcha(handle):
         raise Exception("画像認証を解決できませんでした．")
 
 
-def _execute_login(handle):
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+def _execute_login(handle: amazhist.handle.Handle):
+    driver, wait = handle.get_selenium_driver()
 
     time.sleep(1)
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_email" and @type!="hidden"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').send_keys(
-            amazhist.handle.get_login_user(handle)
+            handle.get_login_user()
         )
 
         if len(driver.find_elements(By.XPATH, '//input[@id="continue"]')) != 0:
@@ -170,7 +171,7 @@ def _execute_login(handle):
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_password"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').send_keys(
-            amazhist.handle.get_login_pass(handle)
+            handle.get_login_pass()
         )
 
     if len(driver.find_elements(By.XPATH, '//input[@id="rememberMe"]')) != 0:
@@ -185,8 +186,8 @@ def _execute_login(handle):
         _resolve_captcha(handle)
 
 
-def _keep_logged_on(handle):
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+def _keep_logged_on(handle: amazhist.handle.Handle):
+    driver, wait = handle.get_selenium_driver()
 
     if not re.match("Amazonサインイン", driver.title):
         return
@@ -197,7 +198,7 @@ def _keep_logged_on(handle):
         _execute_login(handle)
         if re.match("Amazonサインイン", driver.title):
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
             raise LoginError("ログイン失敗")
 
@@ -234,12 +235,12 @@ def _gen_status_label_by_year(year):
     return _STATUS_ORDER_ITEM_BY_TARGET.format(target=_gen_target_text(year))
 
 
-def visit_url(handle, url, caller_name):
+def visit_url(handle: amazhist.handle.Handle, url, caller_name):
     """URLにアクセス
 
     TimeoutException が発生した場合はリトライします。
     """
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     def _load_page():
         driver.get(url)
@@ -256,19 +257,30 @@ def visit_url(handle, url, caller_name):
     )
 
 
-def _fetch_order_item_list_by_order_info(handle, order_info):
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+def _fetch_order_item_list_by_order_info(handle: amazhist.handle.Handle, order_info):
+    driver, wait = handle.get_selenium_driver()
 
-    visit_url(handle, order_info["url"], _get_caller_name())
-    _keep_logged_on(handle)
+    try:
+        visit_url(handle, order_info["url"], _get_caller_name())
+        _keep_logged_on(handle)
+    except TimeoutException as e:
+        logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order_info['no']}")
+        handle.record_error(
+            url=order_info["url"],
+            error_type=amazhist.const.ERROR_TYPE_TIMEOUT,
+            context="order",
+            message=str(e),
+            order_no=order_info["no"],
+        )
+        time.sleep(1)
+        return False
 
     if not amazhist.order.parse_order(handle, order_info):
         logging.warning("注文のパースに失敗しました: {no}".format(no=order_info["no"]))
         my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            driver, int(random.random() * 100), handle.config.debug_dir_path
         )
-        amazhist.handle.record_error(
-            handle,
+        handle.record_error(
             url=order_info["url"],
             error_type="parse_error",
             context="order",
@@ -281,17 +293,16 @@ def _fetch_order_item_list_by_order_info(handle, order_info):
     return True
 
 
-def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
+def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, page, retry=0):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     total_page = math.ceil(
-        amazhist.handle.get_order_count(handle, year) / amazhist.const.ORDER_COUNT_PER_PAGE
+        handle.get_order_count(year) / amazhist.const.ORDER_COUNT_PER_PAGE
     )
 
-    amazhist.handle.set_status(
-        handle,
+    handle.set_status(
         f"🔍 注文履歴を解析しています... {_gen_target_text(year)} {page}/{total_page} ページ",
     )
 
@@ -341,8 +352,8 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             ).text
             logging.info(f"キャンセル済みの注文をスキップしました: {no}")
             # キャンセル済みでも「確認した」としてプログレスを更新
-            amazhist.handle.get_progress_bar(handle, _gen_status_label_by_year(year)).update()
-            amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_ITEM_ALL).update()
+            handle.get_progress_bar(_gen_status_label_by_year(year)).update()
+            handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
             continue
 
         date_text = driver.find_element(
@@ -368,7 +379,7 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     time.sleep(1)
 
     for order_info in order_list:
-        if not amazhist.handle.get_order_stat(handle, order_info["no"]):
+        if not handle.get_order_stat(order_info["no"]):
             is_skipped |= not _fetch_order_item_list_by_order_info(handle, order_info)
         else:
             logging.info(
@@ -376,32 +387,32 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                     date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
                 )
             )
-        amazhist.handle.get_progress_bar(handle, _gen_status_label_by_year(year)).update()
-        amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_ITEM_ALL).update()
+        handle.get_progress_bar(_gen_status_label_by_year(year)).update()
+        handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
 
         # シャットダウンリクエストがあれば終了
         if is_shutdown_requested():
             logging.info("シャットダウンリクエストにより処理を中断します")
-            amazhist.handle.store_order_info(handle)
+            handle.store_order_info()
             return (True, True)
 
         if year == datetime.datetime.now().year:
-            last_item = amazhist.handle.get_last_item(handle, year)
+            last_item = handle.get_last_item(year)
             if (
-                amazhist.handle.get_year_checked(handle, year)
+                handle.get_year_checked(year)
                 and (last_item is not None)
                 and (last_item["no"] == order_info["no"])
             ):
                 logging.info("最新の注文を見つけました。以降のページの解析をスキップします")
                 for i in range(total_page):
-                    amazhist.handle.set_page_checked(handle, year, i + 1)
+                    handle.set_page_checked(year, i + 1)
 
     return (is_skipped, page >= total_page)
 
 
-def fetch_year_list(handle):
+def fetch_year_list(handle: amazhist.handle.Handle):
     """年リストを取得"""
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     visit_url(handle, amazhist.const.HIST_URL, _get_caller_name())
 
@@ -434,57 +445,56 @@ def fetch_year_list(handle):
         )
     )
 
-    amazhist.handle.set_year_list(handle, year_list)
+    handle.set_year_list(year_list)
 
     return year_list
 
 
-def _skip_order_item_list_by_year_page(handle, year, page):
+def _skip_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, page):
     logging.info(f"{year}年 {page} ページの注文をスキップしました [キャッシュ]")
     incr_order = min(
-        amazhist.handle.get_order_count(handle, year)
-        - amazhist.handle.get_progress_bar(handle, _gen_status_label_by_year(year)).count,
+        handle.get_order_count(year)
+        - handle.get_progress_bar(_gen_status_label_by_year(year)).count,
         amazhist.const.ORDER_COUNT_PER_PAGE,
     )
-    amazhist.handle.get_progress_bar(handle, _gen_status_label_by_year(year)).update(incr_order)
-    amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_ITEM_ALL).update(incr_order)
+    handle.get_progress_bar(_gen_status_label_by_year(year)).update(incr_order)
+    handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update(incr_order)
 
     # NOTE: これ，状況によっては最終ページで成り立たないので，良くない
     return incr_order != amazhist.const.ORDER_COUNT_PER_PAGE
 
 
-def _fetch_order_item_list_by_year(handle, year, start_page=1):
+def _fetch_order_item_list_by_year(handle: amazhist.handle.Handle, year, start_page=1):
     visit_url(handle, gen_hist_url(year, start_page), _get_caller_name())
 
     _keep_logged_on(handle)
 
-    year_list = amazhist.handle.get_year_list(handle)
+    year_list = handle.get_year_list()
 
     logging.info(
         f"{year}年の注文を確認しています ({year_list.index(year) + 1}/{len(year_list)})"
     )
 
-    amazhist.handle.set_progress_bar(
-        handle,
+    handle.set_progress_bar(
         _gen_status_label_by_year(year),
-        amazhist.handle.get_order_count(handle, year),
+        handle.get_order_count(year),
     )
 
     page = start_page
     is_skipped = False
     while True:
-        if not amazhist.handle.get_page_checked(handle, year, page):
+        if not handle.get_page_checked(year, page):
             is_skipped_page, is_last = _fetch_order_item_list_by_year_page(handle, year, page)
 
             if not is_skipped_page:
-                amazhist.handle.set_page_checked(handle, year, page)
+                handle.set_page_checked(year, page)
 
             is_skipped |= is_skipped_page
             time.sleep(1)
         else:
             is_last = _skip_order_item_list_by_year_page(handle, year, page)
 
-        amazhist.handle.store_order_info(handle)
+        handle.store_order_info()
 
         # シャットダウンリクエストがあれば終了
         if is_shutdown_requested():
@@ -496,51 +506,50 @@ def _fetch_order_item_list_by_year(handle, year, start_page=1):
         page += 1
 
     if not is_skipped and not is_shutdown_requested():
-        amazhist.handle.set_year_checked(handle, year)
+        handle.set_year_checked(year)
 
 
-def _fetch_order_count_by_year(handle, year):
-    amazhist.handle.set_status(
-        handle,
+def _fetch_order_count_by_year(handle: amazhist.handle.Handle, year):
+    handle.set_status(
         f"🔍 注文件数を調べています... {_gen_target_text(year)}",
     )
 
     return amazhist.order.parse_order_count(handle, year)
 
 
-def _fetch_order_count(handle):
-    year_list = amazhist.handle.get_year_list(handle)
+def _fetch_order_count(handle: amazhist.handle.Handle):
+    year_list = handle.get_year_list()
 
     logging.info("注文件数を収集しています")
 
-    amazhist.handle.set_progress_bar(handle, _STATUS_ORDER_COUNT, len(year_list))
+    handle.set_progress_bar(_STATUS_ORDER_COUNT, len(year_list))
 
     total_count = 0
     for year in year_list:
-        if year >= amazhist.handle.get_cache_last_modified(handle).year:
+        if year >= handle.get_cache_last_modified().year:
             count = _fetch_order_count_by_year(handle, year)
-            amazhist.handle.set_order_count(handle, year, count)
+            handle.set_order_count(year, count)
             logging.info(f"{year}年: {count:4,} 件")
         else:
-            count = amazhist.handle.get_order_count(handle, year)
+            count = handle.get_order_count(year)
             logging.info(f"{year}年: {count:4,} 件 [キャッシュ]")
 
         total_count += count
-        amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_COUNT).update()
+        handle.get_progress_bar(_STATUS_ORDER_COUNT).update()
 
     logging.info(f"合計注文数: {total_count:,} 件")
 
-    amazhist.handle.store_order_info(handle)
+    handle.store_order_info()
 
 
-def _fetch_order_item_list_all_year(handle):
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+def _fetch_order_item_list_all_year(handle: amazhist.handle.Handle):
+    driver, wait = handle.get_selenium_driver()
 
     year_list = fetch_year_list(handle)
     _fetch_order_count(handle)
 
-    amazhist.handle.set_progress_bar(
-        handle, _STATUS_ORDER_ITEM_ALL, amazhist.handle.get_total_order_count(handle)
+    handle.set_progress_bar(
+        _STATUS_ORDER_ITEM_ALL, handle.get_total_order_count()
     )
 
     for year in year_list:
@@ -550,56 +559,56 @@ def _fetch_order_item_list_all_year(handle):
 
         if (
             (year == datetime.datetime.now().year)
-            or (year == amazhist.handle.get_cache_last_modified(handle).year)
+            or (year == handle.get_cache_last_modified().year)
             or (type(year) is str)
-            or (not amazhist.handle.get_year_checked(handle, year))
+            or (not handle.get_year_checked(year))
         ):
             _fetch_order_item_list_by_year(handle, year)
         else:
             logging.info(
                 f"{year}年の注文処理済み ({year_list.index(year) + 1}/{len(year_list)}) [キャッシュ]"
             )
-            amazhist.handle.get_progress_bar(handle, _STATUS_ORDER_ITEM_ALL).update(
-                amazhist.handle.get_order_count(handle, year)
+            handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update(
+                handle.get_order_count(year)
             )
 
 
-def fetch_order_item_list(handle):
+def fetch_order_item_list(handle: amazhist.handle.Handle):
     """注文履歴を収集"""
     global _current_handle
 
-    amazhist.handle.set_status(handle, "🤖 巡回ロボットの準備をします...")
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    handle.set_status("🤖 巡回ロボットの準備をします...")
+    driver, wait = handle.get_selenium_driver()
 
     # シグナルハンドラを設定（handle を保存してシグナルハンドラからアクセス可能にする）
     _current_handle = handle
     setup_signal_handler()
     reset_shutdown_flag()
 
-    amazhist.handle.set_status(handle, "📥 注文履歴の収集を開始します...")
+    handle.set_status("📥 注文履歴の収集を開始します...")
 
     try:
         _fetch_order_item_list_all_year(handle)
     except Exception:
         if not is_shutdown_requested():
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
         raise
 
     if is_shutdown_requested():
-        amazhist.handle.set_status(handle, "🛑 注文履歴の収集を中断しました")
+        handle.set_status("🛑 注文履歴の収集を中断しました")
     else:
-        amazhist.handle.set_status(handle, "✅ 注文履歴の収集が完了しました")
+        handle.set_status("✅ 注文履歴の収集が完了しました")
 
 
-def _retry_failed_orders(handle) -> tuple[int, int]:
+def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
     """エラーが発生した注文を再取得
 
     Returns:
         (成功件数, 失敗件数)
     """
-    failed_orders = amazhist.handle.get_failed_order_numbers(handle)
+    failed_orders = handle.get_failed_order_numbers()
 
     if not failed_orders:
         logging.info("再取得対象の注文はありません")
@@ -607,7 +616,7 @@ def _retry_failed_orders(handle) -> tuple[int, int]:
 
     logging.info(f"エラーが発生した注文を再取得します: {len(failed_orders)} 件")
 
-    amazhist.handle.set_progress_bar(handle, "[再取得] 注文", len(failed_orders))
+    handle.set_progress_bar("[再取得] 注文", len(failed_orders))
 
     success_count = 0
     fail_count = 0
@@ -616,7 +625,7 @@ def _retry_failed_orders(handle) -> tuple[int, int]:
         if is_shutdown_requested():
             break
 
-        amazhist.handle.set_status(handle, f"🔄 注文を再取得しています: {no}")
+        handle.set_status(f"🔄 注文を再取得しています: {no}")
 
         order_info = {
             "no": no,
@@ -631,7 +640,7 @@ def _retry_failed_orders(handle) -> tuple[int, int]:
             _keep_logged_on(handle)
 
             if amazhist.order.parse_order(handle, order_info):
-                amazhist.handle.mark_errors_resolved_by_order_no(handle, no)
+                handle.mark_errors_resolved_by_order_no(no)
                 logging.info(f"注文の再取得に成功しました: {no}")
                 success_count += 1
             else:
@@ -641,19 +650,19 @@ def _retry_failed_orders(handle) -> tuple[int, int]:
             logging.info(f"注文の再取得をスキップしました: {no} ({e})")
             fail_count += 1
 
-        amazhist.handle.get_progress_bar(handle, "[再取得] 注文").update()
+        handle.get_progress_bar("[再取得] 注文").update()
         time.sleep(1)
 
     return (success_count, fail_count)
 
 
-def _retry_failed_categories(handle) -> tuple[int, int]:
+def _retry_failed_categories(handle: amazhist.handle.Handle) -> tuple[int, int]:
     """カテゴリ取得に失敗したアイテムを再取得
 
     Returns:
         (成功件数, 失敗件数)
     """
-    failed_items = amazhist.handle.get_failed_category_items(handle)
+    failed_items = handle.get_failed_category_items()
 
     if not failed_items:
         logging.info("再取得対象のカテゴリはありません")
@@ -661,7 +670,7 @@ def _retry_failed_categories(handle) -> tuple[int, int]:
 
     logging.info(f"カテゴリ取得に失敗したアイテムを再取得します: {len(failed_items)} 件")
 
-    amazhist.handle.set_progress_bar(handle, "[再取得] カテゴリ", len(failed_items))
+    handle.set_progress_bar("[再取得] カテゴリ", len(failed_items))
 
     success_count = 0
     fail_count = 0
@@ -673,14 +682,14 @@ def _retry_failed_categories(handle) -> tuple[int, int]:
         name = item.get("name") or "不明"
         url = item["url"]
 
-        amazhist.handle.set_status(handle, f"🔄 カテゴリを再取得しています: {name[:30]}")
+        handle.set_status(f"🔄 カテゴリを再取得しています: {name[:30]}")
 
         try:
             # record_error=False でエラー記録を抑制（既にエラーログに記録されているため）
             category = amazhist.item.fetch_item_category(handle, url, record_error=False)
             if category:
-                amazhist.handle.update_item_category(handle, url, category)
-                amazhist.handle.mark_error_resolved(handle, item["error_id"])
+                handle.update_item_category(url, category)
+                handle.mark_error_resolved(item["error_id"])
                 logging.info(f"カテゴリの再取得に成功しました: {name}")
                 success_count += 1
             else:
@@ -690,19 +699,19 @@ def _retry_failed_categories(handle) -> tuple[int, int]:
             logging.info(f"カテゴリの再取得をスキップしました: {name} ({e})")
             fail_count += 1
 
-        amazhist.handle.get_progress_bar(handle, "[再取得] カテゴリ").update()
+        handle.get_progress_bar("[再取得] カテゴリ").update()
         time.sleep(0.5)
 
     return (success_count, fail_count)
 
 
-def _retry_failed_thumbnails(handle) -> tuple[int, int]:
+def _retry_failed_thumbnails(handle: amazhist.handle.Handle) -> tuple[int, int]:
     """サムネイル取得に失敗したアイテムを再取得
 
     Returns:
         (成功件数, 失敗件数)
     """
-    failed_items = amazhist.handle.get_failed_thumbnail_items(handle)
+    failed_items = handle.get_failed_thumbnail_items()
 
     if not failed_items:
         logging.info("再取得対象のサムネイルはありません")
@@ -710,7 +719,7 @@ def _retry_failed_thumbnails(handle) -> tuple[int, int]:
 
     logging.info(f"サムネイル取得に失敗したアイテムを再取得します: {len(failed_items)} 件")
 
-    amazhist.handle.set_progress_bar(handle, "[再取得] サムネイル", len(failed_items))
+    handle.set_progress_bar("[再取得] サムネイル", len(failed_items))
 
     success_count = 0
     fail_count = 0
@@ -725,41 +734,41 @@ def _retry_failed_thumbnails(handle) -> tuple[int, int]:
 
         if not asin:
             logging.info(f"ASIN が不明のためスキップしました: {name}")
-            amazhist.handle.get_progress_bar(handle, "[再取得] サムネイル").update()
+            handle.get_progress_bar("[再取得] サムネイル").update()
             fail_count += 1
             continue
 
-        amazhist.handle.set_status(handle, f"🔄 サムネイルを再取得しています: {name[:30]}")
+        handle.set_status(f"🔄 サムネイルを再取得しています: {name[:30]}")
 
         try:
             item_for_thumb = {"asin": asin}
             amazhist.item._save_thumbnail(handle, item_for_thumb, thumb_url)
-            amazhist.handle.mark_error_resolved(handle, item["error_id"])
+            handle.mark_error_resolved(item["error_id"])
             logging.info(f"サムネイルの再取得に成功しました: {name}")
             success_count += 1
         except Exception as e:
             logging.info(f"サムネイルの再取得をスキップしました: {name} ({e})")
             fail_count += 1
 
-        amazhist.handle.get_progress_bar(handle, "[再取得] サムネイル").update()
+        handle.get_progress_bar("[再取得] サムネイル").update()
         time.sleep(0.5)
 
     return (success_count, fail_count)
 
 
-def retry_failed_items(handle):
+def retry_failed_items(handle: amazhist.handle.Handle):
     """エラーが発生したアイテムを再取得"""
     global _current_handle
 
-    amazhist.handle.set_status(handle, "🤖 巡回ロボットの準備をします...")
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    handle.set_status("🤖 巡回ロボットの準備をします...")
+    driver, wait = handle.get_selenium_driver()
 
     # シグナルハンドラを設定
     _current_handle = handle
     setup_signal_handler()
     reset_shutdown_flag()
 
-    amazhist.handle.set_status(handle, "🔄 エラーが発生したアイテムを再取得します...")
+    handle.set_status("🔄 エラーが発生したアイテムを再取得します...")
 
     try:
         # 注文の再取得
@@ -783,14 +792,14 @@ def retry_failed_items(handle):
     except Exception:
         if not is_shutdown_requested():
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
         raise
 
     if is_shutdown_requested():
-        amazhist.handle.set_status(handle, "🛑 再取得を中断しました")
+        handle.set_status("🛑 再取得を中断しました")
     else:
-        amazhist.handle.set_status(handle, "✅ 再取得が完了しました")
+        handle.set_status("✅ 再取得が完了しました")
 
 
 if __name__ == "__main__":
@@ -804,7 +813,7 @@ if __name__ == "__main__":
     my_lib.logger.init("test", level=logging.INFO)
 
     config = my_lib.config.load(args["-c"])
-    handle = amazhist.handle.create(config)
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
 
     try:
         if args["-n"] is not None:
@@ -821,16 +830,16 @@ if __name__ == "__main__":
             year = int(args["-y"])
             start_page = int(args["-s"])
 
-            amazhist.handle.set_year_list(handle, [year])
+            handle.set_year_list([year])
 
             count = _fetch_order_count_by_year(handle, year)
-            amazhist.handle.set_order_count(handle, year, count)
-            amazhist.handle.set_progress_bar(handle, _STATUS_ORDER_ITEM_ALL, count)
+            handle.set_order_count(year, count)
+            handle.set_progress_bar(_STATUS_ORDER_ITEM_ALL, count)
 
             _fetch_order_item_list_by_year(handle, year, start_page)
     except Exception:
-        driver, wait = amazhist.handle.get_selenium_driver(handle)
+        driver, wait = handle.get_selenium_driver()
         logging.error(traceback.format_exc())
         my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            driver, int(random.random() * 100), handle.config.debug_dir_path
         )

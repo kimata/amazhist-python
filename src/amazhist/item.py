@@ -14,13 +14,14 @@ import time
 import my_lib.selenium_util
 from selenium.webdriver.common.by import By
 
+import amazhist.config
 import amazhist.const
 import amazhist.crawler
 import amazhist.handle
 import amazhist.parser
 
 
-def fetch_item_category(handle, item_url: str, record_error: bool = True) -> list[str]:
+def fetch_item_category(handle: amazhist.handle.Handle, item_url: str, record_error: bool = True) -> list[str]:
     """商品ページからカテゴリ情報を取得
 
     Args:
@@ -35,7 +36,7 @@ def fetch_item_category(handle, item_url: str, record_error: bool = True) -> lis
     if amazhist.crawler.is_shutdown_requested():
         return []
 
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     def _fetch():
         with my_lib.selenium_util.browser_tab(driver, item_url):
@@ -53,8 +54,7 @@ def fetch_item_category(handle, item_url: str, record_error: bool = True) -> lis
     except Exception as e:
         logging.warning(f"カテゴリの取得に失敗しました: {item_url}")
         if record_error:
-            amazhist.handle.record_error(
-                handle,
+            handle.record_error(
                 url=item_url,
                 error_type=amazhist.const.ERROR_TYPE_FETCH,
                 context="category",
@@ -63,7 +63,7 @@ def fetch_item_category(handle, item_url: str, record_error: bool = True) -> lis
         return []
 
 
-def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
+def _save_thumbnail(handle: amazhist.handle.Handle, item: dict, thumb_url: str) -> None:
     """サムネイル画像を保存
 
     Args:
@@ -75,9 +75,9 @@ def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
     if amazhist.crawler.is_shutdown_requested():
         return
 
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
-    thumb_path = amazhist.handle.get_thumb_path(handle, item)
+    thumb_path = handle.get_thumb_path(item)
     if thumb_path is None:
         return
 
@@ -88,7 +88,7 @@ def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
             f.write(png_data)
 
 
-def parse_item(handle, item_xpath: str) -> dict | None:
+def parse_item(handle: amazhist.handle.Handle, item_xpath: str) -> dict | None:
     """商品情報をパース（新形式）
 
     Args:
@@ -102,7 +102,7 @@ def parse_item(handle, item_xpath: str) -> dict | None:
     if amazhist.crawler.is_shutdown_requested():
         return None
 
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     # 商品名とリンク
     link = driver.find_element(
@@ -140,8 +140,7 @@ def parse_item(handle, item_xpath: str) -> dict | None:
             )
         except Exception as e:
             logging.warning(f"サムネイル画像の取得に失敗しました: {name} ({e})")
-            amazhist.handle.record_error(
-                handle,
+            handle.record_error(
                 url=thumb_url,
                 error_type=amazhist.const.ERROR_TYPE_FETCH,
                 context="thumbnail",
@@ -160,13 +159,13 @@ def parse_item(handle, item_xpath: str) -> dict | None:
         if price is None:
             logging.warning(f"価格のパースに失敗しました: {price_text}")
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
             price = 0
     else:
         logging.warning(f"価格が見つかりませんでした: {name}")
         my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            driver, int(random.random() * 100), handle.config.debug_dir_path
         )
         price = 0
 
@@ -194,7 +193,7 @@ def parse_item(handle, item_xpath: str) -> dict | None:
     }
 
 
-def _parse_item_giftcard(handle, item_xpath: str) -> dict:
+def _parse_item_giftcard(handle: amazhist.handle.Handle, item_xpath: str) -> dict:
     """ギフトカードの商品情報をパース（旧形式）
 
     Args:
@@ -204,7 +203,7 @@ def _parse_item_giftcard(handle, item_xpath: str) -> dict:
     Returns:
         商品情報の辞書
     """
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     count = 1
 
@@ -226,7 +225,7 @@ def _parse_item_giftcard(handle, item_xpath: str) -> dict:
     }
 
 
-def _parse_item_default(handle, item_xpath: str) -> dict:
+def _parse_item_default(handle: amazhist.handle.Handle, item_xpath: str) -> dict:
     """デフォルトの商品情報をパース（旧形式）
 
     Args:
@@ -236,7 +235,7 @@ def _parse_item_default(handle, item_xpath: str) -> dict:
     Returns:
         商品情報の辞書
     """
-    driver, wait = amazhist.handle.get_selenium_driver(handle)
+    driver, wait = handle.get_selenium_driver()
 
     count = int(
         my_lib.selenium_util.get_text(

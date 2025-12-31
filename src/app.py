@@ -27,6 +27,7 @@ import my_lib.selenium_util
 import rich.console
 import rich.table
 
+import amazhist.config
 import amazhist.crawler
 import amazhist.handle
 import amazhist.history
@@ -37,76 +38,76 @@ VERSION = "0.1.0"
 SCHEMA_CONFIG = "schema/config.schema"
 
 
-def execute_fetch(handle):
+def execute_fetch(handle: amazhist.handle.Handle):
     try:
         amazhist.crawler.fetch_order_item_list(handle)
     except Exception:
         # シャットダウン要求時はダンプをスキップ（ドライバーが既に閉じている可能性が高い）
         if not amazhist.crawler.is_shutdown_requested():
-            driver, wait = amazhist.handle.get_selenium_driver(handle)
+            driver, wait = handle.get_selenium_driver()
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
             raise
 
 
-def execute_retry(handle):
+def execute_retry(handle: amazhist.handle.Handle):
     """エラーが発生したアイテムを再取得"""
     try:
         amazhist.crawler.retry_failed_items(handle)
     except Exception:
         if not amazhist.crawler.is_shutdown_requested():
-            driver, wait = amazhist.handle.get_selenium_driver(handle)
+            driver, wait = handle.get_selenium_driver()
             my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+                driver, int(random.random() * 100), handle.config.debug_dir_path
             )
             raise
 
 
 def execute_retry_mode(config, is_need_thumb=True):
     """エラーが発生したアイテムを再取得して Excel を出力"""
-    handle = amazhist.handle.create(config)
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
 
     try:
         execute_retry(handle)
 
         amazhist.history.generate_table_excel(
-            handle, amazhist.handle.get_excel_file_path(handle), is_need_thumb
+            handle, handle.config.excel_file_path, is_need_thumb
         )
 
-        amazhist.handle.finish(handle)
+        handle.finish()
     except Exception:
         if amazhist.crawler.is_shutdown_requested():
-            amazhist.handle.finish(handle)
+            handle.finish()
         else:
-            amazhist.handle.set_status(handle, "❌ エラーが発生しました", is_error=True)
+            handle.set_status("❌ エラーが発生しました", is_error=True)
             logging.error(traceback.format_exc())
 
-    amazhist.handle.pause_live(handle)
+    handle.pause_live()
     input("完了しました．エンターを押すと終了します．")
 
 
 def execute(config, is_export_mode=False, is_force_mode=False, is_need_thumb=True):
-    handle = amazhist.handle.create(config, force_mode=is_force_mode)
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config), force_mode=is_force_mode)
 
     try:
         if not is_export_mode:
             execute_fetch(handle)
 
         amazhist.history.generate_table_excel(
-            handle, amazhist.handle.get_excel_file_path(handle), is_need_thumb
+            handle, handle.config.excel_file_path, is_need_thumb
         )
 
-        amazhist.handle.finish(handle)
+        handle.finish()
     except Exception:
         # シャットダウン要求時は正常終了扱い（tracebackを出さない）
         if amazhist.crawler.is_shutdown_requested():
-            amazhist.handle.finish(handle)
+            handle.finish()
         else:
-            amazhist.handle.set_status(handle, "❌ エラーが発生しました", is_error=True)
+            handle.set_status("❌ エラーが発生しました", is_error=True)
             logging.error(traceback.format_exc())
 
-    amazhist.handle.pause_live(handle)
+    handle.pause_live()
     input("完了しました．エンターを押すと終了します．")
 
 
@@ -117,16 +118,16 @@ def show_error_log(config, show_all=False):
         config: 設定
         show_all: True の場合、解決済みエラーも表示
     """
-    handle = amazhist.handle.create(config)
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
 
     try:
         console = rich.console.Console()
 
         if show_all:
-            errors = amazhist.handle.get_all_errors(handle)
+            errors = handle.get_all_errors()
             title = "エラーログ（全件）"
         else:
-            errors = amazhist.handle.get_unresolved_errors(handle)
+            errors = handle.get_unresolved_errors()
             title = "エラーログ（未解決）"
 
         if not errors:
@@ -134,8 +135,8 @@ def show_error_log(config, show_all=False):
             return
 
         # エラー件数のサマリーを表示
-        unresolved_count = amazhist.handle.get_error_count(handle, resolved=False)
-        resolved_count = amazhist.handle.get_error_count(handle, resolved=True)
+        unresolved_count = handle.get_error_count(resolved=False)
+        resolved_count = handle.get_error_count(resolved=True)
         console.print(f"\n[bold]{title}[/bold]")
         console.print(f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n")
 
@@ -192,7 +193,7 @@ def show_error_log(config, show_all=False):
         console.print()
 
     finally:
-        amazhist.handle.finish(handle)
+        handle.finish()
 
 
 ######################################################################

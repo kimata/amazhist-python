@@ -6,18 +6,23 @@ import logging
 import os
 import pathlib
 import time
-from typing import Any
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import my_lib.selenium_util
-import openpyxl.styles
 import rich.console
 import rich.live
 import rich.progress
 import rich.table
 import rich.text
-from selenium.webdriver.support.wait import WebDriverWait
+import selenium.webdriver.remote.webdriver
+import selenium.webdriver.support.wait
 
-import amazhist.const
+if TYPE_CHECKING:
+    from selenium.webdriver.remote.webdriver import WebDriver
+    from selenium.webdriver.support.wait import WebDriverWait
+
+import amazhist.config
 import amazhist.database
 
 # SQLite スキーマファイルのパス
@@ -28,21 +33,27 @@ STATUS_STYLE_NORMAL = "bold #FFFFFF on #e47911"  # Amazon オレンジ
 STATUS_STYLE_ERROR = "bold white on red"
 
 
+@dataclass
+class SeleniumInfo:
+    driver: selenium.webdriver.remote.webdriver.WebDriver
+    wait: selenium.webdriver.support.wait.WebDriverWait
+
+
 class _DisplayRenderable:
     """Live 表示用の動的 renderable クラス"""
 
-    def __init__(self, handle: dict) -> None:
+    def __init__(self, handle: Handle) -> None:
         self._handle = handle
 
     def __rich__(self) -> Any:
         """Rich が描画時に呼び出すメソッド"""
-        return _create_display(self._handle)
+        return self._handle._create_display()
 
 
 class ProgressTask:
     """Rich Progress のタスクを管理するクラス"""
 
-    def __init__(self, handle: dict, task_id: rich.progress.TaskID, total: int) -> None:
+    def __init__(self, handle: Handle, task_id: rich.progress.TaskID, total: int) -> None:
         self._handle = handle
         self._task_id = task_id
         self._total = total
@@ -59,482 +70,349 @@ class ProgressTask:
     def update(self, advance: int = 1) -> None:
         """プログレスを進める"""
         self._count += advance
-        if self._handle["rich"]["progress"] is not None:
-            self._handle["rich"]["progress"].update(self._task_id, advance=advance)
-            _refresh_display(self._handle)
+        if self._handle._progress is not None:
+            self._handle._progress.update(self._task_id, advance=advance)
+            self._handle._refresh_display()
 
 
-def _init_progress(handle: dict) -> None:
-    """Progress と Live を初期化"""
-    console = handle["rich"]["console"]
+@dataclass
+class Handle:
+    config: amazhist.config.Config
+    force_mode: bool = False
+    selenium: SeleniumInfo | None = None
+    _db: amazhist.database.Database | None = field(default=None, repr=False)
 
-    # 非TTY環境では Live を使用しない
-    if not console.is_terminal:
-        return
+    # Rich 関連
+    _console: rich.console.Console = field(default_factory=rich.console.Console)
+    _progress: rich.progress.Progress | None = field(default=None, repr=False)
+    _live: rich.live.Live | None = field(default=None, repr=False)
+    _start_time: float = field(default_factory=time.time)
+    _status_text: str = ""
+    _status_is_error: bool = False
+    _display_renderable: _DisplayRenderable | None = field(default=None, repr=False)
 
-    handle["rich"]["progress"] = rich.progress.Progress(
-        rich.progress.TextColumn("[bold]{task.description:<31}"),
-        rich.progress.BarColumn(bar_width=None),
-        rich.progress.TaskProgressColumn(),
-        rich.progress.TextColumn("{task.completed:>5} / {task.total:<5}"),
-        rich.progress.TimeElapsedColumn(),
-        console=console,
-        expand=True,
-    )
-    handle["rich"]["start_time"] = time.time()
-    handle["rich"]["display_renderable"] = _DisplayRenderable(handle)
-    handle["rich"]["live"] = rich.live.Live(
-        handle["rich"]["display_renderable"],
-        console=console,
-        refresh_per_second=4,
-    )
-    handle["rich"]["live"].start()
+    # プログレスタスク管理
+    progress_bar: dict[str, ProgressTask] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        self._prepare_directory()
+        self._init_database()
+        self._init_progress()
 
-def _create_status_bar(handle: dict) -> rich.table.Table:
-    """ステータスバーを作成（左: タイトル、中央: 進捗、右: 時間）"""
-    style = STATUS_STYLE_ERROR if handle["rich"]["status_is_error"] else STATUS_STYLE_NORMAL
-    elapsed = time.time() - handle["rich"]["start_time"]
-    elapsed_str = f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
+        if self.force_mode:
+            logging.info("強制収集モード: キャッシュを無視してデータを収集します")
 
-    # ターミナル幅を取得し、明示的に幅を制限
-    # NOTE: tmux 環境では幅計算が実際と異なることがあるため、余裕を持たせる
-    console = handle["rich"]["console"]
-    terminal_width = console.width
-    if os.environ.get("TMUX"):
-        terminal_width -= 2
+    def _init_database(self) -> None:
+        """データベースを初期化"""
+        self._db = amazhist.database.open_database(
+            self.config.cache_file_path,
+            SQLITE_SCHEMA_PATH,
+        )
+        # NOTE: 再開した時には巡回すべきなのでページステータスを削除しておく
+        for time_filter in [
+            datetime.datetime.now().year,
+            self.get_cache_last_modified().year,
+        ]:
+            self._db.clear_page_status(time_filter)
 
-    table = rich.table.Table(
-        show_header=False,
-        show_edge=False,
-        box=None,
-        padding=0,
-        expand=False,  # expand=False にして幅を明示的に制御
-        width=terminal_width,  # ターミナル幅に制限
-        style=style,
-    )
-    table.add_column("title", justify="left", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
-    table.add_column("status", justify="center", ratio=3, no_wrap=True, overflow="ellipsis", style=style)
-    table.add_column("time", justify="right", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
+    @property
+    def db(self) -> amazhist.database.Database:
+        """データベースインスタンスを取得"""
+        if self._db is None:
+            raise RuntimeError("Database is not initialized")
+        return self._db
 
-    table.add_row(
-        rich.text.Text(" 🛒 アマゾン ", style=style),
-        rich.text.Text(handle["rich"]["status_text"], style=style),
-        rich.text.Text(f" {elapsed_str} ", style=style),
-    )
+    def _init_progress(self) -> None:
+        """Progress と Live を初期化"""
+        # 非TTY環境では Live を使用しない
+        if not self._console.is_terminal:
+            return
 
-    return table
+        self._progress = rich.progress.Progress(
+            rich.progress.TextColumn("[bold]{task.description:<31}"),
+            rich.progress.BarColumn(bar_width=None),
+            rich.progress.TaskProgressColumn(),
+            rich.progress.TextColumn("{task.completed:>5} / {task.total:<5}"),
+            rich.progress.TimeElapsedColumn(),
+            console=self._console,
+            expand=True,
+        )
+        self._start_time = time.time()
+        self._display_renderable = _DisplayRenderable(self)
+        self._live = rich.live.Live(
+            self._display_renderable,
+            console=self._console,
+            refresh_per_second=4,
+        )
+        self._live.start()
 
+    def _create_status_bar(self) -> rich.table.Table:
+        """ステータスバーを作成（左: タイトル、中央: 進捗、右: 時間）"""
+        style = STATUS_STYLE_ERROR if self._status_is_error else STATUS_STYLE_NORMAL
+        elapsed = time.time() - self._start_time
+        elapsed_str = f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
 
-def _create_display(handle: dict) -> Any:
-    """表示内容を作成"""
-    status_bar = _create_status_bar(handle)
-    progress = handle["rich"]["progress"]
-    if progress is not None and len(progress.tasks) > 0:
-        return rich.console.Group(status_bar, progress)
-    return status_bar
+        # ターミナル幅を取得し、明示的に幅を制限
+        # NOTE: tmux 環境では幅計算が実際と異なることがあるため、余裕を持たせる
+        terminal_width = self._console.width
+        if os.environ.get("TMUX"):
+            terminal_width -= 2
 
+        table = rich.table.Table(
+            show_header=False,
+            show_edge=False,
+            box=None,
+            padding=0,
+            expand=False,  # expand=False にして幅を明示的に制御
+            width=terminal_width,  # ターミナル幅に制限
+            style=style,
+        )
+        table.add_column("title", justify="left", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
+        table.add_column("status", justify="center", ratio=3, no_wrap=True, overflow="ellipsis", style=style)
+        table.add_column("time", justify="right", ratio=1, no_wrap=True, overflow="ellipsis", style=style)
 
-def _refresh_display(handle: dict) -> None:
-    """表示を強制的に再描画"""
-    live = handle["rich"]["live"]
-    if live is not None:
-        live.refresh()
+        table.add_row(
+            rich.text.Text(" 🛒 アマゾン ", style=style),
+            rich.text.Text(self._status_text, style=style),
+            rich.text.Text(f" {elapsed_str} ", style=style),
+        )
 
+        return table
 
-def pause_live(handle: dict) -> None:
-    """Live 表示を一時停止（input() の前に呼び出す）"""
-    live = handle["rich"]["live"]
-    if live is not None:
-        live.stop()
+    def _create_display(self) -> Any:
+        """表示内容を作成"""
+        status_bar = self._create_status_bar()
+        if self._progress is not None and len(self._progress.tasks) > 0:
+            return rich.console.Group(status_bar, self._progress)
+        return status_bar
 
+    def _refresh_display(self) -> None:
+        """表示を強制的に再描画"""
+        if self._live is not None:
+            self._live.refresh()
 
-def resume_live(handle: dict) -> None:
-    """Live 表示を再開（input() の後に呼び出す）"""
-    live = handle["rich"]["live"]
-    if live is not None:
-        live.start()
+    def pause_live(self) -> None:
+        """Live 表示を一時停止（input() の前に呼び出す）"""
+        if self._live is not None:
+            self._live.stop()
 
+    def resume_live(self) -> None:
+        """Live 表示を再開（input() の後に呼び出す）"""
+        if self._live is not None:
+            self._live.start()
 
-def create(config, force_mode=False):
-    handle = {
-        "rich": {
-            "console": rich.console.Console(),
-            "progress": None,
-            "live": None,
-            "start_time": time.time(),
-            "status_text": "",
-            "status_is_error": False,
-            "display_renderable": None,
-        },
-        "progress_bar": {},
-        "config": config,
-        "db": None,
-        "force_mode": force_mode,
-    }
+    # --- Selenium 関連 ---
+    def get_selenium_driver(self) -> tuple[WebDriver, WebDriverWait]:
+        if self.selenium is not None:
+            return (self.selenium.driver, self.selenium.wait)
 
-    prepare_directory(handle)
-    _init_progress(handle)
-    _init_database(handle)
-
-    if force_mode:
-        logging.info("強制収集モード: キャッシュを無視してデータを収集します")
-
-    return handle
-
-
-def _init_database(handle: dict) -> None:
-    """データベースを初期化"""
-    cache_path = get_cache_file_path(handle)
-
-    # データベースを開く
-    handle["db"] = amazhist.database.open_database(cache_path, SQLITE_SCHEMA_PATH)
-
-    # NOTE: 再開した時には巡回すべきなのでページステータスを削除しておく
-    db = handle["db"]
-    for time_filter in [
-        datetime.datetime.now().year,
-        get_cache_last_modified(handle).year,
-    ]:
-        db.clear_page_status(time_filter)
-
-
-def get_login_user(handle):
-    return handle["config"]["login"]["amazon"]["user"]
-
-
-def get_login_pass(handle):
-    return handle["config"]["login"]["amazon"]["pass"]
-
-
-def prepare_directory(handle):
-    get_selenium_data_dir_path(handle).mkdir(parents=True, exist_ok=True)
-    get_debug_dir_path(handle).mkdir(parents=True, exist_ok=True)
-    get_thumb_dir_path(handle).mkdir(parents=True, exist_ok=True)
-
-    get_cache_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
-    get_captcha_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
-    get_excel_file_path(handle).parent.mkdir(parents=True, exist_ok=True)
-
-
-def get_excel_font(handle):
-    font_config = handle["config"]["output"]["excel"]["font"]
-    return openpyxl.styles.Font(name=font_config["name"], size=font_config["size"])
-
-
-def get_cache_file_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["amazon"]["cache"]["order"])
-
-
-# NOTE: 後方互換性のためのエイリアス（typo）
-def get_caceh_file_path(handle):
-    return get_cache_file_path(handle)
-
-
-def get_excel_file_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["output"]["excel"]["table"])
-
-
-def get_thumb_dir_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["amazon"]["cache"]["thumb"])
-
-
-def get_selenium_data_dir_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["selenium"])
-
-
-def get_debug_dir_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["data"]["debug"])
-
-
-def get_captcha_file_path(handle):
-    return pathlib.Path(handle["config"]["base_dir"], handle["config"]["output"]["captcha"])
-
-
-def get_selenium_driver(handle):
-    if "selenium" in handle:
-        return (handle["selenium"]["driver"], handle["selenium"]["wait"])
-    else:
-        driver = my_lib.selenium_util.create_driver("Amazhist", get_selenium_data_dir_path(handle))
-        wait = WebDriverWait(driver, 5)
+        driver = my_lib.selenium_util.create_driver(
+            "Amazhist", self.config.selenium_data_dir_path
+        )
+        wait = selenium.webdriver.support.wait.WebDriverWait(driver, 5)
 
         my_lib.selenium_util.clear_cache(driver)
 
-        handle["selenium"] = {
-            "driver": driver,
-            "wait": wait,
-        }
+        self.selenium = SeleniumInfo(driver=driver, wait=wait)
 
         return (driver, wait)
 
-
-def record_item(handle, item):
-    """商品を記録"""
-    db: amazhist.database.Database = handle["db"]
-    db.upsert_item(item)
-
-
-def get_item_list(handle) -> list[dict[str, Any]]:
-    """商品リストを取得（date順）"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_item_list()
-
-
-def get_last_item(handle, time_filter):
-    """指定した time_filter の最後の商品を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_last_item_by_filter(time_filter)
-
-
-def get_thumb_path(handle, item):
-    if ("asin" not in item) or (item["asin"] is None):
-        return None
-    else:
-        return get_thumb_dir_path(handle) / (item["asin"] + ".png")
-
-
-def get_order_stat(handle, no):
-    """注文が処理済みか確認（force_mode時は常にFalse）"""
-    if handle.get("force_mode", False):
-        return False
-    db: amazhist.database.Database = handle["db"]
-    return db.exists_order(no)
-
-
-def set_year_list(handle, year_list):
-    """年リストを設定"""
-    db: amazhist.database.Database = handle["db"]
-    db.set_year_list(year_list)
-
-
-def set_order_count(handle, year, order_count):
-    """年の注文数を設定"""
-    db: amazhist.database.Database = handle["db"]
-    db.set_year_status(year, order_count=order_count)
-
-
-def get_cache_last_modified(handle):
-    """キャッシュの最終更新日時を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_last_modified()
-
-
-def get_order_count(handle, year):
-    """年の注文数を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_year_order_count(year)
-
-
-def get_total_order_count(handle):
-    """全注文数を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_total_order_count()
-
-
-def get_year_list(handle):
-    """年リストを取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_year_list()
-
-
-def set_progress_bar(handle, desc, total):
-    """プログレスバーを作成"""
-    progress = handle["rich"]["progress"]
-
-    if progress is None:
-        # 非TTY環境でもダミーのProgressTaskを作成（KeyError防止）
-        handle["progress_bar"][desc] = ProgressTask(handle, rich.progress.TaskID(-1), total)
-        return
-
-    task_id = progress.add_task(desc, total=total)
-    handle["progress_bar"][desc] = ProgressTask(handle, task_id, total)
-    _refresh_display(handle)
-
-
-def set_status(handle, status, is_error=False):
-    """ステータスを更新"""
-    handle["rich"]["status_text"] = status
-    handle["rich"]["status_is_error"] = is_error
-
-    console = handle["rich"]["console"]
-
-    # 非TTY環境では logging で出力
-    if not console.is_terminal:
-        if is_error:
-            logging.error(status)
-        else:
-            logging.info(status)
-        return
-
-    _refresh_display(handle)
-
-
-def finish(handle):
-    """終了処理"""
-    if "selenium" in handle:
-        handle["selenium"]["driver"].quit()
-        handle.pop("selenium")
-
-    live = handle["rich"]["live"]
-    if live is not None:
-        live.stop()
-        handle["rich"]["live"] = None
-
-    # データベースを閉じる
-    if handle["db"] is not None:
-        handle["db"].close()
-        handle["db"] = None
-
-
-def store_order_info(handle):
-    """注文情報を保存（最終更新日時を更新）"""
-    db: amazhist.database.Database = handle["db"]
-    db.set_last_modified(datetime.datetime.now())
-
-
-def set_page_checked(handle, year, page):
-    """ページの処理完了フラグを設定"""
-    db: amazhist.database.Database = handle["db"]
-    db.set_page_checked(year, page, True)
-
-
-def get_page_checked(handle, year, page):
-    """ページが処理済みか確認（force_mode時は常にFalse）"""
-    if handle.get("force_mode", False):
-        return False
-    db: amazhist.database.Database = handle["db"]
-    return db.is_page_checked(year, page)
-
-
-def set_year_checked(handle, year):
-    """年の処理完了フラグを設定"""
-    db: amazhist.database.Database = handle["db"]
-    db.set_year_status(year, checked=True)
-    store_order_info(handle)
-
-
-def get_year_checked(handle, year):
-    """年が処理済みか確認（force_mode時は常にFalse）"""
-    if handle.get("force_mode", False):
-        return False
-    db: amazhist.database.Database = handle["db"]
-    return db.is_year_checked(year)
-
-
-def get_progress_bar(handle, desc):
-    return handle["progress_bar"][desc]
-
-
-# --- エラーログ ---
-def record_error(
-    handle,
-    url: str,
-    error_type: str,
-    context: str,
-    message: str | None = None,
-    order_no: str | None = None,
-    item_name: str | None = None,
-) -> int:
-    """エラーを記録
-
-    Args:
-        handle: アプリケーションハンドル
-        url: エラーが発生したURL
-        error_type: エラーの種類（"timeout", "parse_error", "not_found" など）
-        context: エラーのコンテキスト（"order", "item", "thumbnail", "category" など）
-        message: エラーメッセージ
-        order_no: 関連する注文番号
-        item_name: 関連する商品名
-
-    Returns:
-        挿入されたエラーログのID
-    """
-    db: amazhist.database.Database = handle["db"]
-    return db.record_error(url, error_type, context, message, order_no, item_name)
-
-
-def record_or_update_error(
-    handle,
-    url: str,
-    error_type: str,
-    context: str,
-    message: str | None = None,
-    order_no: str | None = None,
-    item_name: str | None = None,
-) -> int:
-    """エラーを記録または更新（既存エラーがあれば retry_count を増加）
-
-    Args:
-        handle: アプリケーションハンドル
-        url: エラーが発生したURL
-        error_type: エラーの種類
-        context: エラーのコンテキスト
-        message: エラーメッセージ
-        order_no: 関連する注文番号
-        item_name: 関連する商品名
-
-    Returns:
-        エラーログのID
-    """
-    db: amazhist.database.Database = handle["db"]
-    return db.record_or_update_error(url, error_type, context, message, order_no, item_name)
-
-
-def get_unresolved_errors(handle, context: str | None = None) -> list:
-    """未解決のエラー一覧を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_unresolved_errors(context)
-
-
-def get_all_errors(handle, limit: int = 100) -> list:
-    """全エラー一覧を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_all_errors(limit)
-
-
-def get_error_count(handle, resolved: bool | None = None) -> int:
-    """エラー件数を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_error_count(resolved)
-
-
-def mark_error_resolved(handle, error_id: int) -> None:
-    """エラーを解決済みにする"""
-    db: amazhist.database.Database = handle["db"]
-    db.mark_error_resolved(error_id)
-
-
-def clear_old_errors(handle, days: int = 30) -> int:
-    """古い解決済みエラーを削除"""
-    db: amazhist.database.Database = handle["db"]
-    return db.clear_old_errors(days)
-
-
-def get_failed_order_numbers(handle) -> list[str]:
-    """エラーが発生した注文番号を取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_failed_order_numbers()
-
-
-def get_failed_category_items(handle) -> list[dict]:
-    """カテゴリ取得に失敗したアイテムを取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_failed_category_items()
-
-
-def update_item_category(handle, url: str, category: list[str]) -> int:
-    """アイテムのカテゴリを更新"""
-    db: amazhist.database.Database = handle["db"]
-    return db.update_item_category(url, category)
-
-
-def get_failed_thumbnail_items(handle) -> list[dict]:
-    """サムネイル取得に失敗したアイテムを取得"""
-    db: amazhist.database.Database = handle["db"]
-    return db.get_failed_thumbnail_items()
-
-
-def mark_errors_resolved_by_order_no(handle, order_no: str) -> int:
-    """指定注文番号のエラーを全て解決済みにする"""
-    db: amazhist.database.Database = handle["db"]
-    return db.mark_errors_resolved_by_order_no(order_no)
+    # --- ログイン情報 ---
+    def get_login_user(self) -> str:
+        return self.config.login.amazon.user
+
+    def get_login_pass(self) -> str:
+        return self.config.login.amazon.password
+
+    # --- 商品関連 ---
+    def record_item(self, item: dict[str, Any]) -> None:
+        """商品を記録"""
+        self.db.upsert_item(item)
+
+    def get_item_list(self) -> list[dict[str, Any]]:
+        """商品リストを取得（date順）"""
+        return self.db.get_item_list()
+
+    def get_last_item(self, time_filter: str | int) -> dict[str, Any] | None:
+        """指定した time_filter の最後の商品を取得"""
+        return self.db.get_last_item_by_filter(time_filter)
+
+    def get_thumb_path(self, item: Any) -> pathlib.Path | None:
+        if ("asin" not in item) or (item["asin"] is None):
+            return None
+        return self.config.thumb_dir_path / (item["asin"] + ".png")
+
+    def get_order_stat(self, no: str) -> bool:
+        """注文が処理済みか確認（force_mode時は常にFalse）"""
+        if self.force_mode:
+            return False
+        return self.db.exists_order(no)
+
+    # --- 年ステータス ---
+    def set_year_list(self, year_list: list[int]) -> None:
+        """年リストを設定"""
+        self.db.set_year_list(year_list)
+
+    def get_year_list(self) -> list[int]:
+        """年リストを取得"""
+        return self.db.get_year_list()
+
+    def set_order_count(self, year: int, order_count: int) -> None:
+        """年の注文数を設定"""
+        self.db.set_year_status(year, order_count=order_count)
+
+    def get_order_count(self, year: int) -> int:
+        """年の注文数を取得"""
+        return self.db.get_year_order_count(year)
+
+    def get_total_order_count(self) -> int:
+        """全注文数を取得"""
+        return self.db.get_total_order_count()
+
+    def get_cache_last_modified(self) -> datetime.datetime:
+        """キャッシュの最終更新日時を取得"""
+        return self.db.get_last_modified()
+
+    # --- ページステータス ---
+    def set_page_checked(self, year: int, page: int) -> None:
+        """ページの処理完了フラグを設定"""
+        self.db.set_page_checked(year, page, True)
+
+    def get_page_checked(self, year: int, page: int) -> bool:
+        """ページが処理済みか確認（force_mode時は常にFalse）"""
+        if self.force_mode:
+            return False
+        return self.db.is_page_checked(year, page)
+
+    def set_year_checked(self, year: int) -> None:
+        """年の処理完了フラグを設定"""
+        self.db.set_year_status(year, checked=True)
+        self.store_order_info()
+
+    def get_year_checked(self, year: int) -> bool:
+        """年が処理済みか確認（force_mode時は常にFalse）"""
+        if self.force_mode:
+            return False
+        return self.db.is_year_checked(year)
+
+    # --- メタデータ保存 ---
+    def store_order_info(self) -> None:
+        """注文情報を保存（最終更新日時を更新）"""
+        self.db.set_last_modified(datetime.datetime.now())
+
+    # --- プログレスバー ---
+    def set_progress_bar(self, desc: str, total: int) -> None:
+        """プログレスバーを作成"""
+        if self._progress is None:
+            # 非TTY環境でもダミーのProgressTaskを作成（KeyError防止）
+            self.progress_bar[desc] = ProgressTask(self, rich.progress.TaskID(-1), total)
+            return
+
+        task_id = self._progress.add_task(desc, total=total)
+        self.progress_bar[desc] = ProgressTask(self, task_id, total)
+        self._refresh_display()
+
+    def get_progress_bar(self, desc: str) -> ProgressTask:
+        return self.progress_bar[desc]
+
+    def set_status(self, status: str, is_error: bool = False) -> None:
+        """ステータスを更新"""
+        self._status_text = status
+        self._status_is_error = is_error
+
+        # 非TTY環境では logging で出力
+        if not self._console.is_terminal:
+            if is_error:
+                logging.error(status)
+            else:
+                logging.info(status)
+            return
+
+        self._refresh_display()
+
+    # --- 終了処理 ---
+    def finish(self) -> None:
+        if self.selenium is not None:
+            self.selenium.driver.quit()
+            self.selenium = None
+
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+
+        if self._db is not None:
+            self._db.close()
+            self._db = None
+
+    # --- エラーログ ---
+    def record_error(
+        self,
+        url: str,
+        error_type: str,
+        context: str,
+        message: str | None = None,
+        order_no: str | None = None,
+        item_name: str | None = None,
+    ) -> int:
+        """エラーを記録"""
+        return self.db.record_error(url, error_type, context, message, order_no, item_name)
+
+    def record_or_update_error(
+        self,
+        url: str,
+        error_type: str,
+        context: str,
+        message: str | None = None,
+        order_no: str | None = None,
+        item_name: str | None = None,
+    ) -> int:
+        """エラーを記録または更新（既存エラーがあれば retry_count を増加）"""
+        return self.db.record_or_update_error(url, error_type, context, message, order_no, item_name)
+
+    def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
+        """未解決のエラー一覧を取得"""
+        return self.db.get_unresolved_errors(context)
+
+    def get_all_errors(self, limit: int = 100) -> list[dict[str, Any]]:
+        """全エラー一覧を取得"""
+        return self.db.get_all_errors(limit)
+
+    def get_error_count(self, resolved: bool | None = None) -> int:
+        """エラー件数を取得"""
+        return self.db.get_error_count(resolved)
+
+    def mark_error_resolved(self, error_id: int) -> None:
+        """エラーを解決済みにする"""
+        self.db.mark_error_resolved(error_id)
+
+    def clear_old_errors(self, days: int = 30) -> int:
+        """古い解決済みエラーを削除"""
+        return self.db.clear_old_errors(days)
+
+    def get_failed_order_numbers(self) -> list[str]:
+        """エラーが発生した注文番号を取得"""
+        return self.db.get_failed_order_numbers()
+
+    def get_failed_category_items(self) -> list[dict[str, Any]]:
+        """カテゴリ取得に失敗したアイテムを取得"""
+        return self.db.get_failed_category_items()
+
+    def update_item_category(self, url: str, category: list[str]) -> int:
+        """アイテムのカテゴリを更新"""
+        return self.db.update_item_category(url, category)
+
+    def get_failed_thumbnail_items(self) -> list[dict[str, Any]]:
+        """サムネイル取得に失敗したアイテムを取得"""
+        return self.db.get_failed_thumbnail_items()
+
+    def mark_errors_resolved_by_order_no(self, order_no: str) -> int:
+        """指定注文番号のエラーを全て解決済みにする"""
+        return self.db.mark_errors_resolved_by_order_no(order_no)
+
+    def _prepare_directory(self) -> None:
+        self.config.selenium_data_dir_path.mkdir(parents=True, exist_ok=True)
+        self.config.debug_dir_path.mkdir(parents=True, exist_ok=True)
+        self.config.thumb_dir_path.mkdir(parents=True, exist_ok=True)
+        self.config.cache_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.config.captcha_file_path.parent.mkdir(parents=True, exist_ok=True)
+        self.config.excel_file_path.parent.mkdir(parents=True, exist_ok=True)
