@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "docopt-ng>=0.9.0",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@9b262d6",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@2cfc8ca9d53f9f3755c4cd4ec83fe63cc50949dd",
     "coloredlogs>=15.0.1",
     "docopt>=0.6.2",
     "pyyaml>=6.0.1",
@@ -55,13 +55,20 @@ line-length = 110
 select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.mypy]
+mypy_path = "src"
+packages = ["amazhist"]
+explicit_package_bases = true
+strict = false
 warn_return_any = false
+warn_unused_ignores = true
 warn_unused_configs = true
 ignore_missing_imports = true
+
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+pythonVersion = "3.12"
 include = ["src", "tests"]
 reportMissingImports = false
 
