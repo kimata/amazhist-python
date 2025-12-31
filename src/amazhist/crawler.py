@@ -23,6 +23,8 @@ import inspect
 import time
 import traceback
 import platform
+import signal
+import sys
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
@@ -42,6 +44,46 @@ FETCH_RETRY_COUNT = 1
 
 DEBUG_USE_DUMP = False
 DEBUG_DUMP = True
+
+# Graceful shutdown 用のフラグ
+_shutdown_requested = False
+
+
+def _signal_handler(signum, frame):
+    """Ctrl+C シグナルハンドラ"""
+    global _shutdown_requested
+
+    # 既にシャットダウンリクエスト中の場合は強制終了
+    if _shutdown_requested:
+        logging.warning("強制終了します")
+        sys.exit(1)
+
+    try:
+        response = input("\n終了しますか？(y/N): ").strip().lower()
+        if response == "y":
+            _shutdown_requested = True
+            logging.info("終了リクエストを受け付けました。現在の処理が完了次第終了します...")
+        else:
+            logging.info("処理を継続します")
+    except EOFError:
+        # 入力が取得できない場合は継続
+        logging.info("処理を継続します")
+
+
+def setup_signal_handler():
+    """シグナルハンドラを設定"""
+    signal.signal(signal.SIGINT, _signal_handler)
+
+
+def is_shutdown_requested():
+    """シャットダウンがリクエストされているかを返す"""
+    return _shutdown_requested
+
+
+def reset_shutdown_flag():
+    """シャットダウンフラグをリセット"""
+    global _shutdown_requested
+    _shutdown_requested = False
 
 
 def wait_for_loading(handle, sec=2):
@@ -615,6 +657,12 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
         amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
         amazhist.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
+        # シャットダウンリクエストがあれば終了
+        if is_shutdown_requested():
+            logging.info("シャットダウンリクエストにより処理を中断します")
+            amazhist.handle.store_order_info(handle)
+            return (True, True)
+
         if year in [datetime.datetime.now().year, amazhist.const.ARCHIVE_LABEL]:
             last_item = amazhist.handle.get_last_item(handle, year)
             if (
@@ -720,6 +768,10 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
         amazhist.handle.store_order_info(handle)
 
+        # シャットダウンリクエストがあれば終了
+        if is_shutdown_requested():
+            break
+
         if is_last:
             break
 
@@ -727,7 +779,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
     amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
 
-    if not is_skipped:
+    if not is_skipped and not is_shutdown_requested():
         amazhist.handle.set_year_checked(handle, year)
 
 
@@ -781,6 +833,10 @@ def fetch_order_item_list_all_year(handle):
     )
 
     for year in year_list:
+        # シャットダウンリクエストがあれば終了
+        if is_shutdown_requested():
+            break
+
         if (
             (year == datetime.datetime.now().year)
             or (year == amazhist.handle.get_cache_last_modified(handle).year)
@@ -805,17 +861,25 @@ def fetch_order_item_list(handle):
     amazhist.handle.set_status(handle, "巡回ロボットの準備をします...")
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
+    # シグナルハンドラを設定
+    setup_signal_handler()
+    reset_shutdown_flag()
+
     amazhist.handle.set_status(handle, "注文履歴の収集を開始します...")
 
     try:
         fetch_order_item_list_all_year(handle)
     except:
-        my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
-        )
+        if not is_shutdown_requested():
+            my_lib.selenium_util.dump_page(
+                driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+            )
         raise
 
-    amazhist.handle.set_status(handle, "注文履歴の収集が完了しました．")
+    if is_shutdown_requested():
+        amazhist.handle.set_status(handle, "注文履歴の収集を中断しました．")
+    else:
+        amazhist.handle.set_status(handle, "注文履歴の収集が完了しました．")
 
 
 if __name__ == "__main__":
