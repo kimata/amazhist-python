@@ -284,13 +284,17 @@ def save_thumbnail(handle, item, thumb_url):
 def parse_item(handle, item_xpath):
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
+    # 商品名とリンク
     link = driver.find_element(
         By.XPATH,
-        item_xpath + "//a[contains(@class, 'a-link-normal')]",
+        item_xpath + "//div[@data-component='itemTitle']//a",
     )
     name = link.text
     url = link.get_attribute("href")
-    asin = re.match(r".*/gp/product/([^/]+)/", url).group(1)
+
+    # ASIN を URL から抽出（/dp/XXXX または /gp/product/XXXX 形式）
+    asin_match = re.match(r".*/(?:dp|gp/product)/([^/?]+)", url)
+    asin = asin_match.group(1) if asin_match else None
 
     time.sleep(0.5)
     category = fetch_item_category(handle, link)
@@ -302,15 +306,51 @@ def parse_item(handle, item_xpath):
         "category": category,
     }
 
-    thumb_url = driver.find_element(By.XPATH, item_xpath + "/preceding-sibling::div//a/img").get_attribute(
-        "src"
-    )
+    # サムネイル画像
+    thumb_url = driver.find_element(
+        By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
+    ).get_attribute("src")
     save_thumbnail(handle, item, thumb_url)
 
-    if len(driver.find_elements(By.XPATH, item_xpath + "//div[contains(@class, 'gift-card-instance')]")) != 0:
-        return item | parse_item_giftcard(handle, item_xpath)
+    # 価格
+    price_elem = driver.find_elements(
+        By.XPATH, item_xpath + "//div[@data-component='unitPrice']//span[contains(@class, 'a-offscreen')]"
+    )
+    if price_elem:
+        # NOTE: a-offscreen クラスの要素は .text では空になることがあるため textContent を使用
+        price_text = price_elem[0].get_attribute("textContent")
+        price_match = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
+        if price_match:
+            price = int(price_match.group(1).replace(",", ""))
+        else:
+            logging.warning("価格のパースに失敗しました: {text}".format(text=price_text))
+            price = 0
     else:
-        return item | parse_item_default(handle, item_xpath)
+        logging.warning("価格が見つかりませんでした: {name}".format(name=name))
+        price = 0
+
+    # 数量（デフォルト1）
+    count = 1
+
+    # 販売者
+    seller_elem = driver.find_elements(
+        By.XPATH, item_xpath + "//div[@data-component='orderedMerchant']//a"
+    )
+    if seller_elem:
+        seller = seller_elem[0].text
+    else:
+        seller = "アマゾンジャパン合同会社"
+
+    # コンディション（デフォルト新品）
+    condition = "新品"
+
+    return item | {
+        "count": count,
+        "price": price,
+        "seller": seller,
+        "condition": condition,
+        "kind": "Normal",
+    }
 
 
 def parse_order_digital(handle, order_info):
@@ -369,16 +409,18 @@ def parse_order_digital(handle, order_info):
 
 
 def parse_order_default(handle, order_info):
-    ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
+    ITEM_XPATH = '//div[@data-component="purchasedItems"]'
 
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(
-        By.XPATH, '//span[contains(@class, "order-date-invoice-item")][1]'
-    ).text.split()[1]
+        By.XPATH, '//div[@data-component="orderDate"]//span'
+    ).text.strip().split()[0]
     date = parse_date(date_text)
 
-    no = driver.find_element(By.XPATH, '//span[contains(@class, "order-date-invoice-item")]/bdi').text
+    no = driver.find_element(
+        By.XPATH, '//div[@data-component="orderId"]//span'
+    ).text.strip()
 
     item_base = {
         "date": date,
@@ -446,11 +488,16 @@ def parse_order_count(handle, year):
 
 
 def fetch_order_item_list_by_order_info(handle, order_info):
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
+
     visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
     keep_logged_on(handle)
 
     if not parse_order(handle, order_info):
-        logging.warning("Failed to parse order of {no}".format(no=order_info["no"]))
+        logging.warning("注文のパースに失敗しました: {no}".format(no=order_info["no"]))
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
+        )
         time.sleep(1)
         return False
 
@@ -501,18 +548,40 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
             else:
                 continue
 
+        # キャンセル済みの注文はスキップ
+        if (
+            len(
+                driver.find_elements(
+                    By.XPATH,
+                    order_xpath + "//div[contains(@class, 'yohtmlc-shipment-status-primaryText')]"
+                    + "//span[contains(text(), 'キャンセル済み')]",
+                )
+            )
+            != 0
+        ):
+            no = driver.find_element(
+                By.XPATH,
+                order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
+            ).text
+            logging.info("キャンセル済みの注文をスキップ: {no}".format(no=no))
+            continue
+
         date_text = driver.find_element(
-            By.XPATH, order_xpath + "//div[contains(@class, 'a-row')]/span[contains(@class, 'value')]"
+            By.XPATH,
+            order_xpath + "//li[contains(@class, 'order-header__header-list-item')]"
+            + "//span[contains(@class, 'a-color-secondary') and contains(@class, 'aok-break-word')]",
         ).text
         date = parse_date(date_text)
 
         no = driver.find_element(
             By.XPATH,
-            order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[contains(@class, 'value')]",
+            order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
         ).text
 
         url = driver.find_element(
-            By.XPATH, order_xpath + "//a[contains(@class, 'yohtmlc-order-details-link')]"
+            By.XPATH,
+            order_xpath + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
+            + "//a[contains(@href, 'order-details')]",
         ).get_attribute("href")
 
         order_list.append({"date": date, "no": no, "url": url, "time_filter": year, "page": page})
