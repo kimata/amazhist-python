@@ -356,6 +356,21 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
             handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
             continue
 
+        # order-details リンクが存在しない注文（一部のキャンセル済み等）はスキップ
+        order_details_xpath = (
+            order_xpath + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
+            + "//a[contains(@href, 'order-details')]"
+        )
+        if len(driver.find_elements(By.XPATH, order_details_xpath)) == 0:
+            no = driver.find_element(
+                By.XPATH,
+                order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
+            ).text
+            logging.warning(f"詳細リンクがない注文をスキップしました: {no}")
+            handle.get_progress_bar(_gen_status_label_by_year(year)).update()
+            handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
+            continue
+
         date_text = driver.find_element(
             By.XPATH,
             order_xpath + "//li[contains(@class, 'order-header__header-list-item')]"
@@ -368,11 +383,7 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
             order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
         ).text
 
-        url = driver.find_element(
-            By.XPATH,
-            order_xpath + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
-            + "//a[contains(@href, 'order-details')]",
-        ).get_attribute("href")
+        url = driver.find_element(By.XPATH, order_details_xpath).get_attribute("href")
 
         order_list.append({"date": date, "no": no, "url": url, "time_filter": year, "page": page})
 
