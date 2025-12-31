@@ -182,7 +182,7 @@ requires-dist = [
     { name = "enlighten", specifier = ">=1.12.4" },
     { name = "imageio", specifier = ">=2.34.0" },
     { name = "jinxed", specifier = ">=1.2.1" },
-    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=2951e4bead3884f4b9a79020e6a01f110a945e44" },
+    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=9b262d6" },
     { name = "openpyxl", specifier = ">=3.1.2" },
     { name = "pillow", specifier = ">=10.2.0" },
     { name = "pyprind", specifier = ">=2.11.3" },
@@ -1440,7 +1440,7 @@ wheels = [
 [[package]]
 name = "my-lib"
 version = "0.2.0"
-source = { git = "https://github.com/kimata/my-py-lib?rev=2951e4bead3884f4b9a79020e6a01f110a945e44#2951e4bead3884f4b9a79020e6a01f110a945e44" }
+source = { git = "https://github.com/kimata/my-py-lib?rev=9b262d6#9b262d6f50db0ee240827f839c6097562d84b962" }
 dependencies = [
     { name = "coloredlogs" },
     { name = "docopt-ng" },

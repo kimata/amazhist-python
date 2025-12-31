@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "docopt-ng>=0.9.0",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@2951e4bead3884f4b9a79020e6a01f110a945e44",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@9b262d6",
     "coloredlogs>=15.0.1",
     "docopt>=0.6.2",
     "pyyaml>=6.0.1",
