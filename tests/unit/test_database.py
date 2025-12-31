@@ -14,6 +14,35 @@ import amazhist.database
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
 
 
+class TestIsSqliteFile:
+    """is_sqlite_file のテスト"""
+
+    def test_is_sqlite_file_valid(self, tmp_path):
+        """有効な SQLite ファイル"""
+        db_path = tmp_path / "test.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        db.close()
+
+        assert amazhist.database.is_sqlite_file(db_path) is True
+
+    def test_is_sqlite_file_not_exists(self, tmp_path):
+        """存在しないファイル"""
+        db_path = tmp_path / "not_exists.db"
+        assert amazhist.database.is_sqlite_file(db_path) is False
+
+    def test_is_sqlite_file_too_small(self, tmp_path):
+        """小さすぎるファイル"""
+        db_path = tmp_path / "small.db"
+        db_path.write_bytes(b"small")
+        assert amazhist.database.is_sqlite_file(db_path) is False
+
+    def test_is_sqlite_file_not_sqlite(self, tmp_path):
+        """SQLite 形式でないファイル"""
+        db_path = tmp_path / "not_sqlite.db"
+        db_path.write_bytes(b"This is not a SQLite file at all")
+        assert amazhist.database.is_sqlite_file(db_path) is False
+
+
 class TestDatabaseBasic:
     """Database 基本操作のテスト"""
 
@@ -40,6 +69,15 @@ class TestDatabaseBasic:
         db.close()
 
         assert db_path.exists()
+
+    def test_get_conn_after_close(self, tmp_path):
+        """接続が閉じられた後のアクセス"""
+        db_path = tmp_path / "test.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        db.close()
+
+        with pytest.raises(RuntimeError, match="Database connection is closed"):
+            db._get_conn()
 
 
 class TestDatabaseItems:
@@ -124,6 +162,40 @@ class TestDatabaseItems:
 
         assert db.exists_order("503-1234567-8901234") is True
         assert db.exists_order("999-9999999-9999999") is False
+
+    def test_get_item_count(self, db):
+        """商品数の取得"""
+        assert db.get_item_count() == 0
+
+        db.upsert_item({"no": "001", "asin": "A1", "date": datetime.datetime(2025, 1, 10), "name": "商品1"})
+        assert db.get_item_count() == 1
+
+        db.upsert_item({"no": "002", "asin": "A2", "date": datetime.datetime(2025, 1, 11), "name": "商品2"})
+        assert db.get_item_count() == 2
+
+    def test_get_last_item_by_filter(self, db):
+        """time_filter で最後の商品を取得"""
+        items = [
+            {"no": "001", "asin": "A1", "date": datetime.datetime(2025, 1, 10), "name": "商品1", "order_time_filter": 2025},
+            {"no": "002", "asin": "A2", "date": datetime.datetime(2025, 1, 20), "name": "商品2", "order_time_filter": 2025},
+            {"no": "003", "asin": "A3", "date": datetime.datetime(2024, 12, 15), "name": "商品3", "order_time_filter": 2024},
+        ]
+        for item in items:
+            db.upsert_item(item)
+
+        # 2025年の最後のアイテム
+        last_2025 = db.get_last_item_by_filter(2025)
+        assert last_2025 is not None
+        assert last_2025["name"] == "商品2"
+
+        # 2024年の最後のアイテム
+        last_2024 = db.get_last_item_by_filter(2024)
+        assert last_2024 is not None
+        assert last_2024["name"] == "商品3"
+
+        # 存在しない年
+        last_2023 = db.get_last_item_by_filter(2023)
+        assert last_2023 is None
 
 
 class TestDatabaseYearStatus:
@@ -362,3 +434,194 @@ class TestDatabaseErrorLog:
 
         assert deleted == 1
         assert db.get_error_count() == 1
+
+    def test_get_unresolved_error_by_url(self, db):
+        """URL とコンテキストで未解決エラーを検索"""
+        db.record_error(url="url1", error_type="error", context="order")
+        db.record_error(url="url1", error_type="error", context="thumbnail")
+
+        error = db.get_unresolved_error_by_url("url1", "order")
+        assert error is not None
+        assert error["context"] == "order"
+
+        error = db.get_unresolved_error_by_url("url1", "thumbnail")
+        assert error is not None
+        assert error["context"] == "thumbnail"
+
+        error = db.get_unresolved_error_by_url("url1", "category")
+        assert error is None
+
+        error = db.get_unresolved_error_by_url("url2", "order")
+        assert error is None
+
+    def test_record_or_update_error_new(self, db):
+        """新規エラーの記録"""
+        error_id = db.record_or_update_error(
+            url="url1", error_type="error", context="order", message="初回エラー"
+        )
+
+        errors = db.get_unresolved_errors()
+        assert len(errors) == 1
+        assert errors[0]["id"] == error_id
+        assert errors[0]["retry_count"] == 0
+
+    def test_record_or_update_error_existing(self, db):
+        """既存エラーの更新（retry_count 増加）"""
+        error_id1 = db.record_or_update_error(
+            url="url1", error_type="error", context="order", message="初回エラー"
+        )
+
+        # 同じ URL とコンテキストで再度記録
+        error_id2 = db.record_or_update_error(
+            url="url1", error_type="error", context="order", message="2回目エラー"
+        )
+
+        # 同じ ID が返される
+        assert error_id1 == error_id2
+
+        errors = db.get_unresolved_errors()
+        assert len(errors) == 1
+        assert errors[0]["retry_count"] == 1
+
+    def test_get_failed_order_numbers(self, db):
+        """エラーが発生した注文番号を取得"""
+        db.record_error(url="url1", error_type="error", context="order", order_no="ORDER-001")
+        db.record_error(url="url2", error_type="error", context="order", order_no="ORDER-002")
+        db.record_error(url="url3", error_type="error", context="thumbnail", order_no="ORDER-003")  # context が違う
+        db.record_error(url="url4", error_type="error", context="order")  # order_no なし
+
+        order_numbers = db.get_failed_order_numbers()
+        assert len(order_numbers) == 2
+        assert "ORDER-001" in order_numbers
+        assert "ORDER-002" in order_numbers
+        assert "ORDER-003" not in order_numbers
+
+    def test_get_failed_category_items(self, db):
+        """カテゴリ取得に失敗したアイテムを取得"""
+        # アイテムを追加
+        db.upsert_item({
+            "no": "ORDER-001",
+            "asin": "ASIN001",
+            "date": datetime.datetime(2025, 1, 10),
+            "name": "テスト商品",
+            "url": "https://amazon.co.jp/dp/ASIN001",
+        })
+
+        # カテゴリエラーを記録
+        db.record_error(
+            url="https://amazon.co.jp/dp/ASIN001",
+            error_type="parse_error",
+            context="category",
+        )
+
+        failed_items = db.get_failed_category_items()
+        assert len(failed_items) == 1
+        assert failed_items[0]["url"] == "https://amazon.co.jp/dp/ASIN001"
+        assert failed_items[0]["asin"] == "ASIN001"
+
+    def test_update_item_category(self, db):
+        """アイテムのカテゴリを更新"""
+        db.upsert_item({
+            "no": "ORDER-001",
+            "asin": "ASIN001",
+            "date": datetime.datetime(2025, 1, 10),
+            "name": "テスト商品",
+            "url": "https://amazon.co.jp/dp/ASIN001",
+            "category": [],
+        })
+
+        count = db.update_item_category(
+            "https://amazon.co.jp/dp/ASIN001",
+            ["本", "コンピュータ・IT"],
+        )
+
+        assert count == 1
+
+        items = db.get_item_list()
+        assert items[0]["category"] == ["本", "コンピュータ・IT"]
+
+    def test_get_failed_thumbnail_items(self, db):
+        """サムネイル取得に失敗したアイテムを取得"""
+        db.upsert_item({
+            "no": "ORDER-001",
+            "asin": "ASIN001",
+            "date": datetime.datetime(2025, 1, 10),
+            "name": "テスト商品",
+            "url": "https://amazon.co.jp/dp/ASIN001",
+        })
+
+        db.record_error(
+            url="https://images.amazon.com/ASIN001.jpg",
+            error_type="fetch_error",
+            context="thumbnail",
+            item_name="テスト商品",
+        )
+
+        failed_items = db.get_failed_thumbnail_items()
+        assert len(failed_items) == 1
+        assert failed_items[0]["thumb_url"] == "https://images.amazon.com/ASIN001.jpg"
+        assert failed_items[0]["name"] == "テスト商品"
+
+    def test_mark_errors_resolved_by_order_no(self, db):
+        """注文番号でエラーを一括解決済みにする"""
+        db.record_error(url="url1", error_type="error", context="order", order_no="ORDER-001")
+        db.record_error(url="url2", error_type="error", context="thumbnail", order_no="ORDER-001")
+        db.record_error(url="url3", error_type="error", context="order", order_no="ORDER-002")
+
+        count = db.mark_errors_resolved_by_order_no("ORDER-001")
+
+        assert count == 2
+        assert db.get_error_count(resolved=False) == 1
+        assert db.get_error_count(resolved=True) == 2
+
+
+class TestDatabaseUtility:
+    """Database ユーティリティのテスト"""
+
+    def test_parse_datetime_with_timezone(self, tmp_path):
+        """タイムゾーン付き日時のパース"""
+        db_path = tmp_path / "test.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+
+        # タイムゾーン付きの日時文字列
+        result = db._parse_datetime("2025-01-15T10:30:00+09:00")
+        assert result is not None
+        assert result.tzinfo is None  # タイムゾーン情報は削除される
+        assert result.hour == 10
+
+        db.close()
+
+    def test_parse_datetime_invalid(self, tmp_path):
+        """不正な日時文字列のパース"""
+        db_path = tmp_path / "test.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+
+        result = db._parse_datetime("invalid-date")
+        assert result is None
+
+        result = db._parse_datetime("")
+        assert result is None
+
+        result = db._parse_datetime(None)
+        assert result is None
+
+        db.close()
+
+    def test_parse_time_filter_invalid(self, tmp_path):
+        """不正な time_filter のパース"""
+        db_path = tmp_path / "test.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+
+        result = db._parse_time_filter("not-a-number")
+        assert result is None
+
+        result = db._parse_time_filter("")
+        assert result is None
+
+        result = db._parse_time_filter(None)
+        assert result is None
+
+        result = db._parse_time_filter("2025")
+        assert result == 2025
+
+        db.close()
