@@ -182,7 +182,7 @@ class Database:
         """年リストを取得"""
         value = self.get_metadata("year_list", "[]")
         year_list = json.loads(value)
-        return [self._parse_time_filter(str(y)) for y in year_list]
+        return [x for x in (self._parse_time_filter(str(y)) for y in year_list) if x is not None]
 
     def set_year_list(self, year_list: list[int | str]) -> None:
         """年リストを設定"""

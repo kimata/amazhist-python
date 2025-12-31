@@ -38,6 +38,16 @@ _STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
 _STATUS_ORDER_ITEM_BY_TARGET = "[収集] {target}"
 
 _CAPTCHA_RETRY_COUNT = 2
+
+
+def _get_caller_name() -> str:
+    """呼び出し元の関数名を取得"""
+    frame = inspect.currentframe()
+    if frame is None or frame.f_back is None:
+        return "unknown"
+    return frame.f_back.f_code.co_name
+
+
 _LOGIN_RETRY_COUNT = 2
 _FETCH_RETRY_COUNT = 1
 
@@ -235,7 +245,7 @@ def visit_url(handle, url, caller_name):
 def _fetch_order_item_list_by_order_info(handle, order_info):
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    visit_url(handle, order_info["url"], inspect.currentframe().f_code.co_name)
+    visit_url(handle, order_info["url"], _get_caller_name())
     _keep_logged_on(handle)
 
     if not amazhist.order.parse_order(handle, order_info):
@@ -271,7 +281,7 @@ def _fetch_order_item_list_by_year_page(handle, year, page, retry=0):
         f"🔍 注文履歴を解析しています... {_gen_target_text(year)} {page}/{total_page} ページ",
     )
 
-    visit_url(handle, gen_hist_url(year, page), inspect.currentframe().f_code.co_name)
+    visit_url(handle, gen_hist_url(year, page), _get_caller_name())
     _keep_logged_on(handle)
 
     logging.info(
@@ -379,7 +389,7 @@ def fetch_year_list(handle):
     """年リストを取得"""
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    visit_url(handle, amazhist.const.HIST_URL, inspect.currentframe().f_code.co_name)
+    visit_url(handle, amazhist.const.HIST_URL, _get_caller_name())
 
     _keep_logged_on(handle)
 
@@ -433,7 +443,7 @@ def _skip_order_item_list_by_year_page(handle, year, page):
 
 
 def _fetch_order_item_list_by_year(handle, year, start_page=1):
-    visit_url(handle, gen_hist_url(year, start_page), inspect.currentframe().f_code.co_name)
+    visit_url(handle, gen_hist_url(year, start_page), _get_caller_name())
 
     _keep_logged_on(handle)
 
@@ -591,7 +601,7 @@ if __name__ == "__main__":
     try:
         if args["-n"] is not None:
             no = args["-n"]
-            visit_url(handle, gen_order_url(no), inspect.currentframe().f_code.co_name)
+            visit_url(handle, gen_order_url(no), _get_caller_name())
             _keep_logged_on(handle)
 
             amazhist.order.parse_order(

@@ -69,10 +69,14 @@ def _save_thumbnail(handle, item: dict, thumb_url: str) -> None:
 
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
+    thumb_path = amazhist.handle.get_thumb_path(handle, item)
+    if thumb_path is None:
+        return
+
     with my_lib.selenium_util.browser_tab(driver, thumb_url):
         png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
 
-        with open(amazhist.handle.get_thumb_path(handle, item), "wb") as f:
+        with open(thumb_path, "wb") as f:
             f.write(png_data)
 
 
@@ -98,14 +102,14 @@ def parse_item(handle, item_xpath: str) -> dict | None:
         item_xpath + "//div[@data-component='itemTitle']//a",
     )
     name = link.text
-    url = link.get_attribute("href")
+    url = link.get_attribute("href") or ""
 
     # ASIN を URL から抽出（/dp/XXXX または /gp/product/XXXX 形式）
-    asin_match = re.match(r".*/(?:dp|gp/product)/([^/?]+)", url)
+    asin_match = re.match(r".*/(?:dp|gp/product)/([^/?]+)", url) if url else None
     asin = asin_match.group(1) if asin_match else None
 
     time.sleep(0.5)
-    category = fetch_item_category(handle, url)
+    category = fetch_item_category(handle, url) if url else []
 
     item = {
         "name": name,
@@ -119,23 +123,24 @@ def parse_item(handle, item_xpath: str) -> dict | None:
         By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
     ).get_attribute("src")
 
-    for retry in range(3):
-        try:
-            _save_thumbnail(handle, item, thumb_url)
-            break
-        except Exception as e:
-            if retry < 2:
-                time.sleep(1)
-            else:
-                logging.warning(f"サムネイル画像の取得に失敗しました: {name} ({str(e)})")
-                amazhist.handle.record_error(
-                    handle,
-                    url=thumb_url,
-                    error_type="fetch_error",
-                    context="thumbnail",
-                    message=str(e),
-                    item_name=name,
-                )
+    if thumb_url:
+        for retry in range(3):
+            try:
+                _save_thumbnail(handle, item, thumb_url)
+                break
+            except Exception as e:
+                if retry < 2:
+                    time.sleep(1)
+                else:
+                    logging.warning(f"サムネイル画像の取得に失敗しました: {name} ({str(e)})")
+                    amazhist.handle.record_error(
+                        handle,
+                        url=thumb_url,
+                        error_type="fetch_error",
+                        context="thumbnail",
+                        message=str(e),
+                        item_name=name,
+                    )
 
     # 価格
     price_elem = driver.find_elements(
@@ -143,7 +148,7 @@ def parse_item(handle, item_xpath: str) -> dict | None:
     )
     if price_elem:
         # NOTE: a-offscreen クラスの要素は .text では空になることがあるため textContent を使用
-        price_text = price_elem[0].get_attribute("textContent")
+        price_text = price_elem[0].get_attribute("textContent") or ""
         price = amazhist.parser.parse_price(price_text)
         if price is None:
             logging.warning(f"価格のパースに失敗しました: {price_text}")

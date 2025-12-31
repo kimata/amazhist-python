@@ -21,6 +21,14 @@ import amazhist.item
 import amazhist.parser
 
 
+def _get_caller_name() -> str:
+    """呼び出し元の関数名を取得"""
+    frame = inspect.currentframe()
+    if frame is None or frame.f_back is None:
+        return "unknown"
+    return frame.f_back.f_code.co_name
+
+
 def _parse_order_digital(handle, order_info: dict) -> bool:
     """デジタル注文をパース
 
@@ -43,9 +51,10 @@ def _parse_order_digital(handle, order_info: dict) -> bool:
     if len(driver.find_elements(By.XPATH, item_xpath + "/td[1]//a")) != 0:
         link = driver.find_element(By.XPATH, item_xpath + "/td[1]//a")
         name = link.text
-        url = link.get_attribute("href")
-        asin = re.match(r".*/dp/([^/]+)/", url).group(1)
-        category = amazhist.item.fetch_item_category(handle, url)
+        url = link.get_attribute("href") or ""
+        asin_match = re.match(r".*/dp/([^/]+)/", url) if url else None
+        asin = asin_match.group(1) if asin_match else None
+        category = amazhist.item.fetch_item_category(handle, url) if url else []
     else:
         # NOTE: もう販売ページが存在しない場合．
         name = driver.find_element(By.XPATH, item_xpath + "/td[1]//b").text
@@ -178,27 +187,31 @@ def parse_order_count(handle, year) -> int:
 
     driver, wait = amazhist.handle.get_selenium_driver(handle)
 
+    caller_name = _get_caller_name()
+
     # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
     # あり得ないページ数を指定する．
     amazhist.crawler.visit_url(
-        handle, amazhist.crawler.gen_hist_url(year, 10000), inspect.currentframe().f_code.co_name
+        handle, amazhist.crawler.gen_hist_url(year, 10000), caller_name
     )
 
     if my_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
         order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
 
-        return int(re.match(r"(\d+)", order_count_text).group(1))
+        match = re.match(r"(\d+)", order_count_text)
+        return int(match.group(1)) if match else 0
     else:
         time.sleep(1)
 
         # NOTE: 注文数が表示されない場合，注文数が少ない可能性が高いので，先頭のページを表示する．
         amazhist.crawler.visit_url(
-            handle, amazhist.crawler.gen_hist_url(year, 1), inspect.currentframe().f_code.co_name
+            handle, amazhist.crawler.gen_hist_url(year, 1), caller_name
         )
 
         if my_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
-            logging.info(int(driver.find_elements(By.XPATH, ORDER_XPATH)))
-            return int(driver.find_elements(By.XPATH, ORDER_XPATH))
+            count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
+            logging.info(count)
+            return count
         else:
             logging.warning("注文件数の取得に失敗しました")
             return 0
