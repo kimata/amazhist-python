@@ -76,13 +76,6 @@ uv sync
 uv run python src/app.py
 ```
 
-#### Poetry を使用
-
-```bash
-poetry install
-poetry run python src/app.py
-```
-
 ### Windows で実行する場合
 
 [リリースページ](https://github.com/kimata/amazhist-python/releases) から `amazhist-windows_x64-binary-*.zip` をダウンロードし、中に入っている `amazhist.exe` を実行してください。
