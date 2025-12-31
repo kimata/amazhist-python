@@ -3,11 +3,11 @@
 """
 handle.py のテスト
 """
-import datetime
 import unittest.mock
 
 import pytest
 
+import amazhist.config
 import amazhist.handle
 
 
@@ -48,25 +48,27 @@ class TestHandleCreation:
         """Handle の作成"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            handle = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
 
             assert handle is not None
-            assert handle["config"] == mock_config
-            assert handle["force_mode"] is False
+            assert handle.config is not None
+            assert handle.force_mode is False
 
-            amazhist.handle.finish(handle)
+            handle.finish()
 
     def test_create_handle_force_mode(self, mock_config, tmp_path):
         """Handle の作成（強制モード）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            handle = amazhist.handle.create(mock_config, force_mode=True)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(
+                config=amazhist.config.Config.load(mock_config), force_mode=True
+            )
 
-            assert handle["force_mode"] is True
+            assert handle.force_mode is True
 
-            amazhist.handle.finish(handle)
+            handle.finish()
 
 
 class TestHandlePaths:
@@ -107,41 +109,41 @@ class TestHandlePaths:
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_get_cache_file_path(self, handle, tmp_path):
         """キャッシュファイルパス取得"""
-        path = amazhist.handle.get_cache_file_path(handle)
+        path = handle.config.cache_file_path
         assert path == tmp_path / "cache" / "order.db"
 
     def test_get_excel_file_path(self, handle, tmp_path):
         """Excel ファイルパス取得"""
-        path = amazhist.handle.get_excel_file_path(handle)
+        path = handle.config.excel_file_path
         assert path == tmp_path / "output" / "amazhist.xlsx"
 
     def test_get_thumb_dir_path(self, handle, tmp_path):
         """サムネイルディレクトリパス取得"""
-        path = amazhist.handle.get_thumb_dir_path(handle)
+        path = handle.config.thumb_dir_path
         assert path == tmp_path / "thumb"
 
     def test_get_debug_dir_path(self, handle, tmp_path):
         """デバッグディレクトリパス取得"""
-        path = amazhist.handle.get_debug_dir_path(handle)
+        path = handle.config.debug_dir_path
         assert path == tmp_path / "debug"
 
     def test_get_thumb_path(self, handle, tmp_path):
         """サムネイルパス取得"""
         item = {"asin": "B0123456789"}
-        path = amazhist.handle.get_thumb_path(handle, item)
+        path = handle.get_thumb_path(item)
         assert path == tmp_path / "thumb" / "B0123456789.png"
 
     def test_get_thumb_path_no_asin(self, handle):
         """ASIN がない場合は None"""
         item = {}
-        path = amazhist.handle.get_thumb_path(handle, item)
+        path = handle.get_thumb_path(item)
         assert path is None
 
 
@@ -183,19 +185,19 @@ class TestHandleLogin:
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_get_login_user(self, handle):
         """ログインユーザー取得"""
-        user = amazhist.handle.get_login_user(handle)
+        user = handle.get_login_user()
         assert user == "test@example.com"
 
     def test_get_login_pass(self, handle):
         """ログインパスワード取得"""
-        password = amazhist.handle.get_login_pass(handle)
+        password = handle.get_login_pass()
         assert password == "password123"
 
 
@@ -237,23 +239,23 @@ class TestHandleProgressBar:
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_set_progress_bar(self, handle):
         """プログレスバーの設定"""
-        amazhist.handle.set_progress_bar(handle, "テスト", 100)
+        handle.set_progress_bar("テスト", 100)
 
-        progress_bar = amazhist.handle.get_progress_bar(handle, "テスト")
+        progress_bar = handle.get_progress_bar("テスト")
         assert progress_bar is not None
         assert progress_bar.total == 100
 
     def test_progress_bar_update(self, handle):
         """プログレスバーの更新"""
-        amazhist.handle.set_progress_bar(handle, "テスト", 100)
-        progress_bar = amazhist.handle.get_progress_bar(handle, "テスト")
+        handle.set_progress_bar("テスト", 100)
+        progress_bar = handle.get_progress_bar("テスト")
 
         progress_bar.update()
 
@@ -298,21 +300,21 @@ class TestHandleStatus:
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_set_status(self, handle):
         """ステータスの設定"""
-        amazhist.handle.set_status(handle, "処理中...")
+        handle.set_status("処理中...")
 
-        assert handle["rich"]["status_text"] == "処理中..."
-        assert handle["rich"]["status_is_error"] is False
+        assert handle._status_text == "処理中..."
+        assert handle._status_is_error is False
 
     def test_set_status_error(self, handle):
         """エラーステータスの設定"""
-        amazhist.handle.set_status(handle, "エラー発生", is_error=True)
+        handle.set_status("エラー発生", is_error=True)
 
-        assert handle["rich"]["status_text"] == "エラー発生"
-        assert handle["rich"]["status_is_error"] is True
+        assert handle._status_text == "エラー発生"
+        assert handle._status_is_error is True

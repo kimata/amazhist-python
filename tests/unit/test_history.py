@@ -5,9 +5,9 @@ history.py のテスト
 """
 import unittest.mock
 
-import openpyxl
 import pytest
 
+import amazhist.config
 import amazhist.handle
 import amazhist.history
 
@@ -87,13 +87,13 @@ class TestGenerateTableExcel:
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
         (tmp_path / "output").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             # データベースモック
-            h["db"] = unittest.mock.MagicMock()
-            h["db"].get_item_list.return_value = []
+            h._db = unittest.mock.MagicMock()
+            h._db.get_item_list.return_value = []
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_generate_table_excel_empty(self, handle, tmp_path):
         """空のリストでExcel生成"""
@@ -133,4 +133,4 @@ class TestGenerateTableExcel:
             amazhist.history.generate_table_excel(handle, excel_path)
 
         # 最終ステータスが完了になっている
-        assert "完了" in handle["rich"]["status_text"]
+        assert "完了" in handle._status_text

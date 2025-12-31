@@ -7,7 +7,9 @@ import unittest.mock
 
 import pytest
 
+import amazhist.config
 import amazhist.crawler
+import amazhist.handle
 
 
 class TestGenOrderUrl:
@@ -119,17 +121,15 @@ class TestFetchOrderItemList:
     @pytest.fixture
     def handle(self, mock_config, tmp_path):
         """Handle インスタンス"""
-        import amazhist.handle
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h["selenium"] = {"driver": mock_driver, "wait": mock_wait}
+            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_fetch_order_item_list_shutdown_requested(self, handle):
         """シャットダウンリクエスト時は即座に終了"""

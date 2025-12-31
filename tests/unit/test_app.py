@@ -7,9 +7,10 @@ import unittest.mock
 
 import pytest
 
-import app
+import amazhist.config
 import amazhist.crawler
 import amazhist.handle
+import app
 
 
 class TestExecuteFetch:
@@ -51,13 +52,13 @@ class TestExecuteFetch:
         # 必要なディレクトリを作成
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        with unittest.mock.patch("amazhist.handle._init_database"):
-            h = amazhist.handle.create(mock_config)
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h["selenium"] = {"driver": mock_driver, "wait": mock_wait}
+            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
             yield h
-            amazhist.handle.finish(h)
+            h.finish()
 
     def test_execute_fetch_success(self, handle):
         """正常にフェッチ実行"""
@@ -118,7 +119,7 @@ class TestExecute:
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
-            unittest.mock.patch("amazhist.handle._init_database"),
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch("amazhist.history.generate_table_excel") as mock_excel,
             unittest.mock.patch("app.execute_fetch") as mock_fetch,
             unittest.mock.patch("builtins.input", return_value=""),
@@ -133,7 +134,7 @@ class TestExecute:
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
-            unittest.mock.patch("amazhist.handle._init_database"),
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch("amazhist.history.generate_table_excel") as mock_excel,
             unittest.mock.patch("app.execute_fetch") as mock_fetch,
             unittest.mock.patch("builtins.input", return_value=""),
