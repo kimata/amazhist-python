@@ -28,9 +28,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 
-import local_lib.selenium_util
-import store_amazon.const
-import store_amazon.handle
+import my_lib.selenium_util
+import amazhist.const
+import amazhist.handle
 
 STATUS_ORDER_COUNT = "[collect] Count of year"
 STATUS_ORDER_ITEM_ALL = "[collect] All orders"
@@ -45,13 +45,13 @@ DEBUG_DUMP = True
 
 
 def wait_for_loading(handle, sec=2):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     time.sleep(sec)
 
 
 def resolve_captcha(handle):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     logging.info("Try to resolve CAPTCHA")
 
@@ -59,7 +59,7 @@ def resolve_captcha(handle):
         if i != 0:
             logging.info("Retry to resolve CAPTCHA")
 
-        captcha_img_path = store_amazon.handle.get_captcha_file_path(handle)
+        captcha_img_path = amazhist.handle.get_captcha_file_path(handle)
         captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
 
         logging.info("Save image: {path}".format(path=captcha_img_path))
@@ -78,8 +78,8 @@ def resolve_captcha(handle):
             return
 
         logging.warning("Failed to resolve CAPTCHA")
-        local_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )
         time.sleep(1)
 
@@ -88,14 +88,14 @@ def resolve_captcha(handle):
 
 
 def execute_login(handle):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     time.sleep(1)
 
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_email" and @type!="hidden"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').send_keys(
-            store_amazon.handle.get_login_user(handle)
+            amazhist.handle.get_login_user(handle)
         )
 
         if len(driver.find_elements(By.XPATH, '//input[@id="continue"]')) != 0:
@@ -105,7 +105,7 @@ def execute_login(handle):
     if len(driver.find_elements(By.XPATH, '//input[@id="ap_password"]')) != 0:
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').send_keys(
-            store_amazon.handle.get_login_pass(handle)
+            amazhist.handle.get_login_pass(handle)
         )
 
     if len(driver.find_elements(By.XPATH, '//input[@id="rememberMe"]')) != 0:
@@ -121,7 +121,7 @@ def execute_login(handle):
 
 
 def keep_logged_on(handle):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     if not re.match("Amazonサインイン", driver.title):
         return
@@ -139,8 +139,8 @@ def keep_logged_on(handle):
             return
 
         logging.warning("Failed to login")
-        local_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )
 
     logging.error("Give up to login")
@@ -148,22 +148,22 @@ def keep_logged_on(handle):
 
 
 def gen_hist_url(year, page):
-    if year == store_amazon.const.ARCHIVE_LABEL:
-        return store_amazon.const.HIST_URL_IN_ARCHIVE.format(
-            start=store_amazon.const.ORDER_COUNT_PER_PAGE * (page - 1)
+    if year == amazhist.const.ARCHIVE_LABEL:
+        return amazhist.const.HIST_URL_IN_ARCHIVE.format(
+            start=amazhist.const.ORDER_COUNT_PER_PAGE * (page - 1)
         )
     else:
-        return store_amazon.const.HIST_URL_BY_YEAR.format(
-            year=year, start=store_amazon.const.ORDER_COUNT_PER_PAGE * (page - 1)
+        return amazhist.const.HIST_URL_BY_YEAR.format(
+            year=year, start=amazhist.const.ORDER_COUNT_PER_PAGE * (page - 1)
         )
 
 
 def gen_order_url(no):
-    return store_amazon.const.HIST_URL_BY_ORDER_NO.format(no=no)
+    return amazhist.const.HIST_URL_BY_ORDER_NO.format(no=no)
 
 
 def gen_target_text(year):
-    if year == store_amazon.const.ARCHIVE_LABEL:
+    if year == amazhist.const.ARCHIVE_LABEL:
         return "Archive"
     else:
         return "Year {year}".format(year=year)
@@ -174,7 +174,7 @@ def gen_status_label_by_yeart(year):
 
 
 def visit_url(handle, url, file_name):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
     driver.get(url)
 
     wait_for_loading(handle)
@@ -189,7 +189,7 @@ def parse_date_digital(date_text):
 
 
 def parse_item_giftcard(handle, item_xpath):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     count = 1
 
@@ -212,10 +212,10 @@ def parse_item_giftcard(handle, item_xpath):
 
 
 def parse_item_default(handle, item_xpath):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     count = int(
-        local_lib.selenium_util.get_text(
+        my_lib.selenium_util.get_text(
             driver, item_xpath + '/..//span[contains(@class, "item-view-qty")]', "1"
         )
     )
@@ -224,13 +224,13 @@ def parse_item_default(handle, item_xpath):
     price = int(re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text).group(1).replace(",", ""))
     price *= count
 
-    seller = local_lib.selenium_util.get_text(
+    seller = my_lib.selenium_util.get_text(
         driver,
         item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
         " アマゾンジャパン合同会社",
     ).split(" ", 2)[1]
 
-    condition = local_lib.selenium_util.get_text(
+    condition = my_lib.selenium_util.get_text(
         driver,
         item_xpath
         + "//span[contains(@class, 'a-color-secondary') and contains(text(), 'コンディション：')]/following-sibling::span[1]",
@@ -247,7 +247,7 @@ def parse_item_default(handle, item_xpath):
 
 
 def fetch_item_category(handle, item_link):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     actions = ActionChains(driver)
 
@@ -272,17 +272,17 @@ def fetch_item_category(handle, item_link):
 
 
 def save_thumbnail(handle, item, thumb_url):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    with local_lib.selenium_util.browser_tab(driver, thumb_url):
+    with my_lib.selenium_util.browser_tab(driver, thumb_url):
         png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
 
-        with open(store_amazon.handle.get_thumb_path(handle, item), "wb") as f:
+        with open(amazhist.handle.get_thumb_path(handle, item), "wb") as f:
             f.write(png_data)
 
 
 def parse_item(handle, item_xpath):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     link = driver.find_element(
         By.XPATH,
@@ -314,7 +314,7 @@ def parse_item(handle, item_xpath):
 
 
 def parse_order_digital(handle, order_info):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
     date = parse_date_digital(date_text)
@@ -363,7 +363,7 @@ def parse_order_digital(handle, order_info):
 
     logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
 
-    store_amazon.handle.record_item(handle, item)
+    amazhist.handle.record_item(handle, item)
 
     return True
 
@@ -371,7 +371,7 @@ def parse_order_digital(handle, order_info):
 def parse_order_default(handle, order_info):
     ITEM_XPATH = '//div[contains(@data-component, "shipments")]//div[contains(@class, "yohtmlc-item")]'
 
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     date_text = driver.find_element(
         By.XPATH, '//span[contains(@class, "order-date-invoice-item")][1]'
@@ -396,14 +396,14 @@ def parse_order_default(handle, order_info):
 
         logging.info("{name} {price:,}円".format(name=item["name"], price=item["price"]))
 
-        store_amazon.handle.record_item(handle, item)
+        amazhist.handle.record_item(handle, item)
         is_unempty = True
 
     return is_unempty
 
 
 def parse_order(handle, order_info):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     logging.info(
         "Parse order: {date} - {no}".format(date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"])
@@ -421,13 +421,13 @@ def parse_order_count(handle, year):
     ORDER_COUNT_XPATH = "//span[contains(@class, 'num-orders')]"
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
     # あり得ないページ数を指定する．
     visit_url(handle, gen_hist_url(year, 10000), inspect.currentframe().f_code.co_name)
 
-    if local_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
+    if my_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
         order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
 
         return int(re.match(r"(\d+)", order_count_text).group(1))
@@ -437,7 +437,7 @@ def parse_order_count(handle, year):
         # NOTE: 注文数が表示されない場合，注文数が少ない可能性が高いので，先頭のページを表示する．
         visit_url(handle, gen_hist_url(year, 1), inspect.currentframe().f_code.co_name)
 
-        if local_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
+        if my_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
             logging.info(int(driver.find_elements(By.XPATH, ORDER_XPATH)))
             return int(driver.find_elements(By.XPATH, ORDER_XPATH))
         else:
@@ -460,13 +460,13 @@ def fetch_order_item_list_by_order_info(handle, order_info):
 def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     total_page = math.ceil(
-        store_amazon.handle.get_order_count(handle, year) / store_amazon.const.ORDER_COUNT_PER_PAGE
+        amazhist.handle.get_order_count(handle, year) / amazhist.const.ORDER_COUNT_PER_PAGE
     )
 
-    store_amazon.handle.set_status(
+    amazhist.handle.set_status(
         handle,
         "注文履歴を解析しています... {target} {page}/{total_page} ページ".format(
             target=gen_target_text(year), page=page, total_page=total_page
@@ -520,7 +520,7 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
     time.sleep(1)
 
     for order_info in order_list:
-        if not store_amazon.handle.get_order_stat(handle, order_info["no"]):
+        if not amazhist.handle.get_order_stat(handle, order_info["no"]):
             is_skipped |= not fetch_order_item_list_by_order_info(handle, order_info)
         else:
             logging.info(
@@ -528,27 +528,27 @@ def fetch_order_item_list_by_year_page(handle, year, page, retry=0):
                     date=order_info["date"].strftime("%Y-%m-%d"), no=order_info["no"]
                 )
             )
-        store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
-        store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
+        amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
+        amazhist.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
-        if year in [datetime.datetime.now().year, store_amazon.const.ARCHIVE_LABEL]:
-            last_item = store_amazon.handle.get_last_item(handle, year)
+        if year in [datetime.datetime.now().year, amazhist.const.ARCHIVE_LABEL]:
+            last_item = amazhist.handle.get_last_item(handle, year)
             if (
-                store_amazon.handle.get_year_checked(handle, year)
+                amazhist.handle.get_year_checked(handle, year)
                 and (last_item != None)
                 and (last_item["no"] == order_info["no"])
             ):
                 logging.info("Latest order found, skipping analysis of subsequent pages")
                 for i in range(total_page):
-                    store_amazon.handle.set_page_checked(handle, year, i + 1)
+                    amazhist.handle.set_page_checked(handle, year, i + 1)
 
     return (is_skipped, page >= total_page)
 
 
 def fetch_year_list(handle):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    visit_url(handle, store_amazon.const.HIST_URL, inspect.currentframe().f_code.co_name)
+    visit_url(handle, amazhist.const.HIST_URL, inspect.currentframe().f_code.co_name)
 
     keep_logged_on(handle)
 
@@ -580,9 +580,9 @@ def fetch_year_list(handle):
     )
 
     if "非表示にした注文" in year_str_list:
-        year_list.append(store_amazon.const.ARCHIVE_LABEL)
+        year_list.append(amazhist.const.ARCHIVE_LABEL)
 
-    store_amazon.handle.set_year_list(handle, year_list)
+    amazhist.handle.set_year_list(handle, year_list)
 
     return year_list
 
@@ -590,15 +590,15 @@ def fetch_year_list(handle):
 def skip_order_item_list_by_year_page(handle, year, page):
     logging.info("Skip check order of {year} page {page} [cached]".format(year=year, page=page))
     incr_order = min(
-        store_amazon.handle.get_order_count(handle, year)
-        - store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).count,
-        store_amazon.const.ORDER_COUNT_PER_PAGE,
+        amazhist.handle.get_order_count(handle, year)
+        - amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).count,
+        amazhist.const.ORDER_COUNT_PER_PAGE,
     )
-    store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update(incr_order)
-    store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(incr_order)
+    amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update(incr_order)
+    amazhist.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(incr_order)
 
     # NOTE: これ，状況によっては最終ページで成り立たないので，良くない
-    return incr_order != store_amazon.const.ORDER_COUNT_PER_PAGE
+    return incr_order != amazhist.const.ORDER_COUNT_PER_PAGE
 
 
 def fetch_order_item_list_by_year(handle, year, start_page=1):
@@ -606,7 +606,7 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
 
     keep_logged_on(handle)
 
-    year_list = store_amazon.handle.get_year_list(handle)
+    year_list = amazhist.handle.get_year_list(handle)
 
     logging.info(
         "Check order of {year} ({year_index}/{total_year})".format(
@@ -614,41 +614,41 @@ def fetch_order_item_list_by_year(handle, year, start_page=1):
         )
     )
 
-    store_amazon.handle.set_progress_bar(
+    amazhist.handle.set_progress_bar(
         handle,
         gen_status_label_by_yeart(year),
-        store_amazon.handle.get_order_count(handle, year),
+        amazhist.handle.get_order_count(handle, year),
     )
 
     page = start_page
     is_skipped = False
     while True:
-        if not store_amazon.handle.get_page_checked(handle, year, page):
+        if not amazhist.handle.get_page_checked(handle, year, page):
             is_skipped_page, is_last = fetch_order_item_list_by_year_page(handle, year, page)
 
             if not is_skipped_page:
-                store_amazon.handle.set_page_checked(handle, year, page)
+                amazhist.handle.set_page_checked(handle, year, page)
 
             is_skipped |= is_skipped_page
             time.sleep(1)
         else:
             is_last = skip_order_item_list_by_year_page(handle, year, page)
 
-        store_amazon.handle.store_order_info(handle)
+        amazhist.handle.store_order_info(handle)
 
         if is_last:
             break
 
         page += 1
 
-    store_amazon.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
+    amazhist.handle.get_progress_bar(handle, gen_status_label_by_yeart(year)).update()
 
     if not is_skipped:
-        store_amazon.handle.set_year_checked(handle, year)
+        amazhist.handle.set_year_checked(handle, year)
 
 
 def fetch_order_count_by_year(handle, year):
-    store_amazon.handle.set_status(
+    amazhist.handle.set_status(
         handle,
         "注文件数を調べています... {target}".format(target=gen_target_text(year)),
     )
@@ -657,51 +657,51 @@ def fetch_order_count_by_year(handle, year):
 
 
 def fetch_order_count(handle):
-    year_list = store_amazon.handle.get_year_list(handle)
+    year_list = amazhist.handle.get_year_list(handle)
 
     logging.info("Collect order count")
 
-    store_amazon.handle.set_progress_bar(handle, STATUS_ORDER_COUNT, len(year_list))
+    amazhist.handle.set_progress_bar(handle, STATUS_ORDER_COUNT, len(year_list))
 
     total_count = 0
     for year in year_list:
-        if year == store_amazon.const.ARCHIVE_LABEL:
+        if year == amazhist.const.ARCHIVE_LABEL:
             count = fetch_order_count_by_year(handle, year)
-            store_amazon.handle.set_order_count(handle, year, count)
+            amazhist.handle.set_order_count(handle, year, count)
             logging.info("Archive: {count:4,} orders".format(count=count))
-        elif year >= store_amazon.handle.get_cache_last_modified(handle).year:
+        elif year >= amazhist.handle.get_cache_last_modified(handle).year:
             count = fetch_order_count_by_year(handle, year)
-            store_amazon.handle.set_order_count(handle, year, count)
+            amazhist.handle.set_order_count(handle, year, count)
             logging.info("Year {year}: {count:4,} orders".format(year=year, count=count))
         else:
-            count = store_amazon.handle.get_order_count(handle, year)
+            count = amazhist.handle.get_order_count(handle, year)
             logging.info("Year {year}: {count:4,} orders [cached]".format(year=year, count=count))
 
         total_count += count
-        store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
+        amazhist.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
 
     logging.info("Total order is {total_count:,}".format(total_count=total_count))
 
-    store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
-    store_amazon.handle.store_order_info(handle)
+    amazhist.handle.get_progress_bar(handle, STATUS_ORDER_COUNT).update()
+    amazhist.handle.store_order_info(handle)
 
 
 def fetch_order_item_list_all_year(handle):
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
     year_list = fetch_year_list(handle)
     fetch_order_count(handle)
 
-    store_amazon.handle.set_progress_bar(
-        handle, STATUS_ORDER_ITEM_ALL, store_amazon.handle.get_total_order_count(handle)
+    amazhist.handle.set_progress_bar(
+        handle, STATUS_ORDER_ITEM_ALL, amazhist.handle.get_total_order_count(handle)
     )
 
     for year in year_list:
         if (
             (year == datetime.datetime.now().year)
-            or (year == store_amazon.handle.get_cache_last_modified(handle).year)
+            or (year == amazhist.handle.get_cache_last_modified(handle).year)
             or (type(year) is str)
-            or (not store_amazon.handle.get_year_checked(handle, year))
+            or (not amazhist.handle.get_year_checked(handle, year))
         ):
             fetch_order_item_list_by_year(handle, year)
         else:
@@ -710,42 +710,42 @@ def fetch_order_item_list_all_year(handle):
                     year=year, year_index=year_list.index(year) + 1, total_year=len(year_list)
                 )
             )
-            store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(
-                store_amazon.handle.get_order_count(handle, year)
+            amazhist.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update(
+                amazhist.handle.get_order_count(handle, year)
             )
 
-    store_amazon.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
+    amazhist.handle.get_progress_bar(handle, STATUS_ORDER_ITEM_ALL).update()
 
 
 def fetch_order_item_list(handle):
-    store_amazon.handle.set_status(handle, "巡回ロボットの準備をします...")
-    driver, wait = store_amazon.handle.get_selenium_driver(handle)
+    amazhist.handle.set_status(handle, "巡回ロボットの準備をします...")
+    driver, wait = amazhist.handle.get_selenium_driver(handle)
 
-    store_amazon.handle.set_status(handle, "注文履歴の収集を開始します...")
+    amazhist.handle.set_status(handle, "注文履歴の収集を開始します...")
 
     try:
         fetch_order_item_list_all_year(handle)
     except:
-        local_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )
         raise
 
-    store_amazon.handle.set_status(handle, "注文履歴の収集が完了しました．")
+    amazhist.handle.set_status(handle, "注文履歴の収集が完了しました．")
 
 
 if __name__ == "__main__":
     from docopt import docopt
 
-    import local_lib.logger
-    import local_lib.config
+    import my_lib.logger
+    import my_lib.config
 
     args = docopt(__doc__)
 
-    local_lib.logger.init("test", level=logging.INFO)
+    my_lib.logger.init("test", level=logging.INFO)
 
-    config = local_lib.config.load(args["-c"])
-    handle = store_amazon.handle.create(config)
+    config = my_lib.config.load(args["-c"])
+    handle = amazhist.handle.create(config)
 
     try:
         if args["-n"] is not None:
@@ -760,16 +760,16 @@ if __name__ == "__main__":
             year = int(args["-y"])
             start_page = int(args["-s"])
 
-            store_amazon.handle.set_year_list(handle, [year])
+            amazhist.handle.set_year_list(handle, [year])
 
             count = fetch_order_count_by_year(handle, year)
-            store_amazon.handle.set_order_count(handle, year, count)
-            store_amazon.handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, count)
+            amazhist.handle.set_order_count(handle, year, count)
+            amazhist.handle.set_progress_bar(handle, STATUS_ORDER_ITEM_ALL, count)
 
             fetch_order_item_list_by_year(handle, year, start_page)
     except:
-        driver, wait = store_amazon.handle.get_selenium_driver(handle)
+        driver, wait = amazhist.handle.get_selenium_driver(handle)
         logging.error(traceback.format_exc())
-        local_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), store_amazon.handle.get_debug_dir_path(handle)
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), amazhist.handle.get_debug_dir_path(handle)
         )

@@ -8,9 +8,9 @@ import datetime
 from selenium.webdriver.support.wait import WebDriverWait
 import openpyxl.styles
 
-import store_amazon.const
-import local_lib.serializer
-import local_lib.selenium_util
+import amazhist.const
+import my_lib.serializer
+import my_lib.selenium_util
 
 
 def create(config):
@@ -78,10 +78,10 @@ def get_selenium_driver(handle):
     if "selenium" in handle:
         return (handle["selenium"]["driver"], handle["selenium"]["wait"])
     else:
-        driver = local_lib.selenium_util.create_driver("Amazhist", get_selenium_data_dir_path(handle))
+        driver = my_lib.selenium_util.create_driver("Amazhist", get_selenium_data_dir_path(handle))
         wait = WebDriverWait(driver, 5)
 
-        local_lib.selenium_util.clear_cache(driver)
+        my_lib.selenium_util.clear_cache(driver)
 
         handle["selenium"] = {
             "driver": driver,
@@ -184,7 +184,7 @@ def finish(handle):
 def store_order_info(handle):
     handle["order"]["last_modified"] = datetime.datetime.now()
 
-    local_lib.serializer.store(get_caceh_file_path(handle), handle["order"])
+    my_lib.serializer.store(get_caceh_file_path(handle), handle["order"])
 
 
 def set_page_checked(handle, year, page):
@@ -211,7 +211,7 @@ def get_year_checked(handle, year):
 
 
 def load_order_info(handle):
-    handle["order"] = local_lib.serializer.load(
+    handle["order"] = my_lib.serializer.load(
         get_caceh_file_path(handle),
         {
             "year_list": [],
@@ -228,7 +228,7 @@ def load_order_info(handle):
     for time_filter in [
         datetime.datetime.now().year,
         get_cache_last_modified(handle).year,
-        store_amazon.const.ARCHIVE_LABEL,
+        amazhist.const.ARCHIVE_LABEL,
     ]:
         if time_filter in handle["order"]["page_stat"]:
             del handle["order"]["page_stat"][time_filter]

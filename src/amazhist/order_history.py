@@ -21,9 +21,9 @@ import openpyxl.drawing.image
 import openpyxl.drawing.xdr
 import openpyxl.drawing.spreadsheet_drawing
 
-import local_lib.openpyxl_util
-import store_amazon.handle
-import store_amazon.crawler
+import my_lib.openpyxl_util
+import amazhist.handle
+import amazhist.crawler
 
 STATUS_INSERT_ITEM = "[generate] Insert item"
 STATUS_ALL = "[generate] Excel file"
@@ -103,7 +103,7 @@ SHEET_DEF = {
                 "pos": 13,
                 "width": 28,
                 "format": "@",
-                "link_func": lambda item: store_amazon.crawler.gen_order_url(item["no"]),
+                "link_func": lambda item: amazhist.crawler.gen_order_url(item["no"]),
             },
         },
     },
@@ -111,48 +111,48 @@ SHEET_DEF = {
 
 
 def generate_sheet(handle, book, is_need_thumb=True):
-    item_list = store_amazon.handle.get_item_list(handle)
+    item_list = amazhist.handle.get_item_list(handle)
 
-    store_amazon.handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
+    amazhist.handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
 
-    local_lib.openpyxl_util.generate_list_sheet(
+    my_lib.openpyxl_util.generate_list_sheet(
         book,
         item_list,
         SHEET_DEF,
         is_need_thumb,
-        lambda item: store_amazon.handle.get_thumb_path(handle, item),
-        lambda status: store_amazon.handle.set_status(handle, status),
-        lambda: store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update(),
-        lambda: store_amazon.handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update(),
+        lambda item: amazhist.handle.get_thumb_path(handle, item),
+        lambda status: amazhist.handle.set_status(handle, status),
+        lambda: amazhist.handle.get_progress_bar(handle, STATUS_ALL).update(),
+        lambda: amazhist.handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update(),
     )
 
 
 def generate_table_excel(handle, excel_file, is_need_thumb=True):
-    store_amazon.handle.set_status(handle, "エクセルファイルの作成を開始します...")
-    store_amazon.handle.set_progress_bar(handle, STATUS_ALL, 5)
+    amazhist.handle.set_status(handle, "エクセルファイルの作成を開始します...")
+    amazhist.handle.set_progress_bar(handle, STATUS_ALL, 5)
 
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
-    book._named_styles["Normal"].font = store_amazon.handle.get_excel_font(handle)
+    book._named_styles["Normal"].font = amazhist.handle.get_excel_font(handle)
 
-    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, STATUS_ALL).update()
 
     generate_sheet(handle, book, is_need_thumb)
 
     book.remove(book.worksheets[0])
 
-    store_amazon.handle.set_status(handle, "エクセルファイルを書き出しています...")
+    amazhist.handle.set_status(handle, "エクセルファイルを書き出しています...")
 
     book.save(excel_file)
 
-    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, STATUS_ALL).update()
 
     book.close()
 
-    store_amazon.handle.get_progress_bar(handle, STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, STATUS_ALL).update()
 
-    store_amazon.handle.set_status(handle, "完了しました！")
+    amazhist.handle.set_status(handle, "完了しました！")
 
     logging.info("Complete to Generate excel file")
 
@@ -160,19 +160,19 @@ def generate_table_excel(handle, excel_file, is_need_thumb=True):
 if __name__ == "__main__":
     from docopt import docopt
 
-    import local_lib.logger
-    import local_lib.config
+    import my_lib.logger
+    import my_lib.config
 
     args = docopt(__doc__)
 
-    local_lib.logger.init("test", level=logging.INFO)
+    my_lib.logger.init("test", level=logging.INFO)
 
-    config = local_lib.config.load(args["-c"])
+    config = my_lib.config.load(args["-c"])
     excel_file = args["-o"]
     is_need_thumb = not args["-N"]
 
-    handle = store_amazon.handle.create(config)
+    handle = amazhist.handle.create(config)
 
     generate_table_excel(handle, excel_file, is_need_thumb)
 
-    store_amazon.handle.finish(handle)
+    amazhist.handle.finish(handle)
