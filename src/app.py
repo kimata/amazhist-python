@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして出力します．
 
@@ -14,11 +13,13 @@ Options:
 
 import logging
 import random
+import traceback
 
-import amazhist.handle
-import amazhist.crawler
-import amazhist.order_history
 import my_lib.selenium_util
+
+import amazhist.crawler
+import amazhist.handle
+import amazhist.history
 
 NAME = "amazhist"
 VERSION = "0.1.0"
@@ -42,12 +43,12 @@ def execute(config, is_export_mode=False, is_need_thumb=True):
         if not is_export_mode:
             execute_fetch(handle)
 
-        amazhist.order_history.generate_table_excel(
+        amazhist.history.generate_table_excel(
             handle, amazhist.handle.get_excel_file_path(handle), is_need_thumb
         )
 
         amazhist.handle.finish(handle)
-    except:
+    except Exception:
         amazhist.handle.set_status(handle, "エラーが発生しました", is_error=True)
         logging.error(traceback.format_exc())
 
@@ -56,11 +57,9 @@ def execute(config, is_export_mode=False, is_need_thumb=True):
 
 ######################################################################
 if __name__ == "__main__":
-    from docopt import docopt
-    import traceback
-
-    import my_lib.logger
     import my_lib.config
+    import my_lib.logger
+    from docopt import docopt
 
     args = docopt(__doc__)
 

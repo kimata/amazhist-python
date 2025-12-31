@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Amazon の購入履歴情報をエクセルファイルに書き出します．
 
@@ -14,24 +13,24 @@ Options:
 
 import logging
 
-import openpyxl
-import openpyxl.utils
-import openpyxl.styles
-import openpyxl.drawing.image
-import openpyxl.drawing.xdr
-import openpyxl.drawing.spreadsheet_drawing
-
 import my_lib.openpyxl_util
-import amazhist.handle
+import openpyxl
+import openpyxl.drawing.image
+import openpyxl.drawing.spreadsheet_drawing
+import openpyxl.drawing.xdr
+import openpyxl.styles
+import openpyxl.utils
+
 import amazhist.crawler
+import amazhist.handle
 
-STATUS_INSERT_ITEM = "[生成] 注文商品"
-STATUS_ALL = "[生成] Excel"
+_STATUS_INSERT_ITEM = "[生成] 注文商品"
+_STATUS_ALL = "[生成] Excel"
 
-SHOP_NAME = "アマゾン"
+_SHOP_NAME = "アマゾン"
 
-SHEET_DEF = {
-    "SHEET_TITLE": "【{shop_name}】購入".format(shop_name=SHOP_NAME),
+_SHEET_DEF = {
+    "SHEET_TITLE": f"【{_SHOP_NAME}】購入",
     "TABLE_HEADER": {
         "row": {
             "pos": 2,
@@ -43,7 +42,7 @@ SHEET_DEF = {
                 "pos": 2,
                 "width": 15,
                 "format": "@",
-                "value": SHOP_NAME,
+                "value": _SHOP_NAME,
             },
             "date": {
                 "label": "日付",
@@ -90,7 +89,7 @@ SHEET_DEF = {
                 "wrap": True,
             },
             "id": {
-                # NOTE: アマゾン向けでは，他のショップで「id」としている内容を「asin」としているので，読み替える
+                # NOTE: アマゾン向けでは「id」→「asin」に読み替え
                 "formal_key": "asin",
                 "label": "商品ID(ASIN)",
                 "pos": 12,
@@ -110,35 +109,35 @@ SHEET_DEF = {
 }
 
 
-def generate_sheet(handle, book, is_need_thumb=True):
+def _generate_sheet(handle, book, is_need_thumb=True):
     item_list = amazhist.handle.get_item_list(handle)
 
-    amazhist.handle.set_progress_bar(handle, STATUS_INSERT_ITEM, len(item_list))
+    amazhist.handle.set_progress_bar(handle, _STATUS_INSERT_ITEM, len(item_list))
 
     my_lib.openpyxl_util.generate_list_sheet(
         book,
         item_list,
-        SHEET_DEF,
+        _SHEET_DEF,
         is_need_thumb,
         lambda item: amazhist.handle.get_thumb_path(handle, item),
         lambda status: amazhist.handle.set_status(handle, status),
-        lambda: amazhist.handle.get_progress_bar(handle, STATUS_ALL).update(),
-        lambda: amazhist.handle.get_progress_bar(handle, STATUS_INSERT_ITEM).update(),
+        lambda: amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update(),
+        lambda: amazhist.handle.get_progress_bar(handle, _STATUS_INSERT_ITEM).update(),
     )
 
 
 def generate_table_excel(handle, excel_file, is_need_thumb=True):
     amazhist.handle.set_status(handle, "エクセルファイルの作成を開始します...")
-    amazhist.handle.set_progress_bar(handle, STATUS_ALL, 5)
+    amazhist.handle.set_progress_bar(handle, _STATUS_ALL, 5)
 
     logging.info("Start to Generate excel file")
 
     book = openpyxl.Workbook()
     book._named_styles["Normal"].font = amazhist.handle.get_excel_font(handle)
 
-    amazhist.handle.get_progress_bar(handle, STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()
 
-    generate_sheet(handle, book, is_need_thumb)
+    _generate_sheet(handle, book, is_need_thumb)
 
     book.remove(book.worksheets[0])
 
@@ -146,11 +145,11 @@ def generate_table_excel(handle, excel_file, is_need_thumb=True):
 
     book.save(excel_file)
 
-    amazhist.handle.get_progress_bar(handle, STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()
 
     book.close()
 
-    amazhist.handle.get_progress_bar(handle, STATUS_ALL).update()
+    amazhist.handle.get_progress_bar(handle, _STATUS_ALL).update()
 
     amazhist.handle.set_status(handle, "完了しました！")
 
@@ -158,10 +157,9 @@ def generate_table_excel(handle, excel_file, is_need_thumb=True):
 
 
 if __name__ == "__main__":
-    from docopt import docopt
-
-    import my_lib.logger
     import my_lib.config
+    import my_lib.logger
+    from docopt import docopt
 
     args = docopt(__doc__)
 
