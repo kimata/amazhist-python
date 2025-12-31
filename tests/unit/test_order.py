@@ -87,17 +87,18 @@ class TestParseOrder:
         # デジタル注文ページをシミュレート
         driver.find_elements.return_value = [unittest.mock.MagicMock()]
 
-        order_info = {
-            "date": datetime.datetime(2024, 1, 15),
-            "no": "D01-1234567-8901234",
-            "time_filter": 2024,
-            "page": 1,
-        }
+        order = amazhist.order.Order(
+            date=datetime.datetime(2024, 1, 15),
+            no="D01-1234567-8901234",
+            url="https://www.amazon.co.jp/gp/css/summary/print.html?orderID=D01-1234567-8901234",
+            time_filter=2024,
+            page=1,
+        )
 
         with unittest.mock.patch(
             "amazhist.order._parse_order_digital", return_value=True
         ) as mock_parse:
-            result = amazhist.order.parse_order(handle, order_info)
+            result = amazhist.order.parse_order(handle, order)
 
         assert result is True
         mock_parse.assert_called_once()
@@ -109,17 +110,18 @@ class TestParseOrder:
         # 通常注文ページをシミュレート（デジタル注文要素なし）
         driver.find_elements.return_value = []
 
-        order_info = {
-            "date": datetime.datetime(2024, 1, 15),
-            "no": "503-1234567-8901234",
-            "time_filter": 2024,
-            "page": 1,
-        }
+        order = amazhist.order.Order(
+            date=datetime.datetime(2024, 1, 15),
+            no="503-1234567-8901234",
+            url="https://www.amazon.co.jp/gp/your-account/order-details?orderID=503-1234567-8901234",
+            time_filter=2024,
+            page=1,
+        )
 
         with unittest.mock.patch(
             "amazhist.order._parse_order_default", return_value=True
         ) as mock_parse:
-            result = amazhist.order.parse_order(handle, order_info)
+            result = amazhist.order.parse_order(handle, order)
 
         assert result is True
         mock_parse.assert_called_once()

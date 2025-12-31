@@ -173,8 +173,7 @@ class TestSaveThumbnail:
         """シャットダウン時は何もしない"""
         amazhist.crawler._shutdown_requested = True
 
-        item = {"asin": "B012345678"}
-        amazhist.item._save_thumbnail(handle, item, "https://example.com/thumb.jpg")
+        amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
         # driver.get が呼ばれていないことを確認
         driver, _ = handle.get_selenium_driver()
@@ -185,8 +184,7 @@ class TestSaveThumbnail:
         """ASIN がない場合は何もしない"""
         amazhist.crawler.reset_shutdown_flag()
 
-        item = {}
-        amazhist.item._save_thumbnail(handle, item, "https://example.com/thumb.jpg")
+        amazhist.item._save_thumbnail(handle, None, "https://example.com/thumb.jpg")
 
         # driver.get が呼ばれていないことを確認
         driver, _ = handle.get_selenium_driver()
@@ -202,10 +200,8 @@ class TestSaveThumbnail:
         mock_img.screenshot_as_png = b"fake_png_data"
         driver.find_element.return_value = mock_img
 
-        item = {"asin": "B012345678"}
-
         with unittest.mock.patch("my_lib.selenium_util.browser_tab"):
-            amazhist.item._save_thumbnail(handle, item, "https://example.com/thumb.jpg")
+            amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
         # ファイルが作成されたことを確認
         thumb_path = tmp_path / "thumb" / "B012345678.png"
@@ -263,15 +259,28 @@ class TestParseItem:
 
     def test_parse_item_shutdown(self, handle):
         """シャットダウン時は None を返す"""
+        import datetime
+
+        import amazhist.order
+
         amazhist.crawler._shutdown_requested = True
 
-        result = amazhist.item.parse_item(handle, "//div[@data-component='purchasedItems']")
+        order = amazhist.order.Order(
+            date=datetime.datetime(2025, 1, 1),
+            no="ORDER-001",
+            url="https://www.amazon.co.jp/order/ORDER-001",
+        )
+        result = amazhist.item.parse_item(handle, "//div[@data-component='purchasedItems']", order)
 
         assert result is None
         amazhist.crawler.reset_shutdown_flag()
 
     def test_parse_item_success(self, handle):
         """商品パース成功"""
+        import datetime
+
+        import amazhist.order
+
         amazhist.crawler.reset_shutdown_flag()
         driver, _ = handle.get_selenium_driver()
 
@@ -309,16 +318,24 @@ class TestParseItem:
         driver.find_element.side_effect = find_element_side_effect
         driver.find_elements.side_effect = find_elements_side_effect
 
+        order = amazhist.order.Order(
+            date=datetime.datetime(2025, 1, 1),
+            no="ORDER-001",
+            url="https://www.amazon.co.jp/order/ORDER-001",
+            time_filter=2025,
+            page=1,
+        )
+
         with (
             unittest.mock.patch("amazhist.item.fetch_item_category", return_value=["本"]),
             unittest.mock.patch("my_lib.selenium_util.with_retry"),
             unittest.mock.patch("time.sleep"),
         ):
-            result = amazhist.item.parse_item(handle, "//div")
+            result = amazhist.item.parse_item(handle, "//div", order)
 
         assert result is not None
-        assert result["name"] == "テスト商品"
-        assert result["asin"] == "B012345678"
-        assert result["price"] == 1234
-        assert result["seller"] == "テスト販売者"
-        assert result["kind"] == "Normal"
+        assert result.name == "テスト商品"
+        assert result.asin == "B012345678"
+        assert result.price == 1234
+        assert result.seller == "テスト販売者"
+        assert result.kind == "Normal"

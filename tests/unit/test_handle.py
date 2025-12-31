@@ -136,14 +136,12 @@ class TestHandlePaths:
 
     def test_get_thumb_path(self, handle, tmp_path):
         """サムネイルパス取得"""
-        item = {"asin": "B0123456789"}
-        path = handle.get_thumb_path(item)
+        path = handle.get_thumb_path("B0123456789")
         assert path == tmp_path / "thumb" / "B0123456789.png"
 
     def test_get_thumb_path_no_asin(self, handle):
         """ASIN がない場合は None"""
-        item = {}
-        path = handle.get_thumb_path(item)
+        path = handle.get_thumb_path(None)
         assert path is None
 
 

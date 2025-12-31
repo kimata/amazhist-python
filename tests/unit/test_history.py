@@ -29,15 +29,32 @@ class TestSheetDef:
 
     def test_link_func_id(self):
         """商品IDのリンク関数"""
+        import datetime
+
+        import amazhist.item
+
         cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]
-        item = {"url": "https://www.amazon.co.jp/dp/B0123456789"}
+        item = amazhist.item.Item(
+            name="テスト商品",
+            date=datetime.datetime(2025, 1, 1),
+            no="ORDER-001",
+            url="https://www.amazon.co.jp/dp/B0123456789",
+        )
 
         assert cols["id"]["link_func"](item) == "https://www.amazon.co.jp/dp/B0123456789"
 
     def test_link_func_no(self):
         """注文番号のリンク関数"""
+        import datetime
+
+        import amazhist.item
+
         cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]
-        item = {"no": "503-1234567-8901234"}
+        item = amazhist.item.Item(
+            name="テスト商品",
+            date=datetime.datetime(2025, 1, 1),
+            no="503-1234567-8901234",
+        )
 
         result = cols["no"]["link_func"](item)
         assert "503-1234567-8901234" in result

@@ -538,7 +538,8 @@ class TestDatabaseErrorLog:
         assert count == 1
 
         items = db.get_item_list()
-        assert items[0]["category"] == ["本", "コンピュータ・IT"]
+        # Item dataclass では category は tuple
+        assert items[0].category == ("本", "コンピュータ・IT")
 
     def test_get_failed_thumbnail_items(self, db):
         """サムネイル取得に失敗したアイテムを取得"""
