@@ -33,7 +33,7 @@ class TestSheetDef:
 
         import amazhist.item
 
-        cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]  # type: ignore[reportAttributeAccessIssue]
+        cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]
         item = amazhist.item.Item(
             name="テスト商品",
             date=datetime.datetime(2025, 1, 1),
@@ -49,7 +49,7 @@ class TestSheetDef:
 
         import amazhist.item
 
-        cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]  # type: ignore[reportAttributeAccessIssue]
+        cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]
         item = amazhist.item.Item(
             name="テスト商品",
             date=datetime.datetime(2025, 1, 1),

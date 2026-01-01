@@ -263,17 +263,17 @@ class TestParseItem:
 
         import amazhist.order
 
-        amazhist.crawler._shutdown_requested = True  # type: ignore[reportAttributeAccessIssue]
+        amazhist.crawler._shutdown_requested = True
 
         order = amazhist.order.Order(
             date=datetime.datetime(2025, 1, 1),
             no="ORDER-001",
             url="https://www.amazon.co.jp/order/ORDER-001",
         )
-        result = amazhist.item.parse_item(handle, "//div[@data-component='purchasedItems']", order)  # type: ignore[reportAttributeAccessIssue]
+        result = amazhist.item.parse_item(handle, "//div[@data-component='purchasedItems']", order)
 
         assert result is None
-        amazhist.crawler.reset_shutdown_flag()  # type: ignore[reportAttributeAccessIssue]
+        amazhist.crawler.reset_shutdown_flag()
 
     def test_parse_item_success(self, handle):
         """商品パース成功"""
@@ -281,7 +281,7 @@ class TestParseItem:
 
         import amazhist.order
 
-        amazhist.crawler.reset_shutdown_flag()  # type: ignore[reportAttributeAccessIssue]
+        amazhist.crawler.reset_shutdown_flag()
         driver, _ = handle.get_selenium_driver()
 
         # 商品リンク要素をシミュレート
@@ -331,7 +331,7 @@ class TestParseItem:
             unittest.mock.patch("my_lib.selenium_util.with_retry"),
             unittest.mock.patch("time.sleep"),
         ):
-            result = amazhist.item.parse_item(handle, "//div", order)  # type: ignore[reportAttributeAccessIssue]
+            result = amazhist.item.parse_item(handle, "//div", order)
 
         assert result is not None
         assert result.name == "テスト商品"
