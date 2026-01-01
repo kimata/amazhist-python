@@ -166,7 +166,7 @@ def show_error_log(config, show_all=False):
         table.add_column("種別", width=12)
         table.add_column("コンテキスト", width=10)
         table.add_column("注文番号", width=20)
-        table.add_column("商品名", width=30, overflow="ellipsis")
+        table.add_column("メッセージ/商品名", width=40, overflow="ellipsis")
         table.add_column("状態", width=6)
         table.add_column("URL (https://www.amazon.co.jp)", overflow="ellipsis")
 
@@ -176,7 +176,8 @@ def show_error_log(config, show_all=False):
             created_at = error["created_at"].strftime("%Y-%m-%d %H:%M:%S") if error["created_at"] else ""
             status = "[green]解決[/green]" if error["resolved"] else "[red]未解決[/red]"
             order_no = error["order_no"] or ""
-            item_name = error["item_name"] or ""
+            # エラーメッセージまたは商品名を表示（商品名がなければエラーメッセージを優先）
+            item_name = error["item_name"] or error["error_message"] or ""
 
             # URLからベースURLを削除
             url = error["url"] or ""
