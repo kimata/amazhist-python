@@ -3,6 +3,13 @@
 注文情報の取得・解析を行う関数群
 
 注文ページの解析、注文件数の取得などを行います。
+
+Usage:
+  order.py [-c CONFIG] -n ORDER_NO
+
+Options:
+  -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
+  -n ORDER_NO   : 注文番号．
 """
 from __future__ import annotations
 
@@ -210,3 +217,34 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
         else:
             logging.warning("注文件数の取得に失敗しました")
             return 0
+
+
+######################################################################
+if __name__ == "__main__":
+    import random
+    import traceback
+
+    import my_lib.config
+    import my_lib.logger
+    from docopt import docopt
+
+    assert __doc__ is not None
+    args = docopt(__doc__)
+
+    my_lib.logger.init("test", level=logging.INFO)
+
+    config = my_lib.config.load(args["-c"])
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
+
+    try:
+        no = args["-n"]
+        amazhist.crawler.visit_url(handle, amazhist.crawler.gen_order_url(no), "main")
+        amazhist.crawler._keep_logged_on(handle)
+
+        parse_order(handle, Order(date=datetime.datetime.now(), no=no, url=amazhist.crawler.gen_order_url(no), page=1, time_filter=None))
+    except Exception:
+        driver, wait = handle.get_selenium_driver()
+        logging.error(traceback.format_exc())
+        my_lib.selenium_util.dump_page(
+            driver, int(random.random() * 100), handle.config.debug_dir_path
+        )

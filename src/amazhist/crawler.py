@@ -3,14 +3,12 @@
 Amazon の購入履歴情報を取得します．
 
 Usage:
-  crawler.py [-c CONFIG] [-y YEAR] [-s PAGE] [-n ORDER_NO]
-  crawler.py [-c CONFIG] -n ORDER_NO
+  crawler.py [-c CONFIG] [-y YEAR] [-s PAGE]
 
 Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
   -y YEAR       : 購入年．
   -s PAGE       : 開始ページ．[default: 1]
-  -n ORDER_NO   : 注文番号．
 """
 from __future__ import annotations
 
@@ -998,15 +996,7 @@ if __name__ == "__main__":
     handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
 
     try:
-        if args["-n"] is not None:
-            no = args["-n"]
-            visit_url(handle, gen_order_url(no), _get_caller_name())
-            _keep_logged_on(handle)
-
-            amazhist.order.parse_order(
-                handle, amazhist.order.Order(date=datetime.datetime.now(), no=no, url=gen_order_url(no), page=1, time_filter=None)
-            )
-        elif args["-y"] is None:
+        if args["-y"] is None:
             fetch_order_list(handle)
         else:
             year = int(args["-y"])
