@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import pathlib
 import sqlite3
 from typing import TYPE_CHECKING, Any
@@ -202,6 +203,20 @@ class Database:
         cursor = conn.execute("SELECT checked FROM year_status WHERE year = ?", (str(year),))
         row = cursor.fetchone()
         return bool(row["checked"]) if row else False
+
+    def reset_year_status(self, year: str | int) -> None:
+        """年のステータスをリセット（再収集を可能にする）
+
+        年ステータスとページステータスを両方リセットします。
+        """
+        conn = self._get_conn()
+        year_str = str(year)
+        # 年ステータスをリセット
+        conn.execute("DELETE FROM year_status WHERE year = ?", (year_str,))
+        # ページステータスもリセット
+        conn.execute("DELETE FROM page_status WHERE year = ?", (year_str,))
+        conn.commit()
+        logging.info(f"{year}年のステータスをリセットしました")
 
     def get_year_list(self) -> list[int]:
         """年リストを取得"""
@@ -630,6 +645,24 @@ class Database:
             )
         result = cursor.fetchone()
         return result[0] if result else 0
+
+    def get_failed_years(self) -> list[dict[str, Any]]:
+        """年単位のエラー（order_count_fallback）を取得
+
+        Returns:
+            エラー情報のリスト（id, order_year を含む）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT id, url, error_type, error_message, context, order_no, item_name,
+                   order_year, order_page, order_index, created_at, retry_count, resolved
+            FROM error_log
+            WHERE error_type = 'order_count_fallback' AND resolved = 0
+            ORDER BY order_year
+            """
+        )
+        return [self._row_to_error(row) for row in cursor.fetchall()]
 
     def _row_to_error(self, row: sqlite3.Row) -> dict[str, Any]:
         """Row を error dict に変換"""

@@ -756,6 +756,65 @@ def _retry_order_from_list_page(
     return amazhist.order.parse_order(handle, order)
 
 
+def _retry_failed_years(handle: amazhist.handle.Handle) -> tuple[int, int]:
+    """年単位のエラー（order_count_fallback）を再巡回
+
+    注文件数要素が見つからずフォールバックで注文カードを数えた年を再巡回し、
+    年ステータスをリセットして再収集します。
+
+    Returns:
+        (成功件数, 失敗件数)
+    """
+    failed_years = handle.get_failed_years()
+
+    if not failed_years:
+        logging.info("再巡回対象の年はありません")
+        return (0, 0)
+
+    # 対象年をユニークにする
+    years = sorted(set(error["order_year"] for error in failed_years if error["order_year"]))
+
+    if not years:
+        logging.info("再巡回対象の年はありません")
+        return (0, 0)
+
+    logging.info(f"年単位の再巡回を行います: {years}")
+
+    handle.set_progress_bar("[再取得] 年", len(years))
+
+    success_count = 0
+    fail_count = 0
+
+    for year in years:
+        if is_shutdown_requested():
+            break
+
+        logging.info(f"{year}年の再巡回を開始します")
+
+        try:
+            # 年ステータスをリセット（再収集を可能にする）
+            handle.db.reset_year_status(year)
+
+            # 年単位の収集を実行
+            _fetch_order_list_by_year(handle, year)
+
+            # 該当年のエラーを解決済みにする
+            for error in failed_years:
+                if error["order_year"] == year:
+                    handle.mark_error_resolved(error["id"])
+
+            logging.info(f"{year}年の再巡回が完了しました")
+            success_count += 1
+        except Exception as e:
+            logging.warning(f"{year}年の再巡回をスキップしました: {e}")
+            fail_count += 1
+
+        handle.get_progress_bar("[再取得] 年").update()
+        time.sleep(1)
+
+    return (success_count, fail_count)
+
+
 def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
     """エラーが発生した注文を再取得
 
@@ -951,6 +1010,9 @@ def retry_failed_items(handle: amazhist.handle.Handle):
     handle.set_status("🔄 エラーが発生したアイテムを再取得します...")
 
     try:
+        # 年単位の再巡回（order_count_fallback エラー）
+        year_success, year_fail = _retry_failed_years(handle)
+
         # 注文の再取得
         order_success, order_fail = _retry_failed_orders(handle)
 
@@ -961,10 +1023,11 @@ def retry_failed_items(handle: amazhist.handle.Handle):
         thumb_success, thumb_fail = _retry_failed_thumbnails(handle)
 
         # 結果をログに出力
-        total_success = order_success + category_success + thumb_success
-        total_fail = order_fail + category_fail + thumb_fail
+        total_success = year_success + order_success + category_success + thumb_success
+        total_fail = year_fail + order_fail + category_fail + thumb_fail
 
         logging.info(f"再取得結果: 成功 {total_success} 件, 失敗 {total_fail} 件")
+        logging.info(f"  年: 成功 {year_success}, 失敗 {year_fail}")
         logging.info(f"  注文: 成功 {order_success}, 失敗 {order_fail}")
         logging.info(f"  カテゴリ: 成功 {category_success}, 失敗 {category_fail}")
         logging.info(f"  サムネイル: 成功 {thumb_success}, 失敗 {thumb_fail}")

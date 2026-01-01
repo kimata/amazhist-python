@@ -197,7 +197,8 @@ class TestParseOrderCount:
 
         # 注文カード要素をシミュレート
         order_cards = [unittest.mock.MagicMock() for _ in range(5)]
-        driver.find_elements.return_value = order_cards
+        # _extract_order_count_from_page で空リスト、注文カードで5件
+        driver.find_elements.side_effect = [[], order_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),

@@ -175,6 +175,28 @@ def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
     return is_unempty
 
 
+def _extract_order_count_from_page(driver) -> int | None:
+    """ページ内の注文件数を抽出
+
+    <span class="num-orders">64件</span> のような要素から件数を取得します。
+
+    Args:
+        driver: Selenium WebDriver
+
+    Returns:
+        注文件数（見つからない場合は None）
+    """
+    ORDER_COUNT_TEXT_XPATH = "//span[contains(@class, 'num-orders')]"
+
+    elems = driver.find_elements(By.XPATH, ORDER_COUNT_TEXT_XPATH)
+    for elem in elems:
+        text = elem.text
+        match = re.search(r"(\d+)", text)
+        if match:
+            return int(match.group(1))
+    return None
+
+
 def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
     """指定年の注文件数を取得
 
@@ -211,6 +233,12 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
             handle, amazhist.crawler.gen_hist_url(year, 1), caller_name
         )
 
+        # まずページ内の「○件の注文」テキストから件数を取得
+        page_count_text = _extract_order_count_from_page(driver)
+        if page_count_text is not None:
+            return page_count_text
+
+        # テキストが見つからない場合は注文カードを数える（フォールバック）
         if my_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
             count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
 
@@ -228,6 +256,17 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
                     if page_count < amazhist.const.ORDER_COUNT_PER_PAGE:
                         break
                     page += 1
+
+            # フォールバックで注文カードを数えた場合はエラーとして記録
+            # 後から年単位で再巡回可能にする
+            logging.warning(f"{year}年: 注文件数要素が見つからず、注文カードを数えました（{count}件）")
+            handle.record_or_update_error(
+                url=amazhist.crawler.gen_hist_url(year, 1),
+                error_type=amazhist.const.ERROR_TYPE_ORDER_COUNT_FALLBACK,
+                context="year",
+                message=f"注文件数要素が見つからず、注文カードを数えました（{count}件）",
+                order_year=year,
+            )
 
             return count
         else:

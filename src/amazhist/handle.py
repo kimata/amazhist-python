@@ -422,6 +422,10 @@ class Handle:
         """エラーが発生した注文情報を取得（年/ページ/インデックス情報を含む）"""
         return self.db.get_failed_orders()
 
+    def get_failed_years(self) -> list[dict[str, Any]]:
+        """年単位のエラー（order_count_fallback）を取得"""
+        return self.db.get_failed_years()
+
     def get_failed_category_items(self) -> list[dict[str, Any]]:
         """カテゴリ取得に失敗したアイテムを取得"""
         return self.db.get_failed_category_items()
