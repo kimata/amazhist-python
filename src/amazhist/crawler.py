@@ -412,16 +412,32 @@ def _fetch_order_list_by_year_page(handle: amazhist.handle.Handle, year, page, r
     time.sleep(1)
 
     for order in order_list:
-        if not handle.get_order_stat(order.no):
-            is_skipped |= not _fetch_item_list_by_order(handle, order)
-        else:
-            logging.info(
-                "注文処理済み: {date} - {no} [キャッシュ]".format(
-                    date=order.date.strftime("%Y-%m-%d"), no=order.no
+        try:
+            if not handle.get_order_stat(order.no):
+                is_skipped |= not _fetch_item_list_by_order(handle, order)
+            else:
+                logging.info(
+                    "注文処理済み: {date} - {no} [キャッシュ]".format(
+                        date=order.date.strftime("%Y-%m-%d"), no=order.no
+                    )
                 )
+        except Exception as e:
+            # 予期しない例外が発生してもプログレスバーは更新する
+            logging.warning(f"注文の処理中に予期しないエラーが発生しました: {order.no} ({e})")
+            handle.record_or_update_error(
+                url=order.url,
+                error_type=amazhist.const.ERROR_TYPE_FETCH,
+                context="order",
+                message=str(e),
+                order_no=order.no,
+                order_year=order.time_filter,
+                order_page=order.page,
             )
-        handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-        handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
+            is_skipped = True
+        finally:
+            # 成功・失敗に関わらずプログレスバーを更新
+            handle.get_progress_bar(_gen_status_label_by_year(year)).update()
+            handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
 
         # デバッグモードでは1件だけ処理して終了
         if handle.debug_mode:
