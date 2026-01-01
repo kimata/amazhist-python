@@ -85,8 +85,8 @@ class TestConstants:
         assert "amazon.co.jp" in amazhist.const.HIST_URL
 
 
-class TestFetchOrderItemList:
-    """fetch_order_item_list のテスト"""
+class TestFetchOrderList:
+    """fetch_order_list のテスト"""
 
     @pytest.fixture
     def mock_config(self, tmp_path):
@@ -131,43 +131,43 @@ class TestFetchOrderItemList:
             yield h
             h.finish()
 
-    def test_fetch_order_item_list_shutdown_requested(self, handle):
+    def test_fetch_order_list_shutdown_requested(self, handle):
         """シャットダウンリクエスト時は即座に終了"""
         with (
             unittest.mock.patch(
-                "amazhist.crawler._fetch_order_item_list_all_year"
+                "amazhist.crawler._fetch_order_list_all_year"
             ) as mock_fetch,
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
         ):
-            amazhist.crawler.fetch_order_item_list(handle)
+            amazhist.crawler.fetch_order_list(handle)
 
             # シャットダウンリクエスト時もフェッチは呼ばれる
             mock_fetch.assert_called_once()
 
-    def test_fetch_order_item_list_normal(self, handle):
+    def test_fetch_order_list_normal(self, handle):
         """正常系のテスト"""
         amazhist.crawler.reset_shutdown_flag()
 
         with unittest.mock.patch(
-            "amazhist.crawler._fetch_order_item_list_all_year"
+            "amazhist.crawler._fetch_order_list_all_year"
         ) as mock_fetch:
-            amazhist.crawler.fetch_order_item_list(handle)
+            amazhist.crawler.fetch_order_list(handle)
 
             mock_fetch.assert_called_once_with(handle)
 
-    def test_fetch_order_item_list_exception(self, handle):
+    def test_fetch_order_list_exception(self, handle):
         """例外発生時のテスト"""
         amazhist.crawler.reset_shutdown_flag()
 
         with (
             unittest.mock.patch(
-                "amazhist.crawler._fetch_order_item_list_all_year",
+                "amazhist.crawler._fetch_order_list_all_year",
                 side_effect=Exception("テストエラー"),
             ),
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="テストエラー"),
         ):
-            amazhist.crawler.fetch_order_item_list(handle)
+            amazhist.crawler.fetch_order_list(handle)
 
         mock_dump.assert_called_once()
 

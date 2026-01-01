@@ -62,7 +62,7 @@ class TestExecuteFetch:
 
     def test_execute_fetch_success(self, handle):
         """正常にフェッチ実行"""
-        with unittest.mock.patch("amazhist.crawler.fetch_order_item_list") as mock_fetch:
+        with unittest.mock.patch("amazhist.crawler.fetch_order_list") as mock_fetch:
             app.execute_fetch(handle)
             mock_fetch.assert_called_once_with(handle)
 
@@ -70,7 +70,7 @@ class TestExecuteFetch:
         """エラー時にページダンプ"""
         with (
             unittest.mock.patch(
-                "amazhist.crawler.fetch_order_item_list",
+                "amazhist.crawler.fetch_order_list",
                 side_effect=Exception("フェッチエラー"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
