@@ -457,7 +457,7 @@ class TestRetryFailedItems:
 
     def test_retry_failed_orders_empty(self, handle):
         """リトライ対象なし"""
-        handle._db.get_failed_order_numbers.return_value = []
+        handle._db.get_failed_orders.return_value = []
 
         success, fail = amazhist.crawler._retry_failed_orders(handle)
 
@@ -467,7 +467,9 @@ class TestRetryFailedItems:
     def test_retry_failed_orders_success(self, handle):
         """リトライ成功"""
         amazhist.crawler.reset_shutdown_flag()
-        handle._db.get_failed_order_numbers.return_value = ["ORDER-001"]
+        handle._db.get_failed_orders.return_value = [
+            {"error_id": 1, "order_no": "ORDER-001", "order_year": None, "order_page": None, "order_index": None}
+        ]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -484,7 +486,9 @@ class TestRetryFailedItems:
     def test_retry_failed_orders_failure(self, handle):
         """リトライ失敗"""
         amazhist.crawler.reset_shutdown_flag()
-        handle._db.get_failed_order_numbers.return_value = ["ORDER-001"]
+        handle._db.get_failed_orders.return_value = [
+            {"error_id": 1, "order_no": "ORDER-001", "order_year": None, "order_page": None, "order_index": None}
+        ]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -500,7 +504,9 @@ class TestRetryFailedItems:
     def test_retry_failed_orders_exception(self, handle):
         """リトライ中に例外発生"""
         amazhist.crawler.reset_shutdown_flag()
-        handle._db.get_failed_order_numbers.return_value = ["ORDER-001"]
+        handle._db.get_failed_orders.return_value = [
+            {"error_id": 1, "order_no": "ORDER-001", "order_year": None, "order_page": None, "order_index": None}
+        ]
 
         with (
             unittest.mock.patch(

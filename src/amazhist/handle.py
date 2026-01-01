@@ -366,9 +366,15 @@ class Handle:
         message: str | None = None,
         order_no: str | None = None,
         item_name: str | None = None,
+        order_year: int | None = None,
+        order_page: int | None = None,
+        order_index: int | None = None,
     ) -> int:
         """エラーを記録"""
-        return self.db.record_error(url, error_type, context, message, order_no, item_name)
+        return self.db.record_error(
+            url, error_type, context, message, order_no, item_name,
+            order_year, order_page, order_index
+        )
 
     def record_or_update_error(
         self,
@@ -378,9 +384,15 @@ class Handle:
         message: str | None = None,
         order_no: str | None = None,
         item_name: str | None = None,
+        order_year: int | None = None,
+        order_page: int | None = None,
+        order_index: int | None = None,
     ) -> int:
         """エラーを記録または更新（既存エラーがあれば retry_count を増加）"""
-        return self.db.record_or_update_error(url, error_type, context, message, order_no, item_name)
+        return self.db.record_or_update_error(
+            url, error_type, context, message, order_no, item_name,
+            order_year, order_page, order_index
+        )
 
     def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
         """未解決のエラー一覧を取得"""
@@ -405,6 +417,10 @@ class Handle:
     def get_failed_order_numbers(self) -> list[str]:
         """エラーが発生した注文番号を取得"""
         return self.db.get_failed_order_numbers()
+
+    def get_failed_orders(self) -> list[dict[str, Any]]:
+        """エラーが発生した注文情報を取得（年/ページ/インデックス情報を含む）"""
+        return self.db.get_failed_orders()
 
     def get_failed_category_items(self) -> list[dict[str, Any]]:
         """カテゴリ取得に失敗したアイテムを取得"""

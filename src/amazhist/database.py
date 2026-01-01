@@ -283,6 +283,9 @@ class Database:
         message: str | None = None,
         order_no: str | None = None,
         item_name: str | None = None,
+        order_year: int | None = None,
+        order_page: int | None = None,
+        order_index: int | None = None,
     ) -> int:
         """エラーを記録
 
@@ -293,6 +296,9 @@ class Database:
             message: エラーメッセージ
             order_no: 関連する注文番号
             item_name: 関連する商品名
+            order_year: エラーが発生した注文の年
+            order_page: エラーが発生した注文のページ
+            order_index: エラーが発生した注文のページ内インデックス
 
         Returns:
             挿入されたエラーログのID
@@ -300,8 +306,9 @@ class Database:
         conn = self._get_conn()
         cursor = conn.execute(
             """
-            INSERT INTO error_log (url, error_type, error_message, context, order_no, item_name, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO error_log (url, error_type, error_message, context, order_no, item_name,
+                                   order_year, order_page, order_index, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 url,
@@ -310,6 +317,9 @@ class Database:
                 context,
                 order_no,
                 item_name,
+                order_year,
+                order_page,
+                order_index,
                 datetime.datetime.now().isoformat(),
             ),
         )
@@ -342,6 +352,9 @@ class Database:
         message: str | None = None,
         order_no: str | None = None,
         item_name: str | None = None,
+        order_year: int | None = None,
+        order_page: int | None = None,
+        order_index: int | None = None,
     ) -> int:
         """エラーを記録または更新（既存エラーがあれば retry_count を増加）
 
@@ -352,6 +365,9 @@ class Database:
             message: エラーメッセージ
             order_no: 関連する注文番号
             item_name: 関連する商品名
+            order_year: エラーが発生した注文の年
+            order_page: エラーが発生した注文のページ
+            order_index: エラーが発生した注文のページ内インデックス
 
         Returns:
             エラーログのID
@@ -360,7 +376,10 @@ class Database:
         if existing:
             self.increment_retry_count(existing["id"])
             return existing["id"]
-        return self.record_error(url, error_type, context, message, order_no, item_name)
+        return self.record_error(
+            url, error_type, context, message, order_no, item_name,
+            order_year, order_page, order_index
+        )
 
     def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
         """未解決のエラー一覧を取得
@@ -396,6 +415,37 @@ class Database:
             "SELECT DISTINCT order_no FROM error_log WHERE resolved = 0 AND context = 'order' AND order_no IS NOT NULL"
         )
         return [row[0] for row in cursor.fetchall()]
+
+    def get_failed_orders(self) -> list[dict[str, Any]]:
+        """エラーが発生した注文情報を取得
+
+        未解決のエラーで context が "order" のものから詳細情報を取得します。
+        年/ページ/インデックス情報を含みます。
+
+        Returns:
+            注文エラー情報のリスト（order_no, order_year, order_page, order_index, error_id を含む）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT id, order_no, order_year, order_page, order_index, url, error_type
+            FROM error_log
+            WHERE resolved = 0 AND context = 'order'
+            ORDER BY created_at DESC
+            """
+        )
+        return [
+            {
+                "error_id": row[0],
+                "order_no": row[1],
+                "order_year": row[2],
+                "order_page": row[3],
+                "order_index": row[4],
+                "url": row[5],
+                "error_type": row[6],
+            }
+            for row in cursor.fetchall()
+        ]
 
     def get_failed_category_items(self) -> list[dict[str, Any]]:
         """カテゴリ取得に失敗したアイテムを取得
@@ -583,6 +633,11 @@ class Database:
 
     def _row_to_error(self, row: sqlite3.Row) -> dict[str, Any]:
         """Row を error dict に変換"""
+        # 新しいカラムが存在しない場合に対応（マイグレーション前のDB）
+        order_year = row["order_year"] if "order_year" in row.keys() else None
+        order_page = row["order_page"] if "order_page" in row.keys() else None
+        order_index = row["order_index"] if "order_index" in row.keys() else None
+
         return {
             "id": row["id"],
             "url": row["url"],
@@ -591,6 +646,9 @@ class Database:
             "context": row["context"],
             "order_no": row["order_no"],
             "item_name": row["item_name"],
+            "order_year": order_year,
+            "order_page": order_page,
+            "order_index": order_index,
             "created_at": self._parse_datetime(row["created_at"]),
             "retry_count": row["retry_count"],
             "resolved": bool(row["resolved"]),

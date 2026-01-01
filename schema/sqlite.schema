@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS error_log (
     context TEXT NOT NULL,
     order_no TEXT,
     item_name TEXT,
+    order_year INTEGER,
+    order_page INTEGER,
+    order_index INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     retry_count INTEGER DEFAULT 0,
     resolved INTEGER DEFAULT 0
