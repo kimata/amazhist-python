@@ -367,6 +367,13 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
                 order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
             ).text
             logging.warning(f"詳細リンクがない注文をスキップしました: {no}")
+            handle.record_or_update_error(
+                url=gen_order_url(no),
+                error_type=amazhist.const.ERROR_TYPE_NO_DETAIL_LINK,
+                context="order",
+                message="詳細リンクがない注文",
+                order_no=no,
+            )
             handle.get_progress_bar(_gen_status_label_by_year(year)).update()
             handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
             continue

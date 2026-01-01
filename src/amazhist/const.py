@@ -20,3 +20,4 @@ RETRY_DELAY_TIMEOUT = 2.0
 ERROR_TYPE_TIMEOUT = "timeout"
 ERROR_TYPE_PARSE = "parse_error"
 ERROR_TYPE_FETCH = "fetch_error"
+ERROR_TYPE_NO_DETAIL_LINK = "no_detail_link"
