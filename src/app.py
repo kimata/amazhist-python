@@ -168,13 +168,20 @@ def show_error_log(config, show_all=False):
         table.add_column("注文番号", width=20)
         table.add_column("商品名", width=30, overflow="ellipsis")
         table.add_column("状態", width=6)
-        table.add_column("URL", overflow="ellipsis")
+        table.add_column("URL (https://www.amazon.co.jp)", overflow="ellipsis")
+
+        amazon_base_url = "https://www.amazon.co.jp"
 
         for error in errors:
             created_at = error["created_at"].strftime("%Y-%m-%d %H:%M:%S") if error["created_at"] else ""
             status = "[green]解決[/green]" if error["resolved"] else "[red]未解決[/red]"
             order_no = error["order_no"] or ""
             item_name = error["item_name"] or ""
+
+            # URLからベースURLを削除
+            url = error["url"] or ""
+            if url.startswith(amazon_base_url):
+                url = url[len(amazon_base_url):]
 
             # コンテキストに応じた色分け
             context = error["context"]
@@ -195,7 +202,7 @@ def show_error_log(config, show_all=False):
                 order_no,
                 item_name,
                 status,
-                error["url"],
+                url,
             )
 
         console.print(table)
