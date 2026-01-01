@@ -39,13 +39,6 @@ class TestGenHistUrl:
 
         assert "startIndex=10" in result
 
-    def test_gen_hist_url_archive(self):
-        """アーカイブ（文字列）"""
-        result = amazhist.crawler.gen_hist_url("archived", 1)
-
-        assert "archived" in result
-
-
 class TestShutdownFlag:
     """シャットダウンフラグのテスト"""
 

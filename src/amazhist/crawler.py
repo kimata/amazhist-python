@@ -206,7 +206,7 @@ def _keep_logged_on(handle: amazhist.handle.Handle):
         raise Exception("ログインに失敗しました．")
 
 
-def gen_hist_url(year: int | str, page: int) -> str:
+def gen_hist_url(year: int, page: int) -> str:
     """履歴ページのURLを生成"""
     return amazhist.const.HIST_URL_BY_YEAR.format(
         year=year, start=amazhist.const.ORDER_COUNT_PER_PAGE * (page - 1)
