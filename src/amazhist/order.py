@@ -16,11 +16,14 @@ from __future__ import annotations
 import datetime
 import inspect
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 import my_lib.selenium_util
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 
 import amazhist.config
@@ -173,6 +176,62 @@ def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
         is_unempty = _parse_order_default(handle, order)
 
     return is_unempty
+
+
+def fetch_item_list(
+    handle: amazhist.handle.Handle,
+    order: Order,
+    visit_url_func: Callable,
+    keep_logged_on_func: Callable,
+    get_caller_name_func: Callable,
+) -> bool:
+    """注文詳細ページから商品情報を取得
+
+    Args:
+        handle: アプリケーションハンドル
+        order: 注文情報
+        visit_url_func: URL訪問関数
+        keep_logged_on_func: ログイン維持関数
+        get_caller_name_func: 呼び出し元名取得関数
+
+    Returns:
+        取得に成功したか
+    """
+    driver, wait = handle.get_selenium_driver()
+
+    try:
+        visit_url_func(handle, order.url, get_caller_name_func())
+        keep_logged_on_func(handle)
+    except TimeoutException as e:
+        logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order.no}")
+        handle.record_or_update_error(
+            url=order.url,
+            error_type=amazhist.const.ERROR_TYPE_TIMEOUT,
+            context="order",
+            message=str(e),
+            order_no=order.no,
+            order_year=order.time_filter,
+            order_page=order.page,
+        )
+        time.sleep(1)
+        return False
+
+    if not parse_order(handle, order):
+        logging.warning(f"注文のパースに失敗しました: {order.no}")
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        handle.record_or_update_error(
+            url=order.url,
+            error_type="parse_error",
+            context="order",
+            message="注文のパースに失敗しました",
+            order_no=order.no,
+            order_year=order.time_filter,
+            order_page=order.page,
+        )
+        time.sleep(1)
+        return False
+
+    return True
 
 
 def _extract_order_count_from_page(driver) -> int | None:
