@@ -206,7 +206,6 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
 
         if my_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
             count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
-            logging.info(count)
             return count
         else:
             logging.warning("注文件数の取得に失敗しました")
