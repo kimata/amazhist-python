@@ -213,6 +213,22 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
 
         if my_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
             count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
+
+            # 1ページあたりの最大件数の場合、次のページがあるか確認
+            if count == amazhist.const.ORDER_COUNT_PER_PAGE:
+                page = 2
+                while True:
+                    amazhist.crawler.visit_url(
+                        handle, amazhist.crawler.gen_hist_url(year, page), caller_name
+                    )
+                    page_count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
+                    if page_count == 0:
+                        break
+                    count += page_count
+                    if page_count < amazhist.const.ORDER_COUNT_PER_PAGE:
+                        break
+                    page += 1
+
             return count
         else:
             logging.warning("注文件数の取得に失敗しました")
