@@ -197,11 +197,27 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
             my_lib.selenium_util.dump_page(
                 driver, int(random.random() * 100), handle.config.debug_dir_path
             )
+            handle.record_or_update_error(
+                url=url if url else order.url,
+                error_type=amazhist.const.ERROR_TYPE_PRICE,
+                context="order",  # 注文の再取得時に価格も再パースされる
+                message=f"価格のパースに失敗しました: {price_text}",
+                order_no=order.no,
+                item_name=name,
+            )
             price = 0
     else:
         logging.warning(f"価格が見つかりませんでした: {name}")
         my_lib.selenium_util.dump_page(
             driver, int(random.random() * 100), handle.config.debug_dir_path
+        )
+        handle.record_or_update_error(
+            url=url if url else order.url,
+            error_type=amazhist.const.ERROR_TYPE_PRICE,
+            context="order",  # 注文の再取得時に価格も再パースされる
+            message="価格が見つかりませんでした",
+            order_no=order.no,
+            item_name=name,
         )
         price = 0
 

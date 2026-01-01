@@ -42,7 +42,7 @@ SCHEMA_CONFIG = "schema/config.schema"
 
 def execute_fetch(handle: amazhist.handle.Handle):
     try:
-        amazhist.crawler.fetch_order_item_list(handle)
+        amazhist.crawler.fetch_order_list(handle)
     except Exception:
         # シャットダウン要求時はダンプをスキップ（ドライバーが既に閉じている可能性が高い）
         if not amazhist.crawler.is_shutdown_requested():

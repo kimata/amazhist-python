@@ -257,7 +257,7 @@ def visit_url(handle: amazhist.handle.Handle, url, caller_name):
     )
 
 
-def _fetch_order_item_list_by_order(handle: amazhist.handle.Handle, order: amazhist.order.Order):
+def _fetch_item_list_by_order(handle: amazhist.handle.Handle, order: amazhist.order.Order):
     driver, wait = handle.get_selenium_driver()
 
     try:
@@ -293,7 +293,7 @@ def _fetch_order_item_list_by_order(handle: amazhist.handle.Handle, order: amazh
     return True
 
 
-def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, page, retry=0):
+def _fetch_order_list_by_year_page(handle: amazhist.handle.Handle, year, page, retry=0):
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
     driver, wait = handle.get_selenium_driver()
@@ -331,7 +331,7 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
             if retry < amazhist.const.RETRY_FETCH:
                 logging.warning("問題が発生しました。再試行します...")
                 time.sleep(amazhist.const.RETRY_DELAY_DEFAULT)
-                return _fetch_order_item_list_by_year_page(handle, year, page, retry=retry + 1)
+                return _fetch_order_list_by_year_page(handle, year, page, retry=retry + 1)
             else:
                 continue
 
@@ -393,6 +393,15 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
         url = driver.find_element(By.XPATH, order_details_xpath).get_attribute("href")
         if url is None:
             logging.warning(f"URL が取得できませんでした: {no}")
+            handle.record_or_update_error(
+                url=gen_order_url(no),
+                error_type=amazhist.const.ERROR_TYPE_NO_URL,
+                context="order",
+                message="URL が取得できませんでした",
+                order_no=no,
+            )
+            handle.get_progress_bar(_gen_status_label_by_year(year)).update()
+            handle.get_progress_bar(_STATUS_ORDER_ITEM_ALL).update()
             continue
 
         order_list.append(amazhist.order.Order(date=date, no=no, url=url, time_filter=year, page=page))
@@ -401,7 +410,7 @@ def _fetch_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pa
 
     for order in order_list:
         if not handle.get_order_stat(order.no):
-            is_skipped |= not _fetch_order_item_list_by_order(handle, order)
+            is_skipped |= not _fetch_item_list_by_order(handle, order)
         else:
             logging.info(
                 "注文処理済み: {date} - {no} [キャッシュ]".format(
@@ -490,7 +499,7 @@ def _skip_order_item_list_by_year_page(handle: amazhist.handle.Handle, year, pag
     return incr_order != amazhist.const.ORDER_COUNT_PER_PAGE
 
 
-def _fetch_order_item_list_by_year(handle: amazhist.handle.Handle, year, start_page=1):
+def _fetch_order_list_by_year(handle: amazhist.handle.Handle, year, start_page=1):
     visit_url(handle, gen_hist_url(year, start_page), _get_caller_name())
 
     _keep_logged_on(handle)
@@ -510,7 +519,7 @@ def _fetch_order_item_list_by_year(handle: amazhist.handle.Handle, year, start_p
     is_skipped = False
     while True:
         if not handle.get_page_checked(year, page):
-            is_skipped_page, is_last = _fetch_order_item_list_by_year_page(handle, year, page)
+            is_skipped_page, is_last = _fetch_order_list_by_year_page(handle, year, page)
 
             if not is_skipped_page:
                 handle.set_page_checked(year, page)
@@ -572,7 +581,7 @@ def _fetch_order_count(handle: amazhist.handle.Handle):
     handle.store_order_info()
 
 
-def _fetch_order_item_list_all_year(handle: amazhist.handle.Handle):
+def _fetch_order_list_all_year(handle: amazhist.handle.Handle):
     driver, wait = handle.get_selenium_driver()
 
     year_list = fetch_year_list(handle)
@@ -593,7 +602,7 @@ def _fetch_order_item_list_all_year(handle: amazhist.handle.Handle):
             or (type(year) is str)
             or (not handle.get_year_checked(year))
         ):
-            _fetch_order_item_list_by_year(handle, year)
+            _fetch_order_list_by_year(handle, year)
 
             # デバッグモードでは1年だけ処理して終了
             if handle.debug_mode:
@@ -607,7 +616,7 @@ def _fetch_order_item_list_all_year(handle: amazhist.handle.Handle):
             )
 
 
-def fetch_order_item_list(handle: amazhist.handle.Handle):
+def fetch_order_list(handle: amazhist.handle.Handle):
     """注文履歴を収集
 
     Args:
@@ -626,7 +635,7 @@ def fetch_order_item_list(handle: amazhist.handle.Handle):
     handle.set_status("📥 注文履歴の収集を開始します...")
 
     try:
-        _fetch_order_item_list_all_year(handle)
+        _fetch_order_list_all_year(handle)
     except Exception:
         if not is_shutdown_requested():
             my_lib.selenium_util.dump_page(
@@ -862,7 +871,7 @@ if __name__ == "__main__":
                 handle, amazhist.order.Order(date=datetime.datetime.now(), no=no, url=gen_order_url(no), page=1, time_filter=None)
             )
         elif args["-y"] is None:
-            fetch_order_item_list(handle)
+            fetch_order_list(handle)
         else:
             year = int(args["-y"])
             start_page = int(args["-s"])
@@ -873,7 +882,7 @@ if __name__ == "__main__":
             handle.set_order_count(year, count)
             handle.set_progress_bar(_STATUS_ORDER_ITEM_ALL, count)
 
-            _fetch_order_item_list_by_year(handle, year, start_page)
+            _fetch_order_list_by_year(handle, year, start_page)
     except Exception:
         driver, wait = handle.get_selenium_driver()
         logging.error(traceback.format_exc())
