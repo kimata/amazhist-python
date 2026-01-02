@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import amazhist.database
 import my_lib.selenium_util
 import rich.console
 import rich.live
@@ -52,6 +53,35 @@ class _DisplayRenderable:
         return self._handle._create_display()
 
 
+class _NullProgress:
+    """非TTY環境用の何もしない Progress（Null Object パターン）"""
+
+    tasks: list[rich.progress.Task] = []
+
+    def add_task(self, description: str, total: float | None = None) -> rich.progress.TaskID:
+        return rich.progress.TaskID(0)
+
+    def update(self, task_id: rich.progress.TaskID, advance: float = 1) -> None:
+        pass
+
+    def __rich__(self) -> rich.text.Text:
+        """Rich プロトコル対応（空のテキストを返す）"""
+        return rich.text.Text("")
+
+
+class _NullLive:
+    """非TTY環境用の何もしない Live（Null Object パターン）"""
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def refresh(self) -> None:
+        pass
+
+
 class ProgressTask:
     """Rich Progress のタスクを管理するクラス"""
 
@@ -72,9 +102,8 @@ class ProgressTask:
     def update(self, advance: int = 1) -> None:
         """プログレスを進める"""
         self._count += advance
-        if self._handle._progress is not None:
-            self._handle._progress.update(self._task_id, advance=advance)
-            self._handle._refresh_display()
+        self._handle._progress.update(self._task_id, advance=advance)
+        self._handle._refresh_display()
 
 
 @dataclass
@@ -88,8 +117,8 @@ class Handle:
 
     # Rich 関連
     _console: rich.console.Console = field(default_factory=rich.console.Console)
-    _progress: rich.progress.Progress | None = field(default=None, repr=False)
-    _live: rich.live.Live | None = field(default=None, repr=False)
+    _progress: rich.progress.Progress | _NullProgress = field(default_factory=_NullProgress, repr=False)
+    _live: rich.live.Live | _NullLive = field(default_factory=_NullLive, repr=False)
     _start_time: float = field(default_factory=time.time)
     _status_text: str = ""
     _status_is_error: bool = False
@@ -189,24 +218,22 @@ class Handle:
     def _create_display(self) -> Any:
         """表示内容を作成"""
         status_bar = self._create_status_bar()
-        if self._progress is not None and len(self._progress.tasks) > 0:
+        # NullProgress の場合 tasks は常に空なのでこの条件で十分
+        if len(self._progress.tasks) > 0:
             return rich.console.Group(status_bar, self._progress)
         return status_bar
 
     def _refresh_display(self) -> None:
         """表示を強制的に再描画"""
-        if self._live is not None:
-            self._live.refresh()
+        self._live.refresh()
 
     def pause_live(self) -> None:
         """Live 表示を一時停止（input() の前に呼び出す）"""
-        if self._live is not None:
-            self._live.stop()
+        self._live.stop()
 
     def resume_live(self) -> None:
         """Live 表示を再開（input() の後に呼び出す）"""
-        if self._live is not None:
-            self._live.start()
+        self._live.start()
 
     # --- Selenium 関連 ---
     def get_selenium_driver(self) -> tuple[WebDriver, WebDriverWait]:
@@ -316,11 +343,6 @@ class Handle:
     # --- プログレスバー ---
     def set_progress_bar(self, desc: str, total: int) -> None:
         """プログレスバーを作成"""
-        if self._progress is None:
-            # 非TTY環境でもダミーのProgressTaskを作成（KeyError防止）
-            self.progress_bar[desc] = ProgressTask(self, rich.progress.TaskID(-1), total)
-            return
-
         task_id = self._progress.add_task(desc, total=total)
         self.progress_bar[desc] = ProgressTask(self, task_id, total)
         self._refresh_display()
@@ -349,9 +371,8 @@ class Handle:
             self.selenium.driver.quit()
             self.selenium = None
 
-        if self._live is not None:
-            self._live.stop()
-            self._live = None
+        self._live.stop()
+        self._live = _NullLive()
 
         if self._db is not None:
             self._db.close()
@@ -394,11 +415,11 @@ class Handle:
             order_year, order_page, order_index
         )
 
-    def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
+    def get_unresolved_errors(self, context: str | None = None) -> list[amazhist.database.ErrorLog]:
         """未解決のエラー一覧を取得"""
         return self.db.get_unresolved_errors(context)
 
-    def get_all_errors(self, limit: int = 100) -> list[dict[str, Any]]:
+    def get_all_errors(self, limit: int = 100) -> list[amazhist.database.ErrorLog]:
         """全エラー一覧を取得"""
         return self.db.get_all_errors(limit)
 
@@ -422,7 +443,7 @@ class Handle:
         """エラーが発生した注文情報を取得（年/ページ/インデックス情報を含む）"""
         return self.db.get_failed_orders()
 
-    def get_failed_years(self) -> list[dict[str, Any]]:
+    def get_failed_years(self) -> list[amazhist.database.ErrorLog]:
         """年単位のエラー（order_count_fallback）を取得"""
         return self.db.get_failed_years()
 
