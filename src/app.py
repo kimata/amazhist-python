@@ -23,11 +23,11 @@ import logging
 import pathlib
 import random
 import sys
-import traceback
 
 import my_lib.selenium_util
 import rich.console
 import rich.table
+import selenium.common.exceptions
 
 import amazhist.config
 import amazhist.crawler
@@ -39,54 +39,104 @@ VERSION = "0.1.0"
 
 SCHEMA_CONFIG = "schema/config.schema"
 
+_MAX_SESSION_RETRY_COUNT = 1
 
-def execute_fetch(handle: amazhist.handle.Handle):
+
+def execute_fetch(handle: amazhist.handle.Handle) -> None:
     try:
         amazhist.crawler.fetch_order_list(handle)
+    except selenium.common.exceptions.InvalidSessionIdException:
+        # セッションエラーはドライバーが壊れているのでダンプを試みず re-raise
+        logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
+        raise
     except Exception:
         # シャットダウン要求時はダンプをスキップ（ドライバーが既に閉じている可能性が高い）
         if not amazhist.crawler.is_shutdown_requested():
             driver, wait = handle.get_selenium_driver()
-            my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), handle.config.debug_dir_path
-            )
-            raise
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        raise
 
 
-def execute_retry(handle: amazhist.handle.Handle):
+def execute_retry(handle: amazhist.handle.Handle) -> None:
     """エラーが発生したアイテムを再取得"""
     try:
         amazhist.crawler.retry_failed_items(handle)
+    except selenium.common.exceptions.InvalidSessionIdException:
+        # セッションエラーはドライバーが壊れているのでダンプを試みず re-raise
+        logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
+        raise
     except Exception:
         if not amazhist.crawler.is_shutdown_requested():
             driver, wait = handle.get_selenium_driver()
-            my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), handle.config.debug_dir_path
-            )
-            raise
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        raise
 
 
-def execute_retry_mode(config, is_need_thumb=True):
-    """エラーが発生したアイテムを再取得して Excel を出力"""
-    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
+def execute_retry_mode(
+    config,
+    is_need_thumb: bool = True,
+    clear_profile_on_browser_error: bool = False,
+) -> int:
+    """エラーが発生したアイテムを再取得して Excel を出力
+
+    Returns:
+        int: 終了コード（0: 成功、1: エラー）
+    """
+    handle = amazhist.handle.Handle(
+        config=amazhist.config.Config.load(config),
+        clear_profile_on_browser_error=clear_profile_on_browser_error,
+    )
+    exit_code = 0
 
     try:
-        execute_retry(handle)
+        for retry in range(_MAX_SESSION_RETRY_COUNT + 1):
+            try:
+                execute_retry(handle)
+                break  # 成功したらループを抜ける
+            except selenium.common.exceptions.InvalidSessionIdException:
+                handle.quit_selenium()
+                if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
+                    logging.warning(
+                        "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
+                        retry + 1,
+                        _MAX_SESSION_RETRY_COUNT,
+                    )
+                    handle.set_status(
+                        f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
+                    )
+                    my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
+                    continue
+                # リトライ限度を超えた、または clear_profile_on_browser_error=False
+                logging.exception("セッションエラーが発生しました（リトライ不可）")
+                handle.set_status("❌ セッションエラー", is_error=True)
+                return 1
+            except my_lib.selenium_util.SeleniumError as e:
+                logging.exception("Selenium の起動に失敗しました")
+                handle.set_status(f"❌ {e}", is_error=True)
+                return 1
+            except Exception:
+                # シャットダウン要求時は正常終了扱い（tracebackを出さない）
+                if not amazhist.crawler.is_shutdown_requested():
+                    logging.exception("エラーアイテムの再取得に失敗しました")
+                    handle.set_status("❌ エラーが発生しました", is_error=True)
+                    exit_code = 1
+                break  # 他の例外ではリトライしない
+            finally:
+                handle.quit_selenium()
 
-        amazhist.history.generate_table_excel(
-            handle, handle.config.excel_file_path, is_need_thumb
-        )
-
+        try:
+            amazhist.history.generate_table_excel(handle, handle.config.excel_file_path, is_need_thumb)
+        except Exception:
+            handle.set_status("❌ エクセルファイルの生成中にエラーが発生しました", is_error=True)
+            logging.exception("Failed to generate Excel file.")
+            exit_code = 1
+    finally:
         handle.finish()
-    except Exception:
-        if amazhist.crawler.is_shutdown_requested():
-            handle.finish()
-        else:
-            handle.set_status("❌ エラーが発生しました", is_error=True)
-            logging.error(traceback.format_exc())
 
     handle.pause_live()
     input("完了しました．エンターを押すと終了します．")
+
+    return exit_code
 
 
 def execute(
@@ -96,7 +146,15 @@ def execute(
     is_need_thumb: bool = True,
     debug_mode: bool = False,
     clear_profile_on_browser_error: bool = False,
-):
+) -> int:
+    """メイン処理を実行する。
+
+    セッションエラー（ブラウザクラッシュ等）が発生した場合、
+    clear_profile_on_browser_error=True であればプロファイルを削除してリトライする。
+
+    Returns:
+        int: 終了コード（0: 成功、1: エラー）
+    """
     # デバッグモードではキャッシュ無視を有効化
     if debug_mode:
         ignore_cache = True
@@ -107,27 +165,60 @@ def execute(
         debug_mode=debug_mode,
         clear_profile_on_browser_error=clear_profile_on_browser_error,
     )
+    exit_code = 0
 
     try:
         if not is_export_mode:
-            execute_fetch(handle)
+            for retry in range(_MAX_SESSION_RETRY_COUNT + 1):
+                try:
+                    execute_fetch(handle)
+                    break  # 成功したらループを抜ける
+                except selenium.common.exceptions.InvalidSessionIdException:
+                    handle.quit_selenium()
+                    if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
+                        logging.warning(
+                            "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
+                            retry + 1,
+                            _MAX_SESSION_RETRY_COUNT,
+                        )
+                        handle.set_status(
+                            f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
+                        )
+                        my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
+                        continue
+                    # リトライ限度を超えた、または clear_profile_on_browser_error=False
+                    logging.exception("セッションエラーが発生しました（リトライ不可）")
+                    handle.set_status("❌ セッションエラー", is_error=True)
+                    return 1
+                except my_lib.selenium_util.SeleniumError as e:
+                    logging.exception("Selenium の起動に失敗しました")
+                    handle.set_status(f"❌ {e}", is_error=True)
+                    return 1
+                except Exception:
+                    # シャットダウン要求時は正常終了扱い（tracebackを出さない）
+                    if not amazhist.crawler.is_shutdown_requested():
+                        driver, _ = handle.get_selenium_driver()
+                        logging.exception("Failed to fetch data: %s", driver.current_url)
+                        handle.set_status("❌ データの収集中にエラーが発生しました", is_error=True)
+                        exit_code = 1
+                    break  # 他の例外ではリトライしない
+                finally:
+                    handle.quit_selenium()
 
-        amazhist.history.generate_table_excel(
-            handle, handle.config.excel_file_path, is_need_thumb
-        )
-
+        try:
+            amazhist.history.generate_table_excel(handle, handle.config.excel_file_path, is_need_thumb)
+        except Exception:
+            handle.set_status("❌ エクセルファイルの生成中にエラーが発生しました", is_error=True)
+            logging.exception("Failed to generate Excel file.")
+            exit_code = 1
+    finally:
         handle.finish()
-    except Exception:
-        # シャットダウン要求時は正常終了扱い（tracebackを出さない）
-        if amazhist.crawler.is_shutdown_requested():
-            handle.finish()
-        else:
-            handle.set_status("❌ エラーが発生しました", is_error=True)
-            logging.error(traceback.format_exc())
 
     if not handle.debug_mode:
         handle.pause_live()
         input("完了しました．エンターを押すと終了します．")
+
+    return exit_code
 
 
 def show_error_log(config, show_all=False):
@@ -157,7 +248,9 @@ def show_error_log(config, show_all=False):
         unresolved_count = handle.get_error_count(resolved=False)
         resolved_count = handle.get_error_count(resolved=True)
         console.print(f"\n[bold]{title}[/bold]")
-        console.print(f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n")
+        console.print(
+            f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n"
+        )
 
         # テーブルを作成
         table = rich.table.Table(show_header=True, header_style="bold")
@@ -182,7 +275,7 @@ def show_error_log(config, show_all=False):
             # URLからベースURLを削除
             url = error.url or ""
             if url.startswith(amazon_base_url):
-                url = url[len(amazon_base_url):]
+                url = url[len(amazon_base_url) :]
 
             # コンテキストに応じた色分け
             context = error.context
@@ -257,13 +350,15 @@ if __name__ == "__main__":
     if is_show_error_log:
         show_error_log(config, show_all=is_show_all_errors)
     elif is_retry_mode:
-        execute_retry_mode(config, is_need_thumb)
+        sys.exit(execute_retry_mode(config, is_need_thumb, clear_profile_on_browser_error))
     else:
-        execute(
-            config,
-            is_export_mode,
-            ignore_cache,
-            is_need_thumb,
-            debug_mode,
-            clear_profile_on_browser_error,
+        sys.exit(
+            execute(
+                config,
+                is_export_mode,
+                ignore_cache,
+                is_need_thumb,
+                debug_mode,
+                clear_profile_on_browser_error,
+            )
         )
