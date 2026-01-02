@@ -9,7 +9,6 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import amazhist.database
 import my_lib.selenium_util
 import rich.console
 import rich.live
@@ -18,6 +17,8 @@ import rich.table
 import rich.text
 import selenium.webdriver.remote.webdriver
 import selenium.webdriver.support.wait
+
+import amazhist.database
 
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
@@ -367,10 +368,15 @@ class Handle:
         self._refresh_display()
 
     # --- 終了処理 ---
-    def finish(self) -> None:
+    def quit_selenium(self) -> None:
+        """Selenium ドライバーを終了"""
         if self.selenium is not None:
-            self.selenium.driver.quit()
+            self.set_status("🛑 クローラを終了しています...")
+            my_lib.selenium_util.quit_driver_gracefully(self.selenium.driver, wait_sec=5)
             self.selenium = None
+
+    def finish(self) -> None:
+        self.quit_selenium()
 
         self._live.stop()
         self._live = _NullLive()
@@ -394,8 +400,7 @@ class Handle:
     ) -> int:
         """エラーを記録"""
         return self.db.record_error(
-            url, error_type, context, message, order_no, item_name,
-            order_year, order_page, order_index
+            url, error_type, context, message, order_no, item_name, order_year, order_page, order_index
         )
 
     def record_or_update_error(
@@ -412,8 +417,7 @@ class Handle:
     ) -> int:
         """エラーを記録または更新（既存エラーがあれば retry_count を増加）"""
         return self.db.record_or_update_error(
-            url, error_type, context, message, order_no, item_name,
-            order_year, order_page, order_index
+            url, error_type, context, message, order_no, item_name, order_year, order_page, order_index
         )
 
     def get_unresolved_errors(self, context: str | None = None) -> list[amazhist.database.ErrorLog]:
