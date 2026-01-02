@@ -9,6 +9,7 @@ import pytest
 
 import amazhist.config
 import amazhist.crawler
+import amazhist.database
 import amazhist.handle
 import app
 
@@ -197,28 +198,30 @@ class TestShowErrorLog:
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         mock_errors = [
-            {
-                "id": 1,
-                "created_at": datetime.datetime(2025, 1, 15, 10, 30, 0),
-                "error_type": "timeout",
-                "context": "order",
-                "order_no": "ORDER-001",
-                "item_name": "テスト商品",
-                "resolved": False,
-                "url": "https://example.com/order/1",
-                "error_message": "タイムアウトしました",
-            },
-            {
-                "id": 2,
-                "created_at": datetime.datetime(2025, 1, 15, 11, 0, 0),
-                "error_type": "fetch",
-                "context": "thumbnail",
-                "order_no": None,
-                "item_name": "商品2",
-                "resolved": True,
-                "url": "https://example.com/thumb/2",
-                "error_message": None,
-            },
+            amazhist.database.ErrorLog(
+                id=1,
+                url="https://example.com/order/1",
+                error_type="timeout",
+                context="order",
+                retry_count=0,
+                resolved=False,
+                error_message="タイムアウトしました",
+                order_no="ORDER-001",
+                item_name="テスト商品",
+                created_at=datetime.datetime(2025, 1, 15, 10, 30, 0),
+            ),
+            amazhist.database.ErrorLog(
+                id=2,
+                url="https://example.com/thumb/2",
+                error_type="fetch",
+                context="thumbnail",
+                retry_count=0,
+                resolved=True,
+                error_message=None,
+                order_no=None,
+                item_name="商品2",
+                created_at=datetime.datetime(2025, 1, 15, 11, 0, 0),
+            ),
         ]
 
         with (
@@ -239,17 +242,18 @@ class TestShowErrorLog:
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         mock_errors = [
-            {
-                "id": 1,
-                "created_at": datetime.datetime(2025, 1, 15, 10, 30, 0),
-                "error_type": "timeout",
-                "context": "category",
-                "order_no": "ORDER-001",
-                "item_name": "テスト商品",
-                "resolved": True,
-                "url": "https://example.com/category/1",
-                "error_message": "カテゴリ取得失敗",
-            },
+            amazhist.database.ErrorLog(
+                id=1,
+                url="https://example.com/category/1",
+                error_type="timeout",
+                context="category",
+                retry_count=0,
+                resolved=True,
+                error_message="カテゴリ取得失敗",
+                order_no="ORDER-001",
+                item_name="テスト商品",
+                created_at=datetime.datetime(2025, 1, 15, 10, 30, 0),
+            ),
         ]
 
         with (

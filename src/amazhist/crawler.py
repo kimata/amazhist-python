@@ -531,7 +531,7 @@ def _retry_failed_years(handle: amazhist.handle.Handle) -> tuple[int, int]:
         return (0, 0)
 
     # 対象年をユニークにする
-    years = sorted(set(error["order_year"] for error in failed_years if error["order_year"]))
+    years = sorted(set(error.order_year for error in failed_years if error.order_year))
 
     if not years:
         logging.info("再巡回対象の年はありません")
@@ -559,8 +559,8 @@ def _retry_failed_years(handle: amazhist.handle.Handle) -> tuple[int, int]:
 
             # 該当年のエラーを解決済みにする
             for error in failed_years:
-                if error["order_year"] == year:
-                    handle.mark_error_resolved(error["id"])
+                if error.order_year == year:
+                    handle.mark_error_resolved(error.id)
 
             logging.info(f"{year}年の再巡回が完了しました")
             success_count += 1

@@ -8,10 +8,30 @@ import json
 import logging
 import pathlib
 import sqlite3
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import amazhist.item
+
+
+@dataclass(frozen=True)
+class ErrorLog:
+    """エラーログ情報"""
+
+    id: int
+    url: str
+    error_type: str
+    context: str
+    retry_count: int
+    resolved: bool
+    error_message: str | None = None
+    order_no: str | None = None
+    item_name: str | None = None
+    order_year: int | None = None
+    order_page: int | None = None
+    order_index: int | None = None
+    created_at: datetime.datetime | None = None
 
 SQLITE_MAGIC = b"SQLite format 3\x00"
 
@@ -341,7 +361,7 @@ class Database:
         conn.commit()
         return cursor.lastrowid or 0
 
-    def get_unresolved_error_by_url(self, url: str, context: str) -> dict[str, Any] | None:
+    def get_unresolved_error_by_url(self, url: str, context: str) -> ErrorLog | None:
         """URL とコンテキストで未解決エラーを検索
 
         Args:
@@ -389,14 +409,14 @@ class Database:
         """
         existing = self.get_unresolved_error_by_url(url, context)
         if existing:
-            self.increment_retry_count(existing["id"])
-            return existing["id"]
+            self.increment_retry_count(existing.id)
+            return existing.id
         return self.record_error(
             url, error_type, context, message, order_no, item_name,
             order_year, order_page, order_index
         )
 
-    def get_unresolved_errors(self, context: str | None = None) -> list[dict[str, Any]]:
+    def get_unresolved_errors(self, context: str | None = None) -> list[ErrorLog]:
         """未解決のエラー一覧を取得
 
         Args:
@@ -538,7 +558,7 @@ class Database:
             for row in cursor.fetchall()
         ]
 
-    def get_all_errors(self, limit: int = 100) -> list[dict[str, Any]]:
+    def get_all_errors(self, limit: int = 100) -> list[ErrorLog]:
         """全エラー一覧を取得（最新順）
 
         Args:
@@ -646,7 +666,7 @@ class Database:
         result = cursor.fetchone()
         return result[0] if result else 0
 
-    def get_failed_years(self) -> list[dict[str, Any]]:
+    def get_failed_years(self) -> list[ErrorLog]:
         """年単位のエラー（order_count_fallback）を取得
 
         Returns:
@@ -664,28 +684,28 @@ class Database:
         )
         return [self._row_to_error(row) for row in cursor.fetchall()]
 
-    def _row_to_error(self, row: sqlite3.Row) -> dict[str, Any]:
-        """Row を error dict に変換"""
+    def _row_to_error(self, row: sqlite3.Row) -> ErrorLog:
+        """Row を ErrorLog に変換"""
         # 新しいカラムが存在しない場合に対応（マイグレーション前のDB）
         order_year = row["order_year"] if "order_year" in row.keys() else None
         order_page = row["order_page"] if "order_page" in row.keys() else None
         order_index = row["order_index"] if "order_index" in row.keys() else None
 
-        return {
-            "id": row["id"],
-            "url": row["url"],
-            "error_type": row["error_type"],
-            "error_message": row["error_message"],
-            "context": row["context"],
-            "order_no": row["order_no"],
-            "item_name": row["item_name"],
-            "order_year": order_year,
-            "order_page": order_page,
-            "order_index": order_index,
-            "created_at": self._parse_datetime(row["created_at"]),
-            "retry_count": row["retry_count"],
-            "resolved": bool(row["resolved"]),
-        }
+        return ErrorLog(
+            id=row["id"],
+            url=row["url"],
+            error_type=row["error_type"],
+            context=row["context"],
+            retry_count=row["retry_count"],
+            resolved=bool(row["resolved"]),
+            error_message=row["error_message"],
+            order_no=row["order_no"],
+            item_name=row["item_name"],
+            order_year=order_year,
+            order_page=order_page,
+            order_index=order_index,
+            created_at=self._parse_datetime(row["created_at"]),
+        )
 
     # --- ユーティリティ ---
     @staticmethod

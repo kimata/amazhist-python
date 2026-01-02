@@ -173,19 +173,19 @@ def show_error_log(config, show_all=False):
         amazon_base_url = "https://www.amazon.co.jp"
 
         for error in errors:
-            created_at = error["created_at"].strftime("%Y-%m-%d %H:%M:%S") if error["created_at"] else ""
-            status = "[green]解決[/green]" if error["resolved"] else "[red]未解決[/red]"
-            order_no = error["order_no"] or ""
+            created_at = error.created_at.strftime("%Y-%m-%d %H:%M:%S") if error.created_at else ""
+            status = "[green]解決[/green]" if error.resolved else "[red]未解決[/red]"
+            order_no = error.order_no or ""
             # エラーメッセージまたは商品名を表示（商品名がなければエラーメッセージを優先）
-            item_name = error["item_name"] or error["error_message"] or ""
+            item_name = error.item_name or error.error_message or ""
 
             # URLからベースURLを削除
-            url = error["url"] or ""
+            url = error.url or ""
             if url.startswith(amazon_base_url):
                 url = url[len(amazon_base_url):]
 
             # コンテキストに応じた色分け
-            context = error["context"]
+            context = error.context
             if context == "order":
                 context_style = "[yellow]order[/yellow]"
             elif context == "thumbnail":
@@ -196,9 +196,9 @@ def show_error_log(config, show_all=False):
                 context_style = context
 
             table.add_row(
-                str(error["id"]),
+                str(error.id),
                 created_at,
-                error["error_type"],
+                error.error_type,
                 context_style,
                 order_no,
                 item_name,
@@ -211,8 +211,8 @@ def show_error_log(config, show_all=False):
         # エラーメッセージの詳細を表示
         console.print("\n[bold]エラー詳細:[/bold]")
         for error in errors[:10]:  # 最新10件のみ詳細表示
-            if error["error_message"]:
-                console.print(f"  [dim]ID {error['id']}:[/dim] {error['error_message'][:100]}")
+            if error.error_message:
+                console.print(f"  [dim]ID {error.id}:[/dim] {error.error_message[:100]}")
 
         if len(errors) > 10:
             console.print(f"  [dim]... 他 {len(errors) - 10} 件[/dim]")

@@ -8,6 +8,7 @@ import unittest.mock
 import pytest
 
 import amazhist.config
+import amazhist.database
 import amazhist.handle
 
 
@@ -580,13 +581,20 @@ class TestHandleErrorLog:
 
     def test_get_unresolved_errors(self, handle):
         """未解決のエラー一覧を取得"""
-        handle._db.get_unresolved_errors.return_value = [{"id": 1}, {"id": 2}]
+        mock_errors = [
+            amazhist.database.ErrorLog(id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False),
+            amazhist.database.ErrorLog(id=2, url="url2", error_type="e", context="c", retry_count=0, resolved=False),
+        ]
+        handle._db.get_unresolved_errors.return_value = mock_errors
         result = handle.get_unresolved_errors()
         assert len(result) == 2
 
     def test_get_all_errors(self, handle):
         """全エラー一覧を取得"""
-        handle._db.get_all_errors.return_value = [{"id": 1}]
+        mock_errors = [
+            amazhist.database.ErrorLog(id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False),
+        ]
+        handle._db.get_all_errors.return_value = mock_errors
         result = handle.get_all_errors(limit=50)
         handle._db.get_all_errors.assert_called_once_with(50)
         assert len(result) == 1

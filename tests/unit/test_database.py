@@ -318,11 +318,11 @@ class TestDatabaseErrorLog:
 
         errors = db.get_unresolved_errors()
         assert len(errors) == 1
-        assert errors[0]["url"] == "https://example.com/order/123"
-        assert errors[0]["error_type"] == "parse_error"
-        assert errors[0]["context"] == "order"
-        assert errors[0]["order_no"] == "503-1234567-8901234"
-        assert errors[0]["resolved"] is False
+        assert errors[0].url == "https://example.com/order/123"
+        assert errors[0].error_type == "parse_error"
+        assert errors[0].context == "order"
+        assert errors[0].order_no == "503-1234567-8901234"
+        assert errors[0].resolved is False
 
     def test_record_error_with_item_name(self, db):
         """商品名付きエラーの記録"""
@@ -336,8 +336,8 @@ class TestDatabaseErrorLog:
 
         errors = db.get_unresolved_errors()
         assert len(errors) == 1
-        assert errors[0]["item_name"] == "テスト商品"
-        assert errors[0]["context"] == "thumbnail"
+        assert errors[0].item_name == "テスト商品"
+        assert errors[0].context == "thumbnail"
 
     def test_get_unresolved_errors_filter_by_context(self, db):
         """コンテキストでフィルタ"""
@@ -380,13 +380,13 @@ class TestDatabaseErrorLog:
         error_id = db.record_error(url="url1", error_type="error", context="order")
 
         errors = db.get_unresolved_errors()
-        assert errors[0]["retry_count"] == 0
+        assert errors[0].retry_count == 0
 
         db.increment_retry_count(error_id)
         db.increment_retry_count(error_id)
 
         errors = db.get_unresolved_errors()
-        assert errors[0]["retry_count"] == 2
+        assert errors[0].retry_count == 2
 
     def test_get_all_errors(self, db):
         """全エラー取得（解決済み含む）"""
@@ -442,11 +442,11 @@ class TestDatabaseErrorLog:
 
         error = db.get_unresolved_error_by_url("url1", "order")
         assert error is not None
-        assert error["context"] == "order"
+        assert error.context == "order"
 
         error = db.get_unresolved_error_by_url("url1", "thumbnail")
         assert error is not None
-        assert error["context"] == "thumbnail"
+        assert error.context == "thumbnail"
 
         error = db.get_unresolved_error_by_url("url1", "category")
         assert error is None
@@ -462,8 +462,8 @@ class TestDatabaseErrorLog:
 
         errors = db.get_unresolved_errors()
         assert len(errors) == 1
-        assert errors[0]["id"] == error_id
-        assert errors[0]["retry_count"] == 0
+        assert errors[0].id == error_id
+        assert errors[0].retry_count == 0
 
     def test_record_or_update_error_existing(self, db):
         """既存エラーの更新（retry_count 増加）"""
@@ -481,7 +481,7 @@ class TestDatabaseErrorLog:
 
         errors = db.get_unresolved_errors()
         assert len(errors) == 1
-        assert errors[0]["retry_count"] == 1
+        assert errors[0].retry_count == 1
 
     def test_get_failed_order_numbers(self, db):
         """エラーが発生した注文番号を取得"""
