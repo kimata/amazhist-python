@@ -20,6 +20,7 @@ import random
 import re
 import time
 import traceback
+from typing import Any
 
 import my_lib.graceful_shutdown
 import my_lib.selenium_util
@@ -524,6 +525,52 @@ def _retry_failed_years(handle: amazhist.handle.Handle) -> tuple[int, int]:
     return (success_count, fail_count)
 
 
+def _retry_single_order(handle: amazhist.handle.Handle, error_info: dict[str, Any]) -> bool:
+    """単一の注文エラーを再取得
+
+    Args:
+        handle: Handle インスタンス
+        error_info: エラー情報（error_id, order_no, order_year, order_page, order_index, url を含む）
+
+    Returns:
+        成功した場合は True
+    """
+    order_no = error_info.get("order_no")
+    order_year = error_info.get("order_year")
+    current_year = datetime.datetime.now().year
+
+    display_name = order_no or f"{order_year}年 {error_info.get('order_page')}ページ"
+
+    if order_year is not None and order_year != current_year:
+        # 過去の年: 注文一覧ページから詳細リンクを取得して再取得
+        logging.info(f"過去の年の注文を一覧ページから再取得します: {display_name}")
+        return _retry_order_from_list_page(handle, error_info)
+
+    # 現在の年または年情報がない場合
+    if order_no:
+        # 構築したURLで直接取得
+        logging.info(f"構築したURLで直接取得します: {order_no}")
+        order = amazhist.order.Order(
+            date=datetime.datetime.now(),
+            no=order_no,
+            url=gen_order_url(order_no),
+            time_filter=order_year,
+            page=error_info.get("order_page"),
+        )
+
+        visit_url(handle, order.url, _get_caller_name())
+        _keep_logged_on(handle)
+
+        return amazhist.order.parse_order(handle, order)
+
+    if order_year is not None:
+        # 現在の年で注文番号がない場合も一覧ページから再取得を試みる
+        logging.info(f"現在の年の注文を一覧ページから再取得します: {display_name}")
+        return _retry_order_from_list_page(handle, error_info)
+
+    return False
+
+
 def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
     """エラーが発生した注文を再取得
 
@@ -543,7 +590,6 @@ def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
 
     handle.set_progress_bar("[再取得] 注文", len(failed_orders))
 
-    current_year = datetime.datetime.now().year
     success_count = 0
     fail_count = 0
 
@@ -552,39 +598,13 @@ def _retry_failed_orders(handle: amazhist.handle.Handle) -> tuple[int, int]:
             break
 
         order_no = error_info.get("order_no")
-        order_year = error_info.get("order_year")
         error_id = error_info["error_id"]
+        display_name = order_no or f"{error_info.get('order_year')}年 {error_info.get('order_page')}ページ"
 
-        display_name = order_no or f"{order_year}年 {error_info.get('order_page')}ページ"
         handle.set_status(f"🔄 注文を再取得しています: {display_name}")
 
         try:
-            success = False
-
-            if order_year is not None and order_year != current_year:
-                # 過去の年: 注文一覧ページから詳細リンクを取得して再取得
-                logging.info(f"過去の年の注文を一覧ページから再取得します: {display_name}")
-                success = _retry_order_from_list_page(handle, error_info)
-            else:
-                # 現在の年または年情報がない場合: 構築したURLで直接取得
-                if order_no:
-                    logging.info(f"構築したURLで直接取得します: {order_no}")
-                    order = amazhist.order.Order(
-                        date=datetime.datetime.now(),
-                        no=order_no,
-                        url=gen_order_url(order_no),
-                        time_filter=order_year,
-                        page=error_info.get("order_page"),
-                    )
-
-                    visit_url(handle, order.url, _get_caller_name())
-                    _keep_logged_on(handle)
-
-                    success = amazhist.order.parse_order(handle, order)
-                elif order_year is not None:
-                    # 現在の年で注文番号がない場合も一覧ページから再取得を試みる
-                    logging.info(f"現在の年の注文を一覧ページから再取得します: {display_name}")
-                    success = _retry_order_from_list_page(handle, error_info)
+            success = _retry_single_order(handle, error_info)
 
             if success:
                 handle.mark_error_resolved(error_id)
@@ -702,6 +722,96 @@ def _retry_failed_thumbnails(handle: amazhist.handle.Handle) -> tuple[int, int]:
         time.sleep(0.5)
 
     return (success_count, fail_count)
+
+
+def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
+    """特定のエラーIDを再取得
+
+    Args:
+        handle: Handle インスタンス
+        error_id: エラーID
+
+    Returns:
+        成功した場合は True
+    """
+    handle.set_status("🤖 巡回ロボットの準備をします...")
+    driver, wait = handle.get_selenium_driver()
+
+    # シグナルハンドラを設定
+    my_lib.graceful_shutdown.set_live_display(handle)
+    my_lib.graceful_shutdown.setup_signal_handler()
+    my_lib.graceful_shutdown.reset_shutdown_flag()
+
+    error = handle.get_error_by_id(error_id)
+    if error is None:
+        logging.error(f"エラーID {error_id} は見つかりませんでした")
+        handle.set_status(f"❌ エラーID {error_id} は見つかりませんでした", is_error=True)
+        return False
+
+    if error.resolved:
+        logging.info(f"エラーID {error_id} は既に解決済みです")
+        handle.set_status(f"✅ エラーID {error_id} は既に解決済みです")
+        return True
+
+    context = error.context
+    display_name = error.item_name or error.order_no or f"ID:{error_id}"
+    handle.set_status(f"🔄 再取得しています: {display_name[:40]}")
+
+    try:
+        success = False
+
+        if context == "order":
+            # 注文の再取得
+            error_info = {
+                "error_id": error.id,
+                "order_no": error.order_no,
+                "order_year": error.order_year,
+                "order_page": error.order_page,
+                "order_index": error.order_index,
+                "url": error.url,
+            }
+            success = _retry_single_order(handle, error_info)
+
+            if success and error.order_no:
+                handle.mark_errors_resolved_by_order_no(error.order_no)
+
+        elif context == "category":
+            # カテゴリの再取得
+            category = amazhist.item.fetch_item_category(handle, error.url, record_error=False)
+            if category:
+                handle.update_item_category(error.url, category)
+                success = True
+
+        elif context == "thumbnail":
+            # サムネイルの再取得
+            asin = handle.get_thumbnail_asin_by_error_id(error_id)
+            if asin:
+                amazhist.item._save_thumbnail(handle, asin, error.url)
+                success = True
+
+        elif error.error_type == "order_count_fallback" and error.order_year:
+            # 年単位の再巡回
+            year = error.order_year
+            handle.db.reset_year_status(year)
+            _fetch_order_list_by_year(handle, year)
+            success = True
+
+        if success:
+            handle.mark_error_resolved(error_id)
+            logging.info(f"エラーID {error_id} の再取得に成功しました")
+            handle.set_status(f"✅ 再取得に成功しました: {display_name[:40]}")
+        else:
+            logging.warning(f"エラーID {error_id} の再取得に失敗しました")
+            handle.set_status(f"❌ 再取得に失敗しました: {display_name[:40]}", is_error=True)
+
+        return success
+
+    except Exception as e:
+        logging.exception(f"エラーID {error_id} の再取得中にエラーが発生しました: {e}")
+        handle.set_status("❌ 再取得中にエラーが発生しました", is_error=True)
+        if not is_shutdown_requested():
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        return False
 
 
 def retry_failed_items(handle: amazhist.handle.Handle):

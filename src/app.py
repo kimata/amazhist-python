@@ -4,8 +4,8 @@ Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして�
 
 Usage:
   amazhist.py [-c CONFIG] [-e] [-f] [-N] [-D] [-R]
-  amazhist.py [-c CONFIG] -r [-N]
-  amazhist.py [-c CONFIG] -E [-a]
+  amazhist.py [-c CONFIG] -r [-i ID]
+  amazhist.py [-c CONFIG] -E [-a | -i ID]
 
 Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
@@ -17,6 +17,7 @@ Options:
   -R            : ブラウザ起動失敗時にプロファイルを削除します．
   -E            : エラーログを表示します．
   -a            : -E と共に使用し，解決済みエラーも含めて表示します．
+  -i ID         : 指定IDのエラー詳細を表示（-E時），または指定IDのみ再取得（-r時）．
 """
 
 import logging
@@ -72,12 +73,61 @@ def execute_retry(handle: amazhist.handle.Handle) -> None:
         raise
 
 
-def execute_retry_mode(
+def execute_retry_single(
     config,
-    is_need_thumb: bool = True,
+    error_id: int,
     clear_profile_on_browser_error: bool = False,
 ) -> int:
-    """エラーが発生したアイテムを再取得して Excel を出力
+    """特定のエラーIDを再取得
+
+    Args:
+        config: 設定
+        error_id: 再取得するエラーID
+        clear_profile_on_browser_error: ブラウザエラー時にプロファイルを削除するか
+
+    Returns:
+        int: 終了コード（0: 成功、1: エラー）
+    """
+    handle = amazhist.handle.Handle(
+        config=amazhist.config.Config.load(config),
+        clear_profile_on_browser_error=clear_profile_on_browser_error,
+    )
+    exit_code = 0
+
+    try:
+        try:
+            success = amazhist.crawler.retry_error_by_id(handle, error_id)
+            if not success:
+                exit_code = 1
+        except selenium.common.exceptions.InvalidSessionIdException:
+            logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
+            handle.set_status("❌ セッションエラー", is_error=True)
+            return 1
+        except my_lib.selenium_util.SeleniumError as e:
+            logging.exception("Selenium の起動に失敗しました")
+            handle.set_status(f"❌ {e}", is_error=True)
+            return 1
+        except Exception:
+            if not amazhist.crawler.is_shutdown_requested():
+                logging.exception("エラーの再取得に失敗しました")
+                handle.set_status("❌ エラーが発生しました", is_error=True)
+                exit_code = 1
+        finally:
+            handle.quit_selenium()
+    finally:
+        handle.finish()
+
+    handle.pause_live()
+    input("完了しました．エンターを押すと終了します．")
+
+    return exit_code
+
+
+def execute_retry_mode(
+    config,
+    clear_profile_on_browser_error: bool = False,
+) -> int:
+    """エラーが発生したアイテムを再取得
 
     Returns:
         int: 終了コード（0: 成功、1: エラー）
@@ -123,13 +173,6 @@ def execute_retry_mode(
                 break  # 他の例外ではリトライしない
             finally:
                 handle.quit_selenium()
-
-        try:
-            amazhist.history.generate_table_excel(handle, handle.config.excel_file_path, is_need_thumb)
-        except Exception:
-            handle.set_status("❌ エクセルファイルの生成中にエラーが発生しました", is_error=True)
-            logging.exception("Failed to generate Excel file.")
-            exit_code = 1
     finally:
         handle.finish()
 
@@ -316,6 +359,65 @@ def show_error_log(config, show_all=False):
         handle.finish()
 
 
+def show_error_detail(config, error_id: int):
+    """特定IDのエラー詳細を表示
+
+    Args:
+        config: 設定
+        error_id: エラーID
+    """
+    handle = amazhist.handle.Handle(config=amazhist.config.Config.load(config))
+
+    try:
+        console = rich.console.Console()
+
+        error = handle.get_error_by_id(error_id)
+
+        if error is None:
+            console.print(f"\n[red]エラーID {error_id} は見つかりませんでした[/red]\n")
+            return
+
+        console.print(f"\n[bold]エラー詳細 (ID: {error.id})[/bold]\n")
+
+        # 基本情報
+        table = rich.table.Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column("項目", style="bold", width=16)
+        table.add_column("値")
+
+        created_at = error.created_at.strftime("%Y-%m-%d %H:%M:%S") if error.created_at else "-"
+        status = "[green]解決済み[/green]" if error.resolved else "[red]未解決[/red]"
+
+        table.add_row("ID", str(error.id))
+        table.add_row("状態", status)
+        table.add_row("作成日時", created_at)
+        table.add_row("エラー種別", error.error_type)
+        table.add_row("コンテキスト", error.context)
+        table.add_row("リトライ回数", str(error.retry_count))
+        table.add_row("注文番号", error.order_no or "-")
+        table.add_row("注文年", str(error.order_year) if error.order_year else "-")
+        table.add_row("注文ページ", str(error.order_page) if error.order_page else "-")
+        table.add_row("ページ内インデックス", str(error.order_index) if error.order_index else "-")
+        table.add_row("商品名", error.item_name or "-")
+
+        console.print(table)
+
+        # URL（フルで表示）
+        console.print("\n[bold]URL:[/bold]")
+        console.print(f"  {error.url or '-'}")
+
+        # エラーメッセージ
+        console.print("\n[bold]エラーメッセージ:[/bold]")
+        if error.error_message:
+            console.print(f"  {error.error_message}")
+        else:
+            console.print("  -")
+
+        console.print()
+
+    finally:
+        handle.finish()
+
+
 ######################################################################
 if __name__ == "__main__":
     import my_lib.config
@@ -344,13 +446,20 @@ if __name__ == "__main__":
     clear_profile_on_browser_error: bool = args["-R"]
     is_show_error_log = args["-E"]
     is_show_all_errors = args["-a"]
+    error_id_str = args["-i"]
 
     config = my_lib.config.load(args["-c"], pathlib.Path(SCHEMA_CONFIG))
 
     if is_show_error_log:
-        show_error_log(config, show_all=is_show_all_errors)
+        if error_id_str:
+            show_error_detail(config, int(error_id_str))
+        else:
+            show_error_log(config, show_all=is_show_all_errors)
     elif is_retry_mode:
-        sys.exit(execute_retry_mode(config, is_need_thumb, clear_profile_on_browser_error))
+        if error_id_str:
+            sys.exit(execute_retry_single(config, int(error_id_str), clear_profile_on_browser_error))
+        else:
+            sys.exit(execute_retry_mode(config, clear_profile_on_browser_error))
     else:
         sys.exit(
             execute(

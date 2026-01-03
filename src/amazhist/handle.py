@@ -428,6 +428,10 @@ class Handle:
         """全エラー一覧を取得"""
         return self.db.get_all_errors(limit)
 
+    def get_error_by_id(self, error_id: int) -> amazhist.database.ErrorLog | None:
+        """IDでエラーを取得"""
+        return self.db.get_error_by_id(error_id)
+
     def get_error_count(self, resolved: bool | None = None) -> int:
         """エラー件数を取得"""
         return self.db.get_error_count(resolved)
@@ -463,6 +467,10 @@ class Handle:
     def get_failed_thumbnail_items(self) -> list[dict[str, Any]]:
         """サムネイル取得に失敗したアイテムを取得"""
         return self.db.get_failed_thumbnail_items()
+
+    def get_thumbnail_asin_by_error_id(self, error_id: int) -> str | None:
+        """エラーIDからサムネイルの ASIN を取得"""
+        return self.db.get_thumbnail_asin_by_error_id(error_id)
 
     def mark_errors_resolved_by_order_no(self, order_no: str) -> int:
         """指定注文番号のエラーを全て解決済みにする"""

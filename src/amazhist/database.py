@@ -33,6 +33,7 @@ class ErrorLog:
     order_index: int | None = None
     created_at: datetime.datetime | None = None
 
+
 SQLITE_MAGIC = b"SQLite format 3\x00"
 
 
@@ -185,7 +186,9 @@ class Database:
             return None
 
     # --- 年ステータス ---
-    def set_year_status(self, year: str | int, order_count: int | None = None, checked: bool | None = None) -> None:
+    def set_year_status(
+        self, year: str | int, order_count: int | None = None, checked: bool | None = None
+    ) -> None:
         """年ステータスを設定"""
         conn = self._get_conn()
         year_str = str(year)
@@ -412,8 +415,7 @@ class Database:
             self.increment_retry_count(existing.id)
             return existing.id
         return self.record_error(
-            url, error_type, context, message, order_no, item_name,
-            order_year, order_page, order_index
+            url, error_type, context, message, order_no, item_name, order_year, order_page, order_index
         )
 
     def get_unresolved_errors(self, context: str | None = None) -> list[ErrorLog]:
@@ -432,9 +434,7 @@ class Database:
                 (context,),
             )
         else:
-            cursor = conn.execute(
-                "SELECT * FROM error_log WHERE resolved = 0 ORDER BY created_at DESC"
-            )
+            cursor = conn.execute("SELECT * FROM error_log WHERE resolved = 0 ORDER BY created_at DESC")
         return [self._row_to_error(row) for row in cursor.fetchall()]
 
     def get_failed_order_numbers(self) -> list[str]:
@@ -447,7 +447,8 @@ class Database:
         """
         conn = self._get_conn()
         cursor = conn.execute(
-            "SELECT DISTINCT order_no FROM error_log WHERE resolved = 0 AND context = 'order' AND order_no IS NOT NULL"
+            "SELECT DISTINCT order_no FROM error_log "
+            "WHERE resolved = 0 AND context = 'order' AND order_no IS NOT NULL"
         )
         return [row[0] for row in cursor.fetchall()]
 
@@ -558,6 +559,28 @@ class Database:
             for row in cursor.fetchall()
         ]
 
+    def get_thumbnail_asin_by_error_id(self, error_id: int) -> str | None:
+        """エラーIDからサムネイルの ASIN を取得
+
+        Args:
+            error_id: エラーログのID
+
+        Returns:
+            ASIN（見つからない場合は None）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute(
+            """
+            SELECT i.asin
+            FROM error_log e
+            LEFT JOIN items i ON e.item_name = i.name
+            WHERE e.id = ? AND e.context = 'thumbnail'
+            """,
+            (error_id,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def get_all_errors(self, limit: int = 100) -> list[ErrorLog]:
         """全エラー一覧を取得（最新順）
 
@@ -573,6 +596,20 @@ class Database:
             (limit,),
         )
         return [self._row_to_error(row) for row in cursor.fetchall()]
+
+    def get_error_by_id(self, error_id: int) -> ErrorLog | None:
+        """IDでエラーを取得
+
+        Args:
+            error_id: エラーログのID
+
+        Returns:
+            エラー情報（見つからない場合は None）
+        """
+        conn = self._get_conn()
+        cursor = conn.execute("SELECT * FROM error_log WHERE id = ?", (error_id,))
+        row = cursor.fetchone()
+        return self._row_to_error(row) if row else None
 
     def mark_error_resolved(self, error_id: int) -> None:
         """エラーを解決済みにする
