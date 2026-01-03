@@ -51,9 +51,12 @@ def execute_fetch(handle: amazhist.handle.Handle) -> None:
         # セッションエラーはドライバーが壊れているのでダンプを試みず re-raise
         logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
         raise
+    except my_lib.selenium_util.SeleniumError:
+        # Selenium 起動エラーはドライバーが存在しないのでダンプを試みず re-raise
+        raise
     except Exception:
-        # シャットダウン要求時はダンプをスキップ（ドライバーが既に閉じている可能性が高い）
-        if not amazhist.crawler.is_shutdown_requested():
+        # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
+        if not amazhist.crawler.is_shutdown_requested() and handle.selenium is not None:
             driver, wait = handle.get_selenium_driver()
             my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
         raise
@@ -67,8 +70,12 @@ def execute_retry(handle: amazhist.handle.Handle) -> None:
         # セッションエラーはドライバーが壊れているのでダンプを試みず re-raise
         logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
         raise
+    except my_lib.selenium_util.SeleniumError:
+        # Selenium 起動エラーはドライバーが存在しないのでダンプを試みず re-raise
+        raise
     except Exception:
-        if not amazhist.crawler.is_shutdown_requested():
+        # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
+        if not amazhist.crawler.is_shutdown_requested() and handle.selenium is not None:
             driver, wait = handle.get_selenium_driver()
             my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
         raise
