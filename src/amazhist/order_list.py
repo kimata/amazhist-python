@@ -23,6 +23,9 @@ import amazhist.parser
 STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
 _STATUS_ORDER_ITEM_BY_TARGET = "[収集] {target}"
 
+# 今年の巡回を早期終了するための連続キャッシュヒット閾値
+_CONSECUTIVE_CACHE_HITS_THRESHOLD = 5
+
 
 def _gen_target_text(year: int) -> str:
     return f"{year}年"
@@ -64,7 +67,9 @@ def fetch_by_year_page(
     gen_order_url_func,
     is_shutdown_requested_func,
     retry: int = 0,
-) -> tuple[bool, bool, int]:
+    can_early_exit: bool = False,
+    consecutive_cache_hits: int = 0,
+) -> tuple[bool, bool, int, int]:
     """指定年・ページの注文リストを取得
 
     Args:
@@ -78,9 +83,11 @@ def fetch_by_year_page(
         gen_order_url_func: 注文URL生成関数
         is_shutdown_requested_func: シャットダウン要求確認関数
         retry: リトライ回数
+        can_early_exit: 早期終了が可能か（今年の条件を満たす場合）
+        consecutive_cache_hits: 前ページからの連続キャッシュヒット数
 
     Returns:
-        (スキップされたか, 最終ページか, 注文カード数)
+        (スキップされたか, 最終ページか, 注文カード数, 連続キャッシュヒット数)
         注文カード数が0より大きければページ取得自体は成功
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
@@ -123,7 +130,7 @@ def fetch_by_year_page(
             )
             # 期待していた分のプログレスを更新
             _safe_update_progress(handle, year, expected_on_page)
-            return (True, page >= total_page, 0)  # 注文カード0件
+            return (True, page >= total_page, 0, 0)  # 注文カード0件
 
     # ページレベルのエラーチェック（ループの前に1回だけ実行）
     if (
@@ -149,12 +156,14 @@ def fetch_by_year_page(
                 gen_order_url_func,
                 is_shutdown_requested_func,
                 retry=retry + 1,
+                can_early_exit=can_early_exit,
+                consecutive_cache_hits=consecutive_cache_hits,
             )
         else:
             # リトライ上限に達した場合は全ての注文カードの分プログレスを更新
             logging.warning(f"リトライ上限に達しました。{order_card_count}件の注文をスキップします")
             _safe_update_progress(handle, year, order_card_count)
-            return (True, page >= total_page, order_card_count)
+            return (True, page >= total_page, order_card_count, 0)
 
     for i in range(order_card_count):
         order_xpath = ORDER_XPATH + f"[{i + 1}]"
@@ -263,12 +272,30 @@ def fetch_by_year_page(
                     keep_logged_on_func,
                     get_caller_name_func,
                 )
+                # 新規取得したので連続キャッシュヒットをリセット
+                consecutive_cache_hits = 0
             else:
                 logging.info(
                     "注文処理済み: {date} - {no} [キャッシュ]".format(
                         date=order.date.strftime("%Y-%m-%d"), no=order.no
                     )
                 )
+                # キャッシュヒットをカウント
+                consecutive_cache_hits += 1
+
+                # 早期終了判定
+                if can_early_exit and consecutive_cache_hits >= _CONSECUTIVE_CACHE_HITS_THRESHOLD:
+                    logging.info(
+                        f"{year}年: {consecutive_cache_hits}件連続してキャッシュ済みの注文だったため、"
+                        "巡回を打ち切りました"
+                    )
+                    # 残りの注文分のプログレスを更新
+                    remaining = len(order_list) - order_list.index(order) - 1
+                    _safe_update_progress(handle, year, remaining)
+                    # 全ページを処理済みにマーク
+                    for j in range(total_page):
+                        handle.set_page_checked(year, j + 1)
+                    return (is_skipped, True, order_card_count, consecutive_cache_hits)
         except Exception as e:
             # 予期しない例外が発生してもプログレスバーは更新する
             logging.warning(f"注文の処理中に予期しないエラーが発生しました: {order.no} ({e})")
@@ -282,6 +309,8 @@ def fetch_by_year_page(
                 order_page=order.page,
             )
             is_skipped = True
+            # エラー発生時は連続キャッシュヒットをリセット
+            consecutive_cache_hits = 0
         finally:
             # 成功・失敗に関わらずプログレスバーを更新
             _safe_update_progress(handle, year)
@@ -289,22 +318,15 @@ def fetch_by_year_page(
         # デバッグモードでは1件だけ処理して終了
         if handle.debug_mode:
             logging.info("デバッグモード: 1件の注文を処理したため終了します")
-            return (is_skipped, True, order_card_count)
+            return (is_skipped, True, order_card_count, consecutive_cache_hits)
 
         # シャットダウンリクエストがあれば終了
         if is_shutdown_requested_func():
             logging.info("シャットダウンリクエストにより処理を中断します")
             handle.store_order_info()
-            return (True, True, order_card_count)
+            return (True, True, order_card_count, consecutive_cache_hits)
 
-        if year == datetime.datetime.now().year:
-            last_item = handle.get_last_item(year)
-            if handle.get_year_checked(year) and (last_item is not None) and (last_item.no == order.no):
-                logging.info("最新の注文を見つけました。以降のページの解析をスキップします")
-                for j in range(total_page):
-                    handle.set_page_checked(year, j + 1)
-
-    return (is_skipped, page >= total_page, order_card_count)
+    return (is_skipped, page >= total_page, order_card_count, consecutive_cache_hits)
 
 
 def skip_by_year_page(handle: amazhist.handle.Handle, year: int, page: int) -> bool:
@@ -366,11 +388,21 @@ def fetch_by_year(
         handle.get_order_count(year),
     )
 
+    # 今年の早期終了条件を判定
+    current_year = datetime.datetime.now().year
+    can_early_exit = (
+        year == current_year
+        and handle.get_year_checked(year)
+        and handle.get_item_count_by_year(year) > 0
+        and handle.get_unresolved_error_count_by_year(year) == 0
+    )
+
     page = start_page
     is_skipped = False
+    consecutive_cache_hits = 0
     while True:
         if not handle.get_page_checked(year, page):
-            is_skipped_page, is_last, _ = fetch_by_year_page(
+            is_skipped_page, is_last, _, consecutive_cache_hits = fetch_by_year_page(
                 handle,
                 year,
                 page,
@@ -380,6 +412,8 @@ def fetch_by_year(
                 gen_hist_url_func,
                 gen_order_url_func,
                 is_shutdown_requested_func,
+                can_early_exit=can_early_exit,
+                consecutive_cache_hits=consecutive_cache_hits,
             )
 
             if not is_skipped_page:
@@ -389,6 +423,8 @@ def fetch_by_year(
             time.sleep(1)
         else:
             is_last = skip_by_year_page(handle, year, page)
+            # ページスキップ時は連続カウントをリセット（既存キャッシュは新規取得扱い）
+            consecutive_cache_hits = 0
 
         handle.store_order_info()
 

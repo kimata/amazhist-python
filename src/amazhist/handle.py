@@ -284,6 +284,10 @@ class Handle:
         """指定した time_filter の最後の商品を取得"""
         return self.db.get_last_item_by_filter(time_filter)
 
+    def get_item_count_by_year(self, year: int) -> int:
+        """指定年の商品数を取得"""
+        return self.db.get_item_count_by_year(year)
+
     def get_thumb_path(self, asin: str | None) -> pathlib.Path | None:
         """サムネイル画像のパスを取得"""
         if asin is None:
@@ -433,6 +437,10 @@ class Handle:
     def get_unresolved_errors(self, context: str | None = None) -> list[amazhist.database.ErrorLog]:
         """未解決のエラー一覧を取得"""
         return self.db.get_unresolved_errors(context)
+
+    def get_unresolved_error_count_by_year(self, year: int) -> int:
+        """指定年の未解決エラー数を取得"""
+        return self.db.get_unresolved_error_count_by_year(year)
 
     def get_all_errors(self, limit: int = 100) -> list[amazhist.database.ErrorLog]:
         """全エラー一覧を取得"""

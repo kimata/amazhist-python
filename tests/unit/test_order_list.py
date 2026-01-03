@@ -193,19 +193,22 @@ class TestFetchByYearPage:
         gen_order_url = unittest.mock.MagicMock()
         is_shutdown = unittest.mock.MagicMock(return_value=False)
 
-        is_skipped, is_last, order_card_count = amazhist.order_list.fetch_by_year_page(
-            handle,
-            2025,
-            1,
-            visit_url,
-            keep_logged_on,
-            get_caller_name,
-            gen_hist_url,
-            gen_order_url,
-            is_shutdown,
+        is_skipped, is_last, order_card_count, consecutive_cache_hits = (
+            amazhist.order_list.fetch_by_year_page(
+                handle,
+                2025,
+                1,
+                visit_url,
+                keep_logged_on,
+                get_caller_name,
+                gen_hist_url,
+                gen_order_url,
+                is_shutdown,
+            )
         )
 
         # 期待値0件なのでスキップなし、最終ページ、注文カード0件
         assert is_skipped is False
         assert is_last is True
         assert order_card_count == 0
+        assert consecutive_cache_hits == 0

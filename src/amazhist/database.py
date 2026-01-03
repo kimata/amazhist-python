@@ -139,6 +139,16 @@ class Database:
         result = cursor.fetchone()
         return result[0] if result else 0
 
+    def get_item_count_by_year(self, year: int) -> int:
+        """指定年の商品数を取得"""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM items WHERE order_time_filter = ?",
+            (str(year),),
+        )
+        result = cursor.fetchone()
+        return result[0] if result else 0
+
     def get_last_item_by_filter(self, time_filter: str | int) -> amazhist.item.Item | None:
         """指定した time_filter の最後の商品を取得"""
         conn = self._get_conn()
@@ -436,6 +446,16 @@ class Database:
         else:
             cursor = conn.execute("SELECT * FROM error_log WHERE resolved = 0 ORDER BY created_at DESC")
         return [self._row_to_error(row) for row in cursor.fetchall()]
+
+    def get_unresolved_error_count_by_year(self, year: int) -> int:
+        """指定年の未解決エラー数を取得"""
+        conn = self._get_conn()
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM error_log WHERE order_year = ? AND resolved = 0",
+            (year,),
+        )
+        result = cursor.fetchone()
+        return result[0] if result else 0
 
     def get_failed_order_numbers(self) -> list[str]:
         """エラーが発生した注文番号を取得

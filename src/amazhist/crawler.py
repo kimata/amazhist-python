@@ -193,7 +193,7 @@ def visit_url(handle: amazhist.handle.Handle, url, caller_name):
 
 def _fetch_order_list_by_year_page(
     handle: amazhist.handle.Handle, year: int, page: int, retry: int = 0
-) -> tuple[bool, bool, int]:
+) -> tuple[bool, bool, int, int]:
     """指定年・ページの注文リストを取得（order_list.fetch_by_year_page のラッパー）"""
     return amazhist.order_list.fetch_by_year_page(
         handle,
@@ -561,7 +561,7 @@ def _retry_single_order(handle: amazhist.handle.Handle, error_info: dict[str, An
     # order_no も order_index もない場合はページ全体を再巡回
     if order_no is None and order_index is None and order_year is not None and order_page is not None:
         logging.info(f"ページ全体を再巡回します: {display_name}")
-        is_skipped, _, order_card_count = _fetch_order_list_by_year_page(handle, order_year, order_page)
+        is_skipped, _, order_card_count, _ = _fetch_order_list_by_year_page(handle, order_year, order_page)
         # order_card_count > 0 ならページ取得自体は成功
         # 個別の注文でエラーがあっても、それらは別途エラーとして記録されている
         if order_card_count > 0 and not is_skipped:
