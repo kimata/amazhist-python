@@ -94,6 +94,9 @@ uv run python src/app.py -e
 # 強制的に全データを再収集
 uv run python src/app.py -f
 
+# 指定した年の注文のみ再取得
+uv run python src/app.py -y 2024
+
 # エラーが発生した項目のみ再取得
 uv run python src/app.py -r
 
@@ -125,6 +128,7 @@ uv run python src/app.py -E -a
 ```
 
 エラーログには以下の情報が含まれます：
+
 - **種別**: エラーの種類（timeout, parse_error, no_detail_link など）
 - **コンテキスト**: エラーが発生した処理（order, category, thumbnail, year）
 - **注文番号/商品名**: 該当する注文や商品の情報
@@ -137,6 +141,7 @@ uv run python src/app.py -r
 ```
 
 以下の項目を再取得します：
+
 1. **年単位の再巡回**: 注文件数の取得に問題があった年を再巡回
 2. **注文の再取得**: パースに失敗した注文を再取得
 3. **カテゴリの再取得**: カテゴリ情報の取得に失敗した商品を再取得
