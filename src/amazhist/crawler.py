@@ -734,14 +734,7 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
     Returns:
         成功した場合は True
     """
-    handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, wait = handle.get_selenium_driver()
-
-    # シグナルハンドラを設定
-    my_lib.graceful_shutdown.set_live_display(handle)
-    my_lib.graceful_shutdown.setup_signal_handler()
-    my_lib.graceful_shutdown.reset_shutdown_flag()
-
+    # まずエラー情報を確認（Selenium 起動前）
     error = handle.get_error_by_id(error_id)
     if error is None:
         logging.error(f"エラーID {error_id} は見つかりませんでした")
@@ -752,6 +745,15 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
         logging.info(f"エラーID {error_id} は既に解決済みです")
         handle.set_status(f"✅ エラーID {error_id} は既に解決済みです")
         return True
+
+    # エラーが有効な場合のみ Selenium を起動
+    handle.set_status("🤖 巡回ロボットの準備をします...")
+    driver, wait = handle.get_selenium_driver()
+
+    # シグナルハンドラを設定
+    my_lib.graceful_shutdown.set_live_display(handle)
+    my_lib.graceful_shutdown.setup_signal_handler()
+    my_lib.graceful_shutdown.reset_shutdown_flag()
 
     context = error.context
     display_name = error.item_name or error.order_no or f"ID:{error_id}"
