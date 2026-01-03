@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.04@sha256:104ae83764a5119017b8e8d6218fa0832b09df65aae7d5a6de29a85d813da2fb
 
 # NOTE:
 # python:3.11.4-bookworm とかを使った場合，Selenium を同時に複数動かせないので，
