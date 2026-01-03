@@ -4,7 +4,7 @@ Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして�
 
 Usage:
   amazhist.py [-c CONFIG] [-e] [-f] [-N] [-D] [-R]
-  amazhist.py [-c CONFIG] -r [-i ID]
+  amazhist.py [-c CONFIG] -r [-i ID] [-R]
   amazhist.py [-c CONFIG] -E [-a | -i ID]
 
 Options:

@@ -3,6 +3,7 @@
 """
 order_list.py のテスト
 """
+
 import unittest.mock
 
 import pytest
@@ -192,7 +193,7 @@ class TestFetchByYearPage:
         gen_order_url = unittest.mock.MagicMock()
         is_shutdown = unittest.mock.MagicMock(return_value=False)
 
-        is_skipped, is_last = amazhist.order_list.fetch_by_year_page(
+        is_skipped, is_last, order_card_count = amazhist.order_list.fetch_by_year_page(
             handle,
             2025,
             1,
@@ -204,8 +205,7 @@ class TestFetchByYearPage:
             is_shutdown,
         )
 
-        # 期待値0件なのでスキップなし、最終ページ
+        # 期待値0件なのでスキップなし、最終ページ、注文カード0件
         assert is_skipped is False
         assert is_last is True
-
-
+        assert order_card_count == 0

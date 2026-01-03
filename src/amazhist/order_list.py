@@ -10,7 +10,6 @@ from __future__ import annotations
 import datetime
 import logging
 import math
-import random
 import time
 
 from selenium.webdriver.common.by import By
@@ -33,6 +32,27 @@ def _gen_status_label_by_year(year: int) -> str:
     return _STATUS_ORDER_ITEM_BY_TARGET.format(target=_gen_target_text(year))
 
 
+def _safe_update_progress(handle: amazhist.handle.Handle, year: int, advance: int = 1) -> None:
+    """プログレスバーが存在する場合のみ更新
+
+    リトライ時など、プログレスバーが作成されていない状態でも
+    安全に呼び出せるようにするためのヘルパー関数。
+    """
+    year_label = _gen_status_label_by_year(year)
+    if handle.has_progress_bar(year_label):
+        handle.get_progress_bar(year_label).update(advance)
+    if handle.has_progress_bar(STATUS_ORDER_ITEM_ALL):
+        handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update(advance)
+
+
+def _get_progress_count(handle: amazhist.handle.Handle, year: int) -> int:
+    """プログレスバーの現在カウントを取得（存在しない場合は 0）"""
+    year_label = _gen_status_label_by_year(year)
+    if handle.has_progress_bar(year_label):
+        return handle.get_progress_bar(year_label).count
+    return 0
+
+
 def fetch_by_year_page(
     handle: amazhist.handle.Handle,
     year: int,
@@ -44,7 +64,7 @@ def fetch_by_year_page(
     gen_order_url_func,
     is_shutdown_requested_func,
     retry: int = 0,
-) -> tuple[bool, bool]:
+) -> tuple[bool, bool, int]:
     """指定年・ページの注文リストを取得
 
     Args:
@@ -60,7 +80,8 @@ def fetch_by_year_page(
         retry: リトライ回数
 
     Returns:
-        (スキップされたか, 最終ページか)
+        (スキップされたか, 最終ページか, 注文カード数)
+        注文カード数が0より大きければページ取得自体は成功
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
@@ -85,8 +106,7 @@ def fetch_by_year_page(
     # 注文カードが見つからなかった場合のチェック
     if order_card_count == 0:
         expected_on_page = min(
-            handle.get_order_count(year)
-            - handle.get_progress_bar(_gen_status_label_by_year(year)).count,
+            handle.get_order_count(year) - _get_progress_count(handle, year),
             amazhist.const.ORDER_COUNT_PER_PAGE,
         )
         if expected_on_page > 0:
@@ -102,10 +122,8 @@ def fetch_by_year_page(
                 order_page=page,
             )
             # 期待していた分のプログレスを更新
-            for _ in range(expected_on_page):
-                handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-                handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update()
-            return (True, page >= total_page)
+            _safe_update_progress(handle, year, expected_on_page)
+            return (True, page >= total_page, 0)  # 注文カード0件
 
     # ページレベルのエラーチェック（ループの前に1回だけ実行）
     if (
@@ -135,14 +153,11 @@ def fetch_by_year_page(
         else:
             # リトライ上限に達した場合は全ての注文カードの分プログレスを更新
             logging.warning(f"リトライ上限に達しました。{order_card_count}件の注文をスキップします")
-            for _ in range(order_card_count):
-                handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-                handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update()
-            return (True, page >= total_page)
+            _safe_update_progress(handle, year, order_card_count)
+            return (True, page >= total_page, order_card_count)
 
     for i in range(order_card_count):
         order_xpath = ORDER_XPATH + f"[{i + 1}]"
-        progress_updated = False
 
         try:
             # キャンセル済みの注文はスキップ（プログレスバーは更新する）
@@ -163,9 +178,7 @@ def fetch_by_year_page(
                 ).text
                 logging.info(f"キャンセル済みの注文をスキップしました: {no}")
                 # キャンセル済みでも「確認した」としてプログレスを更新
-                handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-                handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update()
-                progress_updated = True
+                _safe_update_progress(handle, year)
                 continue
 
             # 日付を取得
@@ -194,9 +207,7 @@ def fetch_by_year_page(
                     order_page=page,
                     order_index=i,
                 )
-                handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-                handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update()
-                progress_updated = True
+                _safe_update_progress(handle, year)
                 continue
 
             no = order_no_elems[0].text
@@ -238,8 +249,7 @@ def fetch_by_year_page(
             )
             is_skipped = True
             # 例外発生時はプログレスバーを更新
-            handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-            handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update()
+            _safe_update_progress(handle, year)
 
     time.sleep(1)
 
@@ -274,19 +284,18 @@ def fetch_by_year_page(
             is_skipped = True
         finally:
             # 成功・失敗に関わらずプログレスバーを更新
-            handle.get_progress_bar(_gen_status_label_by_year(year)).update()
-            handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update()
+            _safe_update_progress(handle, year)
 
         # デバッグモードでは1件だけ処理して終了
         if handle.debug_mode:
             logging.info("デバッグモード: 1件の注文を処理したため終了します")
-            return (is_skipped, True)
+            return (is_skipped, True, order_card_count)
 
         # シャットダウンリクエストがあれば終了
         if is_shutdown_requested_func():
             logging.info("シャットダウンリクエストにより処理を中断します")
             handle.store_order_info()
-            return (True, True)
+            return (True, True, order_card_count)
 
         if year == datetime.datetime.now().year:
             last_item = handle.get_last_item(year)
@@ -295,7 +304,7 @@ def fetch_by_year_page(
                 for j in range(total_page):
                     handle.set_page_checked(year, j + 1)
 
-    return (is_skipped, page >= total_page)
+    return (is_skipped, page >= total_page, order_card_count)
 
 
 def skip_by_year_page(handle: amazhist.handle.Handle, year: int, page: int) -> bool:
@@ -311,11 +320,10 @@ def skip_by_year_page(handle: amazhist.handle.Handle, year: int, page: int) -> b
     """
     logging.info(f"{year}年 {page} ページの注文をスキップしました [キャッシュ]")
     incr_order = min(
-        handle.get_order_count(year) - handle.get_progress_bar(_gen_status_label_by_year(year)).count,
+        handle.get_order_count(year) - _get_progress_count(handle, year),
         amazhist.const.ORDER_COUNT_PER_PAGE,
     )
-    handle.get_progress_bar(_gen_status_label_by_year(year)).update(incr_order)
-    handle.get_progress_bar(STATUS_ORDER_ITEM_ALL).update(incr_order)
+    _safe_update_progress(handle, year, incr_order)
 
     # NOTE: これ，状況によっては最終ページで成り立たないので，良くない
     return incr_order != amazhist.const.ORDER_COUNT_PER_PAGE
@@ -362,7 +370,7 @@ def fetch_by_year(
     is_skipped = False
     while True:
         if not handle.get_page_checked(year, page):
-            is_skipped_page, is_last = fetch_by_year_page(
+            is_skipped_page, is_last, _ = fetch_by_year_page(
                 handle,
                 year,
                 page,

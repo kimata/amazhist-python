@@ -352,6 +352,10 @@ class Handle:
     def get_progress_bar(self, desc: str) -> ProgressTask:
         return self.progress_bar[desc]
 
+    def has_progress_bar(self, desc: str) -> bool:
+        """プログレスバーが存在するか確認"""
+        return desc in self.progress_bar
+
     def set_status(self, status: str, is_error: bool = False) -> None:
         """ステータスを更新"""
         self._status_text = status

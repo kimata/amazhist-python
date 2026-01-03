@@ -193,7 +193,7 @@ def visit_url(handle: amazhist.handle.Handle, url, caller_name):
 
 def _fetch_order_list_by_year_page(
     handle: amazhist.handle.Handle, year: int, page: int, retry: int = 0
-) -> tuple[bool, bool]:
+) -> tuple[bool, bool, int]:
     """指定年・ページの注文リストを取得（order_list.fetch_by_year_page のラッパー）"""
     return amazhist.order_list.fetch_by_year_page(
         handle,
@@ -537,9 +537,22 @@ def _retry_single_order(handle: amazhist.handle.Handle, error_info: dict[str, An
     """
     order_no = error_info.get("order_no")
     order_year = error_info.get("order_year")
+    order_page = error_info.get("order_page")
+    order_index = error_info.get("order_index")
     current_year = datetime.datetime.now().year
 
-    display_name = order_no or f"{order_year}年 {error_info.get('order_page')}ページ"
+    display_name = order_no or f"{order_year}年 {order_page}ページ"
+
+    # order_no も order_index もない場合はページ全体を再巡回
+    if order_no is None and order_index is None and order_year is not None and order_page is not None:
+        logging.info(f"ページ全体を再巡回します: {display_name}")
+        is_skipped, _, order_card_count = _fetch_order_list_by_year_page(handle, order_year, order_page)
+        # order_card_count > 0 ならページ取得自体は成功
+        # 個別の注文でエラーがあっても、それらは別途エラーとして記録されている
+        if order_card_count > 0 and not is_skipped:
+            # ページ処理完了を記録（次回の通常実行時にスキップされるようにする）
+            handle.set_page_checked(order_year, order_page)
+        return order_card_count > 0
 
     if order_year is not None and order_year != current_year:
         # 過去の年: 注文一覧ページから詳細リンクを取得して再取得
