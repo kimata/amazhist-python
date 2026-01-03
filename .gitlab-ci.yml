@@ -93,13 +93,6 @@ test-smoke:
     - uv run python src/app.py -D -R
     - sync
 
-  # data/chrome はキャッシュしない（ロックファイル問題を回避）
-  cache:
-    - key: ${CI_PROJECT_NAME}-data
-      paths:
-        - data/cache
-        - data/thumb
-
   artifacts:
     when: always
     paths:
