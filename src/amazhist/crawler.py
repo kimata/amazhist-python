@@ -303,18 +303,33 @@ def _fetch_order_list_all_year(handle: amazhist.handle.Handle):
     year_list = fetch_year_list(handle)
     _fetch_order_count(handle)
 
-    handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, handle.get_total_order_count())
+    # 年指定モードではその年の注文数のみをプログレスバーに設定
+    if handle.target_year is not None:
+        if handle.target_year in year_list:
+            total_count = handle.get_order_count(handle.target_year)
+        else:
+            logging.warning(f"指定された年 {handle.target_year} は注文履歴に存在しません")
+            return
+    else:
+        total_count = handle.get_total_order_count()
+
+    handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, total_count)
 
     for year in year_list:
         # シャットダウンリクエストがあれば終了
         if is_shutdown_requested():
             break
 
+        # 年指定モードでは、指定年以外をスキップ
+        if handle.target_year is not None and year != handle.target_year:
+            continue
+
         if (
             (year == datetime.datetime.now().year)
             or (year == handle.get_cache_last_modified().year)
             or (type(year) is str)
             or (not handle.get_year_checked(year))
+            or (handle.target_year is not None)  # 年指定モードでは常に処理
         ):
             _fetch_order_list_by_year(handle, year)
 

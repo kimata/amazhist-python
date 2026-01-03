@@ -3,7 +3,7 @@
 Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして出力します．
 
 Usage:
-  amazhist.py [-c CONFIG] [-e] [-f] [-N] [-D] [-R]
+  amazhist.py [-c CONFIG] [-e] [-f] [-y YEAR] [-N] [-D] [-R]
   amazhist.py [-c CONFIG] -r [-i ID] [-R]
   amazhist.py [-c CONFIG] -E [-a | -i ID]
 
@@ -11,6 +11,7 @@ Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
   -e            : データ収集は行わず，Excel ファイルの出力のみ行います．
   -f            : キャッシュを使わず，強制的にデータを収集し直します．
+  -y YEAR       : 指定した年の注文のみ再取得します．
   -r            : エラーが発生した注文・カテゴリ・サムネイルを再取得します．
   -N            : サムネイル画像を含めないようにします．
   -D            : デバッグモードで動作します（1件のみ収集，キャッシュ無視，終了待ち無し）．
@@ -206,6 +207,7 @@ def execute(
     config,
     is_export_mode: bool = False,
     ignore_cache: bool = False,
+    target_year: int | None = None,
     is_need_thumb: bool = True,
     debug_mode: bool = False,
     clear_profile_on_browser_error: bool = False,
@@ -225,6 +227,7 @@ def execute(
     handle = amazhist.handle.Handle(
         config=amazhist.config.Config.load(config),
         ignore_cache=ignore_cache,
+        target_year=target_year,
         debug_mode=debug_mode,
         clear_profile_on_browser_error=clear_profile_on_browser_error,
     )
@@ -461,12 +464,15 @@ if __name__ == "__main__":
     config_file = args["-c"]
     is_export_mode = args["-e"]
     ignore_cache = args["-f"]
+    target_year_str = args["-y"]
     is_retry_mode = args["-r"]
     is_need_thumb = not args["-N"]
     clear_profile_on_browser_error: bool = args["-R"]
     is_show_error_log = args["-E"]
     is_show_all_errors = args["-a"]
     error_id_str = args["-i"]
+
+    target_year: int | None = int(target_year_str) if target_year_str else None
 
     config = my_lib.config.load(args["-c"], pathlib.Path(SCHEMA_CONFIG))
 
@@ -484,10 +490,11 @@ if __name__ == "__main__":
         sys.exit(
             execute(
                 config,
-                is_export_mode,
-                ignore_cache,
-                is_need_thumb,
-                debug_mode,
-                clear_profile_on_browser_error,
+                is_export_mode=is_export_mode,
+                ignore_cache=ignore_cache,
+                target_year=target_year,
+                is_need_thumb=is_need_thumb,
+                debug_mode=debug_mode,
+                clear_profile_on_browser_error=clear_profile_on_browser_error,
             )
         )

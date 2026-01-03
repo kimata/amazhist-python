@@ -112,6 +112,7 @@ class ProgressTask:
 class Handle:
     config: amazhist.config.Config
     ignore_cache: bool = False
+    target_year: int | None = None
     debug_mode: bool = False
     clear_profile_on_browser_error: bool = False
     selenium: SeleniumInfo | None = None
@@ -144,10 +145,15 @@ class Handle:
             SQLITE_SCHEMA_PATH,
         )
         # NOTE: 再開した時には巡回すべきなのでページステータスを削除しておく
-        for time_filter in [
+        years_to_clear = [
             datetime.datetime.now().year,
             self.get_cache_last_modified().year,
-        ]:
+        ]
+        # 年指定モードでは、その年のページステータスもクリア
+        if self.target_year is not None:
+            years_to_clear.append(self.target_year)
+
+        for time_filter in years_to_clear:
             self._db.clear_page_status(time_filter)
 
     @property
