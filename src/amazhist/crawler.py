@@ -16,14 +16,12 @@ from __future__ import annotations
 import datetime
 import inspect
 import logging
-import math
 import random
 import re
-import signal
-import sys
 import time
 import traceback
 
+import my_lib.graceful_shutdown
 import my_lib.selenium_util
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
@@ -55,58 +53,10 @@ def _get_caller_name() -> str:
     return frame.f_back.f_code.co_name
 
 
-# Graceful shutdown 用のフラグとハンドル
-_shutdown_requested = False
-_current_handle = None
-
-
-def _signal_handler(signum, frame):
-    """Ctrl+C シグナルハンドラ"""
-    global _shutdown_requested, _current_handle
-
-    # 既にシャットダウンリクエスト中の場合は強制終了
-    if _shutdown_requested:
-        logging.warning("強制終了します")
-        sys.exit(1)
-
-    try:
-        # Rich Live を一時停止して入力を受け付ける
-        if _current_handle is not None:
-            _current_handle.pause_live()
-
-        response = input("\n終了しますか？(y/N): ").strip().lower()
-        if response == "y":
-            _shutdown_requested = True
-            # urllib3 の接続エラー WARNING を抑制
-            logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
-            logging.info("終了リクエストを受け付けました。現在の処理が完了次第終了します...")
-        else:
-            logging.info("処理を継続します")
-
-        # Rich Live を再開
-        if _current_handle is not None:
-            _current_handle.resume_live()
-    except EOFError:
-        # 入力が取得できない場合は継続
-        logging.info("処理を継続します")
-        if _current_handle is not None:
-            _current_handle.resume_live()
-
-
-def setup_signal_handler():
-    """シグナルハンドラを設定"""
-    signal.signal(signal.SIGINT, _signal_handler)
-
-
-def is_shutdown_requested():
+# Graceful shutdown 用のエイリアス（my_lib.graceful_shutdown を使用）
+def is_shutdown_requested() -> bool:
     """シャットダウンがリクエストされているかを返す"""
-    return _shutdown_requested
-
-
-def reset_shutdown_flag():
-    """シャットダウンフラグをリセット"""
-    global _shutdown_requested
-    _shutdown_requested = False
+    return my_lib.graceful_shutdown.is_shutdown_requested()
 
 
 def _wait_for_loading(handle, sec=2):
@@ -147,7 +97,7 @@ def _resolve_captcha(handle: amazhist.handle.Handle):
         )
     except CaptchaError:
         logging.error("画像認証の解決を諦めました")
-        raise Exception("画像認証を解決できませんでした．")
+        raise Exception("画像認証を解決できませんでした．") from None
 
 
 def _execute_login(handle: amazhist.handle.Handle):
@@ -203,7 +153,7 @@ def _keep_logged_on(handle: amazhist.handle.Handle):
         logging.info("ログインに成功しました")
     except LoginError:
         logging.error("ログインを諦めました")
-        raise Exception("ログインに失敗しました．")
+        raise Exception("ログインに失敗しました．") from None
 
 
 def gen_hist_url(year: int, page: int) -> str:
@@ -374,7 +324,9 @@ def _fetch_order_list_all_year(handle: amazhist.handle.Handle):
             logging.info(
                 f"{year}年の注文処理済み ({year_list.index(year) + 1}/{len(year_list)}) [キャッシュ]"
             )
-            handle.get_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL).update(handle.get_order_count(year))
+            handle.get_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL).update(
+                handle.get_order_count(year)
+            )
 
 
 def fetch_order_list(handle: amazhist.handle.Handle):
@@ -383,15 +335,13 @@ def fetch_order_list(handle: amazhist.handle.Handle):
     Args:
         handle: アプリケーションハンドル
     """
-    global _current_handle
-
     handle.set_status("🤖 巡回ロボットの準備をします...")
     driver, wait = handle.get_selenium_driver()
 
-    # シグナルハンドラを設定（handle を保存してシグナルハンドラからアクセス可能にする）
-    _current_handle = handle
-    setup_signal_handler()
-    reset_shutdown_flag()
+    # シグナルハンドラを設定
+    my_lib.graceful_shutdown.set_live_display(handle)
+    my_lib.graceful_shutdown.setup_signal_handler()
+    my_lib.graceful_shutdown.reset_shutdown_flag()
 
     handle.set_status("📥 注文履歴の収集を開始します...")
 
@@ -756,15 +706,13 @@ def _retry_failed_thumbnails(handle: amazhist.handle.Handle) -> tuple[int, int]:
 
 def retry_failed_items(handle: amazhist.handle.Handle):
     """エラーが発生したアイテムを再取得"""
-    global _current_handle
-
     handle.set_status("🤖 巡回ロボットの準備をします...")
     driver, wait = handle.get_selenium_driver()
 
     # シグナルハンドラを設定
-    _current_handle = handle
-    setup_signal_handler()
-    reset_shutdown_flag()
+    my_lib.graceful_shutdown.set_live_display(handle)
+    my_lib.graceful_shutdown.setup_signal_handler()
+    my_lib.graceful_shutdown.reset_shutdown_flag()
 
     handle.set_status("🔄 エラーが発生したアイテムを再取得します...")
 

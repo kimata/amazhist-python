@@ -3,8 +3,10 @@
 """
 item.py のテスト
 """
+
 import unittest.mock
 
+import my_lib.graceful_shutdown
 import pytest
 
 import amazhist.config
@@ -62,16 +64,16 @@ class TestFetchItemCategory:
 
     def test_fetch_item_category_shutdown(self, handle):
         """シャットダウン時は空リストを返す"""
-        amazhist.crawler._shutdown_requested = True
+        my_lib.graceful_shutdown.request_shutdown()
 
         result = amazhist.item.fetch_item_category(handle, "https://example.com/item")
 
         assert result == []
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
     def test_fetch_item_category_success(self, handle):
         """カテゴリ取得成功"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         driver, _ = handle.get_selenium_driver()
 
         # パンくずリスト要素をシミュレート
@@ -90,7 +92,7 @@ class TestFetchItemCategory:
 
     def test_fetch_item_category_error(self, handle):
         """カテゴリ取得失敗時はエラー記録"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         driver, _ = handle.get_selenium_driver()
 
         with (
@@ -107,15 +109,13 @@ class TestFetchItemCategory:
 
     def test_fetch_item_category_no_error_record(self, handle):
         """record_error=False の場合はエラー記録しない"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
         with unittest.mock.patch(
             "my_lib.selenium_util.with_retry",
             side_effect=Exception("リトライ失敗"),
         ):
-            result = amazhist.item.fetch_item_category(
-                handle, "https://example.com/item", record_error=False
-            )
+            result = amazhist.item.fetch_item_category(handle, "https://example.com/item", record_error=False)
 
         assert result == []
         handle._db.record_error.assert_not_called()
@@ -171,18 +171,18 @@ class TestSaveThumbnail:
 
     def test_save_thumbnail_shutdown(self, handle):
         """シャットダウン時は何もしない"""
-        amazhist.crawler._shutdown_requested = True
+        my_lib.graceful_shutdown.request_shutdown()
 
         amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
         # driver.get が呼ばれていないことを確認
         driver, _ = handle.get_selenium_driver()
         driver.get.assert_not_called()
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
     def test_save_thumbnail_no_asin(self, handle):
         """ASIN がない場合は何もしない"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
         amazhist.item._save_thumbnail(handle, None, "https://example.com/thumb.jpg")
 
@@ -192,7 +192,7 @@ class TestSaveThumbnail:
 
     def test_save_thumbnail_success(self, handle, tmp_path):
         """サムネイル保存成功"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         driver, _ = handle.get_selenium_driver()
 
         # 画像要素をシミュレート
@@ -200,7 +200,10 @@ class TestSaveThumbnail:
         mock_img.screenshot_as_png = b"fake_png_data"
         driver.find_element.return_value = mock_img
 
-        with unittest.mock.patch("my_lib.selenium_util.browser_tab"):
+        with (
+            unittest.mock.patch("my_lib.selenium_util.browser_tab"),
+            unittest.mock.patch("PIL.Image.open"),
+        ):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
         # ファイルが作成されたことを確認
@@ -263,7 +266,7 @@ class TestParseItem:
 
         import amazhist.order
 
-        amazhist.crawler._shutdown_requested = True
+        my_lib.graceful_shutdown.request_shutdown()
 
         order = amazhist.order.Order(
             date=datetime.datetime(2025, 1, 1),
@@ -273,7 +276,7 @@ class TestParseItem:
         result = amazhist.item.parse_item(handle, "//div[@data-component='purchasedItems']", order)
 
         assert result is None
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
     def test_parse_item_success(self, handle):
         """商品パース成功"""
@@ -281,7 +284,7 @@ class TestParseItem:
 
         import amazhist.order
 
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         driver, _ = handle.get_selenium_driver()
 
         # 商品リンク要素をシミュレート

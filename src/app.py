@@ -94,7 +94,7 @@ def execute_retry_mode(
                 execute_retry(handle)
                 break  # 成功したらループを抜ける
             except selenium.common.exceptions.InvalidSessionIdException:
-                handle.quit_selenium()
+                # quit_selenium() は finally で呼ばれる
                 if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
                     logging.warning(
                         "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
@@ -105,11 +105,11 @@ def execute_retry_mode(
                         f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
                     )
                     my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
-                    continue
-                # リトライ限度を超えた、または clear_profile_on_browser_error=False
-                logging.exception("セッションエラーが発生しました（リトライ不可）")
-                handle.set_status("❌ セッションエラー", is_error=True)
-                return 1
+                else:
+                    # リトライ限度を超えた、または clear_profile_on_browser_error=False
+                    logging.exception("セッションエラーが発生しました（リトライ不可）")
+                    handle.set_status("❌ セッションエラー", is_error=True)
+                    return 1
             except my_lib.selenium_util.SeleniumError as e:
                 logging.exception("Selenium の起動に失敗しました")
                 handle.set_status(f"❌ {e}", is_error=True)
@@ -174,7 +174,7 @@ def execute(
                     execute_fetch(handle)
                     break  # 成功したらループを抜ける
                 except selenium.common.exceptions.InvalidSessionIdException:
-                    handle.quit_selenium()
+                    # quit_selenium() は finally で呼ばれる
                     if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
                         logging.warning(
                             "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
@@ -185,11 +185,11 @@ def execute(
                             f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
                         )
                         my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
-                        continue
-                    # リトライ限度を超えた、または clear_profile_on_browser_error=False
-                    logging.exception("セッションエラーが発生しました（リトライ不可）")
-                    handle.set_status("❌ セッションエラー", is_error=True)
-                    return 1
+                    else:
+                        # リトライ限度を超えた、または clear_profile_on_browser_error=False
+                        logging.exception("セッションエラーが発生しました（リトライ不可）")
+                        handle.set_status("❌ セッションエラー", is_error=True)
+                        return 1
                 except my_lib.selenium_util.SeleniumError as e:
                     logging.exception("Selenium の起動に失敗しました")
                     handle.set_status(f"❌ {e}", is_error=True)
@@ -249,7 +249,7 @@ def show_error_log(config, show_all=False):
         resolved_count = handle.get_error_count(resolved=True)
         console.print(f"\n[bold]{title}[/bold]")
         console.print(
-            f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n"
+            f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n"  # noqa: E501
         )
 
         # テーブルを作成

@@ -3,8 +3,10 @@
 """
 crawler.py のテスト
 """
+
 import unittest.mock
 
+import my_lib.graceful_shutdown
 import pytest
 
 import amazhist.config
@@ -39,18 +41,19 @@ class TestGenHistUrl:
 
         assert "startIndex=10" in result
 
+
 class TestShutdownFlag:
     """シャットダウンフラグのテスト"""
 
     def test_is_shutdown_requested_default(self):
         """デフォルトは False"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         assert amazhist.crawler.is_shutdown_requested() is False
 
     def test_reset_shutdown_flag(self):
         """シャットダウンフラグのリセット"""
-        amazhist.crawler.reset_shutdown_flag()
-        assert amazhist.crawler.is_shutdown_requested() is False
+        my_lib.graceful_shutdown.reset_shutdown_flag()
+        assert my_lib.graceful_shutdown.is_shutdown_requested() is False
 
 
 class TestSignalHandler:
@@ -59,7 +62,7 @@ class TestSignalHandler:
     def test_setup_signal_handler(self):
         """シグナルハンドラの設定"""
         # 例外が発生しないことを確認
-        amazhist.crawler.setup_signal_handler()
+        my_lib.graceful_shutdown.setup_signal_handler()
 
 
 class TestConstants:
@@ -127,9 +130,7 @@ class TestFetchOrderList:
     def test_fetch_order_list_shutdown_requested(self, handle):
         """シャットダウンリクエスト時は即座に終了"""
         with (
-            unittest.mock.patch(
-                "amazhist.crawler._fetch_order_list_all_year"
-            ) as mock_fetch,
+            unittest.mock.patch("amazhist.crawler._fetch_order_list_all_year") as mock_fetch,
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
         ):
             amazhist.crawler.fetch_order_list(handle)
@@ -139,18 +140,16 @@ class TestFetchOrderList:
 
     def test_fetch_order_list_normal(self, handle):
         """正常系のテスト"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
-        with unittest.mock.patch(
-            "amazhist.crawler._fetch_order_list_all_year"
-        ) as mock_fetch:
+        with unittest.mock.patch("amazhist.crawler._fetch_order_list_all_year") as mock_fetch:
             amazhist.crawler.fetch_order_list(handle)
 
             mock_fetch.assert_called_once_with(handle)
 
     def test_fetch_order_list_exception(self, handle):
         """例外発生時のテスト"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
 
         with (
             unittest.mock.patch(
@@ -459,9 +458,15 @@ class TestRetryFailedItems:
 
     def test_retry_failed_orders_success(self, handle):
         """リトライ成功"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_orders.return_value = [
-            {"error_id": 1, "order_no": "ORDER-001", "order_year": None, "order_page": None, "order_index": None}
+            {
+                "error_id": 1,
+                "order_no": "ORDER-001",
+                "order_year": None,
+                "order_page": None,
+                "order_index": None,
+            }
         ]
 
         with (
@@ -478,9 +483,15 @@ class TestRetryFailedItems:
 
     def test_retry_failed_orders_failure(self, handle):
         """リトライ失敗"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_orders.return_value = [
-            {"error_id": 1, "order_no": "ORDER-001", "order_year": None, "order_page": None, "order_index": None}
+            {
+                "error_id": 1,
+                "order_no": "ORDER-001",
+                "order_year": None,
+                "order_page": None,
+                "order_index": None,
+            }
         ]
 
         with (
@@ -496,9 +507,15 @@ class TestRetryFailedItems:
 
     def test_retry_failed_orders_exception(self, handle):
         """リトライ中に例外発生"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_orders.return_value = [
-            {"error_id": 1, "order_no": "ORDER-001", "order_year": None, "order_page": None, "order_index": None}
+            {
+                "error_id": 1,
+                "order_no": "ORDER-001",
+                "order_year": None,
+                "order_page": None,
+                "order_index": None,
+            }
         ]
 
         with (
@@ -524,7 +541,7 @@ class TestRetryFailedItems:
 
     def test_retry_failed_categories_success(self, handle):
         """カテゴリリトライ成功"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_category_items.return_value = [
             {"url": "https://example.com/item", "name": "テスト商品", "error_id": 1}
         ]
@@ -545,7 +562,7 @@ class TestRetryFailedItems:
 
     def test_retry_failed_categories_empty_category(self, handle):
         """カテゴリが空で返される場合"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_category_items.return_value = [
             {"url": "https://example.com/item", "name": "テスト商品", "error_id": 1}
         ]
@@ -570,7 +587,7 @@ class TestRetryFailedItems:
 
     def test_retry_failed_thumbnails_no_asin(self, handle):
         """ASINなしの場合はスキップ"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_thumbnail_items.return_value = [
             {"thumb_url": "https://example.com/thumb.jpg", "name": "テスト", "error_id": 1}
         ]
@@ -582,7 +599,7 @@ class TestRetryFailedItems:
 
     def test_retry_failed_thumbnails_success(self, handle):
         """サムネイルリトライ成功"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_thumbnail_items.return_value = [
             {
                 "thumb_url": "https://example.com/thumb.jpg",
@@ -604,7 +621,7 @@ class TestRetryFailedItems:
 
     def test_retry_failed_items_main_flow(self, handle):
         """retry_failed_items のメインフロー"""
-        amazhist.crawler.reset_shutdown_flag()
+        my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_order_numbers.return_value = []
         handle._db.get_failed_category_items.return_value = []
         handle._db.get_failed_thumbnail_items.return_value = []

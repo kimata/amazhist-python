@@ -4,6 +4,7 @@
 
 サムネイル画像の保存、カテゴリ情報の取得、商品詳細のパースなどを行います。
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -16,6 +17,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import my_lib.selenium_util
+import PIL.Image
 from selenium.webdriver.common.by import By
 
 import amazhist.config
@@ -63,7 +65,9 @@ class Item:
         return result
 
 
-def fetch_item_category(handle: amazhist.handle.Handle, item_url: str, record_error: bool = True) -> list[str]:
+def fetch_item_category(
+    handle: amazhist.handle.Handle, item_url: str, record_error: bool = True
+) -> list[str]:
     """商品ページからカテゴリ情報を取得
 
     Args:
@@ -126,8 +130,22 @@ def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url:
     with my_lib.selenium_util.browser_tab(driver, thumb_url):
         png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
 
+        if not png_data:
+            raise RuntimeError(f"サムネイル画像データが空です: {thumb_path}")
+
         with open(thumb_path, "wb") as f:
             f.write(png_data)
+
+        if thumb_path.stat().st_size == 0:
+            thumb_path.unlink()
+            raise RuntimeError(f"サムネイル画像のサイズが0です: {thumb_path}")
+
+        try:
+            with PIL.Image.open(thumb_path) as img:
+                img.verify()
+        except Exception as e:
+            thumb_path.unlink()
+            raise RuntimeError(f"サムネイル画像が破損しています: {thumb_path}") from e
 
 
 def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.order.Order) -> Item | None:
@@ -194,9 +212,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
         price = amazhist.parser.parse_price(price_text)
         if price is None:
             logging.warning(f"価格のパースに失敗しました: {price_text}")
-            my_lib.selenium_util.dump_page(
-                driver, int(random.random() * 100), handle.config.debug_dir_path
-            )
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
             handle.record_or_update_error(
                 url=url if url else order.url,
                 error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -208,9 +224,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
             price = 0
     else:
         logging.warning(f"価格が見つかりませんでした: {name}")
-        my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), handle.config.debug_dir_path
-        )
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
         handle.record_or_update_error(
             url=url if url else order.url,
             error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -225,9 +239,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     count = 1
 
     # 販売者
-    seller_elem = driver.find_elements(
-        By.XPATH, item_xpath + "//div[@data-component='orderedMerchant']//a"
-    )
+    seller_elem = driver.find_elements(By.XPATH, item_xpath + "//div[@data-component='orderedMerchant']//a")
     if seller_elem:
         seller = seller_elem[0].text
     else:
