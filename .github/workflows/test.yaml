@@ -33,7 +33,7 @@ jobs:
                   sudo locale-gen ja_JP.UTF-8
 
             - name: Install uv
-              uses: astral-sh/setup-uv@v5
+              uses: astral-sh/setup-uv@681c641aba71e4a1c380be3ab5e12ad51f415867 # v7
               with:
                   enable-cache: true
 
