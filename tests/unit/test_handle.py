@@ -3,6 +3,7 @@
 """
 handle.py のテスト
 """
+
 import unittest.mock
 
 import pytest
@@ -197,7 +198,7 @@ class TestHandleLogin:
     def test_get_login_pass(self, handle):
         """ログインパスワード取得"""
         password = handle.get_login_pass()
-        assert password == "password123"
+        assert password == "password123"  # noqa: S105
 
 
 class TestHandleProgressBar:
@@ -372,9 +373,7 @@ class TestHandleIgnoreCache:
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(
-                config=amazhist.config.Config.load(mock_config), ignore_cache=True
-            )
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config), ignore_cache=True)
             # モック DB を設定
             h._db = unittest.mock.MagicMock()
             h._db.exists_order.return_value = True
@@ -582,8 +581,12 @@ class TestHandleErrorLog:
     def test_get_unresolved_errors(self, handle):
         """未解決のエラー一覧を取得"""
         mock_errors = [
-            amazhist.database.ErrorLog(id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False),
-            amazhist.database.ErrorLog(id=2, url="url2", error_type="e", context="c", retry_count=0, resolved=False),
+            amazhist.database.ErrorLog(
+                id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False
+            ),
+            amazhist.database.ErrorLog(
+                id=2, url="url2", error_type="e", context="c", retry_count=0, resolved=False
+            ),
         ]
         handle._db.get_unresolved_errors.return_value = mock_errors
         result = handle.get_unresolved_errors()
@@ -592,7 +595,9 @@ class TestHandleErrorLog:
     def test_get_all_errors(self, handle):
         """全エラー一覧を取得"""
         mock_errors = [
-            amazhist.database.ErrorLog(id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False),
+            amazhist.database.ErrorLog(
+                id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False
+            ),
         ]
         handle._db.get_all_errors.return_value = mock_errors
         result = handle.get_all_errors(limit=50)

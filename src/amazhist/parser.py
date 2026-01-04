@@ -5,6 +5,7 @@ HTMLテキストを解析するパース関数群
 Selenium で取得したテキストデータを解析し、適切な型に変換します。
 これらの関数は Selenium に依存せず、純粋なロジックとしてテスト可能です。
 """
+
 from __future__ import annotations
 
 import datetime

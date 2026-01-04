@@ -3,7 +3,6 @@
 """
 parser.py のテスト
 """
-import datetime
 
 import pytest
 

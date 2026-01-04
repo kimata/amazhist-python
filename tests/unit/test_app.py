@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# ruff: noqa: S101
 """
 app.py のテスト
 """
+
 import unittest.mock
 
 import pytest
@@ -185,9 +185,7 @@ class TestShowErrorLog:
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch.object(
-                amazhist.handle.Handle, "get_unresolved_errors", return_value=[]
-            ),
+            unittest.mock.patch.object(amazhist.handle.Handle, "get_unresolved_errors", return_value=[]),
         ):
             app.show_error_log(mock_config, show_all=False)
 
@@ -229,9 +227,7 @@ class TestShowErrorLog:
             unittest.mock.patch.object(
                 amazhist.handle.Handle, "get_unresolved_errors", return_value=mock_errors
             ),
-            unittest.mock.patch.object(
-                amazhist.handle.Handle, "get_error_count", return_value=1
-            ),
+            unittest.mock.patch.object(amazhist.handle.Handle, "get_error_count", return_value=1),
         ):
             app.show_error_log(mock_config, show_all=False)
 
@@ -258,11 +254,7 @@ class TestShowErrorLog:
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch.object(
-                amazhist.handle.Handle, "get_all_errors", return_value=mock_errors
-            ),
-            unittest.mock.patch.object(
-                amazhist.handle.Handle, "get_error_count", return_value=0
-            ),
+            unittest.mock.patch.object(amazhist.handle.Handle, "get_all_errors", return_value=mock_errors),
+            unittest.mock.patch.object(amazhist.handle.Handle, "get_error_count", return_value=0),
         ):
             app.show_error_log(mock_config, show_all=True)

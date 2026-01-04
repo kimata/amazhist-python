@@ -171,7 +171,7 @@ if __name__ == "__main__":
     import my_lib.logger
     from docopt import docopt
 
-    assert __doc__ is not None
+    assert __doc__ is not None  # noqa: S101
     args = docopt(__doc__)
 
     my_lib.logger.init("test", level=logging.INFO)

@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import my_lib.chrome_util
 import my_lib.selenium_util
 import rich.console
 import rich.live
@@ -261,7 +262,7 @@ class Handle:
             return (driver, wait)
         except Exception as e:
             if self.clear_profile_on_browser_error:
-                my_lib.selenium_util.delete_profile("Amazhist", self.config.selenium_data_dir_path)
+                my_lib.chrome_util.delete_profile("Amazhist", self.config.selenium_data_dir_path)
             raise my_lib.selenium_util.SeleniumError(f"Selenium の起動に失敗しました: {e}") from e
 
     # --- ログイン情報 ---

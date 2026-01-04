@@ -3,6 +3,7 @@
 """
 database.py のテスト
 """
+
 import datetime
 import pathlib
 
@@ -176,9 +177,27 @@ class TestDatabaseItems:
     def test_get_last_item_by_filter(self, db):
         """time_filter で最後の商品を取得"""
         items = [
-            {"no": "001", "asin": "A1", "date": datetime.datetime(2025, 1, 10), "name": "商品1", "order_time_filter": 2025},
-            {"no": "002", "asin": "A2", "date": datetime.datetime(2025, 1, 20), "name": "商品2", "order_time_filter": 2025},
-            {"no": "003", "asin": "A3", "date": datetime.datetime(2024, 12, 15), "name": "商品3", "order_time_filter": 2024},
+            {
+                "no": "001",
+                "asin": "A1",
+                "date": datetime.datetime(2025, 1, 10),
+                "name": "商品1",
+                "order_time_filter": 2025,
+            },
+            {
+                "no": "002",
+                "asin": "A2",
+                "date": datetime.datetime(2025, 1, 20),
+                "name": "商品2",
+                "order_time_filter": 2025,
+            },
+            {
+                "no": "003",
+                "asin": "A3",
+                "date": datetime.datetime(2024, 12, 15),
+                "name": "商品3",
+                "order_time_filter": 2024,
+            },
         ]
         for item in items:
             db.upsert_item(item)
@@ -487,7 +506,8 @@ class TestDatabaseErrorLog:
         """エラーが発生した注文番号を取得"""
         db.record_error(url="url1", error_type="error", context="order", order_no="ORDER-001")
         db.record_error(url="url2", error_type="error", context="order", order_no="ORDER-002")
-        db.record_error(url="url3", error_type="error", context="thumbnail", order_no="ORDER-003")  # context が違う
+        # context が違う
+        db.record_error(url="url3", error_type="error", context="thumbnail", order_no="ORDER-003")
         db.record_error(url="url4", error_type="error", context="order")  # order_no なし
 
         order_numbers = db.get_failed_order_numbers()
@@ -499,13 +519,15 @@ class TestDatabaseErrorLog:
     def test_get_failed_category_items(self, db):
         """カテゴリ取得に失敗したアイテムを取得"""
         # アイテムを追加
-        db.upsert_item({
-            "no": "ORDER-001",
-            "asin": "ASIN001",
-            "date": datetime.datetime(2025, 1, 10),
-            "name": "テスト商品",
-            "url": "https://amazon.co.jp/dp/ASIN001",
-        })
+        db.upsert_item(
+            {
+                "no": "ORDER-001",
+                "asin": "ASIN001",
+                "date": datetime.datetime(2025, 1, 10),
+                "name": "テスト商品",
+                "url": "https://amazon.co.jp/dp/ASIN001",
+            }
+        )
 
         # カテゴリエラーを記録
         db.record_error(
@@ -521,14 +543,16 @@ class TestDatabaseErrorLog:
 
     def test_update_item_category(self, db):
         """アイテムのカテゴリを更新"""
-        db.upsert_item({
-            "no": "ORDER-001",
-            "asin": "ASIN001",
-            "date": datetime.datetime(2025, 1, 10),
-            "name": "テスト商品",
-            "url": "https://amazon.co.jp/dp/ASIN001",
-            "category": [],
-        })
+        db.upsert_item(
+            {
+                "no": "ORDER-001",
+                "asin": "ASIN001",
+                "date": datetime.datetime(2025, 1, 10),
+                "name": "テスト商品",
+                "url": "https://amazon.co.jp/dp/ASIN001",
+                "category": [],
+            }
+        )
 
         count = db.update_item_category(
             "https://amazon.co.jp/dp/ASIN001",
@@ -543,13 +567,15 @@ class TestDatabaseErrorLog:
 
     def test_get_failed_thumbnail_items(self, db):
         """サムネイル取得に失敗したアイテムを取得"""
-        db.upsert_item({
-            "no": "ORDER-001",
-            "asin": "ASIN001",
-            "date": datetime.datetime(2025, 1, 10),
-            "name": "テスト商品",
-            "url": "https://amazon.co.jp/dp/ASIN001",
-        })
+        db.upsert_item(
+            {
+                "no": "ORDER-001",
+                "asin": "ASIN001",
+                "date": datetime.datetime(2025, 1, 10),
+                "name": "テスト商品",
+                "url": "https://amazon.co.jp/dp/ASIN001",
+            }
+        )
 
         db.record_error(
             url="https://images.amazon.com/ASIN001.jpg",

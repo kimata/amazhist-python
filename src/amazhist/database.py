@@ -87,10 +87,7 @@ class Database:
         # Item dataclass の場合は dict に変換
         import amazhist.item
 
-        if isinstance(item, amazhist.item.Item):
-            item_dict = item.to_dict()
-        else:
-            item_dict = item
+        item_dict = item.to_dict() if isinstance(item, amazhist.item.Item) else item
 
         conn = self._get_conn()
         conn.execute(
@@ -744,9 +741,11 @@ class Database:
     def _row_to_error(self, row: sqlite3.Row) -> ErrorLog:
         """Row を ErrorLog に変換"""
         # 新しいカラムが存在しない場合に対応（マイグレーション前のDB）
-        order_year = row["order_year"] if "order_year" in row.keys() else None
-        order_page = row["order_page"] if "order_page" in row.keys() else None
-        order_index = row["order_index"] if "order_index" in row.keys() else None
+        # NOTE: sqlite3.Row は dict ではないため keys() でカラム名を取得
+        row_keys = row.keys()
+        order_year = row["order_year"] if "order_year" in row_keys else None
+        order_page = row["order_page"] if "order_page" in row_keys else None
+        order_index = row["order_index"] if "order_index" in row_keys else None
 
         return ErrorLog(
             id=row["id"],

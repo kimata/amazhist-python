@@ -82,7 +82,7 @@ def fetch_item_category(
     if amazhist.crawler.is_shutdown_requested():
         return []
 
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     def _fetch():
         with my_lib.selenium_util.browser_tab(driver, item_url):
@@ -121,7 +121,7 @@ def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url:
     if amazhist.crawler.is_shutdown_requested():
         return
 
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     thumb_path = handle.get_thumb_path(asin)
     if thumb_path is None:
@@ -133,7 +133,7 @@ def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url:
         if not png_data:
             raise RuntimeError(f"サムネイル画像データが空です: {thumb_path}")
 
-        with open(thumb_path, "wb") as f:
+        with thumb_path.open("wb") as f:
             f.write(png_data)
 
         if thumb_path.stat().st_size == 0:
@@ -163,7 +163,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     if amazhist.crawler.is_shutdown_requested():
         return None
 
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     # 商品名とリンク
     link = driver.find_element(
@@ -212,7 +212,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
         price = amazhist.parser.parse_price(price_text)
         if price is None:
             logging.warning(f"価格のパースに失敗しました: {price_text}")
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
             handle.record_or_update_error(
                 url=url if url else order.url,
                 error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -224,7 +224,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
             price = 0
     else:
         logging.warning(f"価格が見つかりませんでした: {name}")
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         handle.record_or_update_error(
             url=url if url else order.url,
             error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -240,10 +240,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
 
     # 販売者
     seller_elem = driver.find_elements(By.XPATH, item_xpath + "//div[@data-component='orderedMerchant']//a")
-    if seller_elem:
-        seller = seller_elem[0].text
-    else:
-        seller = "アマゾンジャパン合同会社"
+    seller = seller_elem[0].text if seller_elem else "アマゾンジャパン合同会社"
 
     # コンディション（デフォルト新品）
     condition = "新品"
@@ -275,7 +272,7 @@ def _parse_item_giftcard(handle: amazhist.handle.Handle, item_xpath: str) -> dic
     Returns:
         商品情報の辞書
     """
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     count = 1
 
@@ -307,7 +304,7 @@ def _parse_item_default(handle: amazhist.handle.Handle, item_xpath: str) -> dict
     Returns:
         商品情報の辞書
     """
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     count = int(
         my_lib.selenium_util.get_text(

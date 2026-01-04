@@ -3,6 +3,7 @@
 """
 history.py のテスト
 """
+
 import unittest.mock
 
 import pytest
@@ -23,7 +24,18 @@ class TestSheetDef:
     def test_columns(self):
         """カラム定義"""
         cols = amazhist.history._SHEET_DEF["TABLE_HEADER"]["col"]
-        expected_cols = ["shop_name", "date", "name", "image", "count", "price", "category", "seller", "id", "no"]
+        expected_cols = [
+            "shop_name",
+            "date",
+            "name",
+            "image",
+            "count",
+            "price",
+            "category",
+            "seller",
+            "id",
+            "no",
+        ]
         for col in expected_cols:
             assert col in cols
 
@@ -132,7 +144,9 @@ class TestGenerateTableExcel:
         def mock_gen_sheet(book, *args, **kwargs):
             book.create_sheet("テスト")
 
-        with unittest.mock.patch("my_lib.openpyxl_util.generate_list_sheet", side_effect=mock_gen_sheet) as mock_gen:
+        with unittest.mock.patch(
+            "my_lib.openpyxl_util.generate_list_sheet", side_effect=mock_gen_sheet
+        ) as mock_gen:
             amazhist.history.generate_table_excel(handle, excel_path, is_need_thumb=False)
 
             # is_need_thumb が False で渡されることを確認

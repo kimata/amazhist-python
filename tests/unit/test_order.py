@@ -3,6 +3,7 @@
 """
 order.py のテスト
 """
+
 import datetime
 import unittest.mock
 
@@ -95,9 +96,7 @@ class TestParseOrder:
             page=1,
         )
 
-        with unittest.mock.patch(
-            "amazhist.order._parse_order_digital", return_value=True
-        ) as mock_parse:
+        with unittest.mock.patch("amazhist.order._parse_order_digital", return_value=True) as mock_parse:
             result = amazhist.order.parse_order(handle, order)
 
         assert result is True
@@ -118,9 +117,7 @@ class TestParseOrder:
             page=1,
         )
 
-        with unittest.mock.patch(
-            "amazhist.order._parse_order_default", return_value=True
-        ) as mock_parse:
+        with unittest.mock.patch("amazhist.order._parse_order_default", return_value=True) as mock_parse:
             result = amazhist.order.parse_order(handle, order)
 
         assert result is True

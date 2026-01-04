@@ -93,7 +93,7 @@ class TestFetchItemCategory:
     def test_fetch_item_category_error(self, handle):
         """カテゴリ取得失敗時はエラー記録"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
+        _driver, _ = handle.get_selenium_driver()
 
         with (
             unittest.mock.patch(

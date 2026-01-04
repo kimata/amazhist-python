@@ -46,9 +46,9 @@ cp config.example.yaml config.yaml
 
 ```yaml
 login:
-  amazon:
-    user: Amazon.co.jp のユーザ名
-    pass: Amazon.co.jp のパスワード
+    amazon:
+        user: Amazon.co.jp のユーザ名
+        pass: Amazon.co.jp のパスワード
 ```
 
 ## 💻 実行方法

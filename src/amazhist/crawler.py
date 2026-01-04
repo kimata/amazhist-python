@@ -65,7 +65,7 @@ def _wait_for_loading(handle, sec=2):
 
 
 def _resolve_captcha(handle: amazhist.handle.Handle):
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     logging.info("画像認証の解決を試みます")
 
@@ -75,7 +75,7 @@ def _resolve_captcha(handle: amazhist.handle.Handle):
 
         logging.info(f"画像を保存しました: {captcha_img_path}")
 
-        with open(captcha_img_path, "wb") as f:
+        with captcha_img_path.open("wb") as f:
             f.write(captcha_png_data)
 
         captcha_text = input(f"「{captcha_img_path}」に書かれているテキストを入力してください: ")
@@ -86,7 +86,7 @@ def _resolve_captcha(handle: amazhist.handle.Handle):
         _wait_for_loading(handle)
 
         if len(driver.find_elements(By.XPATH, '//input[@name="cvf_captcha_input"]')) != 0:
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
             raise CaptchaError("CAPTCHA未解決")
 
     try:
@@ -102,7 +102,7 @@ def _resolve_captcha(handle: amazhist.handle.Handle):
 
 
 def _execute_login(handle: amazhist.handle.Handle):
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     time.sleep(1)
 
@@ -118,9 +118,10 @@ def _execute_login(handle: amazhist.handle.Handle):
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_password"]').send_keys(handle.get_login_pass())
 
-    if len(driver.find_elements(By.XPATH, '//input[@id="rememberMe"]')) != 0:
-        if not driver.find_element(By.XPATH, '//input[@name="rememberMe"]').get_attribute("checked"):
-            driver.find_element(By.XPATH, '//input[@name="rememberMe"]').click()
+    if len(driver.find_elements(By.XPATH, '//input[@id="rememberMe"]')) != 0 and not driver.find_element(
+        By.XPATH, '//input[@name="rememberMe"]'
+    ).get_attribute("checked"):
+        driver.find_element(By.XPATH, '//input[@name="rememberMe"]').click()
 
     driver.find_element(By.XPATH, '//input[@id="signInSubmit"]').click()
 
@@ -131,7 +132,7 @@ def _execute_login(handle: amazhist.handle.Handle):
 
 
 def _keep_logged_on(handle: amazhist.handle.Handle):
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     if not re.match("Amazonサインイン", driver.title):
         return
@@ -141,7 +142,7 @@ def _keep_logged_on(handle: amazhist.handle.Handle):
     def _try_login():
         _execute_login(handle)
         if re.match("Amazonサインイン", driver.title):
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
             raise LoginError("ログイン失敗")
 
     try:
@@ -174,7 +175,7 @@ def visit_url(handle: amazhist.handle.Handle, url, caller_name):
 
     TimeoutException が発生した場合はリトライします。
     """
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     def _load_page():
         driver.get(url)
@@ -211,7 +212,7 @@ def _fetch_order_list_by_year_page(
 
 def fetch_year_list(handle: amazhist.handle.Handle):
     """年リストを取得"""
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     visit_url(handle, amazhist.const.HIST_URL, _get_caller_name())
 
@@ -223,25 +224,16 @@ def fetch_year_list(handle: amazhist.handle.Handle):
 
     _wait_for_loading(handle)
 
-    year_str_list = list(
-        map(
-            lambda elem: elem.text,
-            driver.find_elements(
-                By.XPATH,
-                "//div[contains(@class, 'a-popover-wrapper')]//li",
-            ),
+    year_str_list = [
+        elem.text
+        for elem in driver.find_elements(
+            By.XPATH,
+            "//div[contains(@class, 'a-popover-wrapper')]//li",
         )
-    )
+    ]
 
     year_list = list(
-        reversed(
-            list(
-                map(
-                    lambda label: int(label.replace("年", "")),
-                    filter(lambda label: re.match(r"\d+年", label), year_str_list),
-                )
-            )
-        )
+        reversed([int(label.replace("年", "")) for label in year_str_list if re.match(r"\d+年", label)])
     )
 
     handle.set_year_list(year_list)
@@ -298,7 +290,7 @@ def _fetch_order_count(handle: amazhist.handle.Handle):
 
 
 def _fetch_order_list_all_year(handle: amazhist.handle.Handle):
-    driver, wait = handle.get_selenium_driver()
+    _driver, _wait = handle.get_selenium_driver()
 
     year_list = fetch_year_list(handle)
     _fetch_order_count(handle)
@@ -352,7 +344,7 @@ def fetch_order_list(handle: amazhist.handle.Handle):
         handle: アプリケーションハンドル
     """
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     # シグナルハンドラを設定
     my_lib.graceful_shutdown.set_live_display(handle)
@@ -365,7 +357,7 @@ def fetch_order_list(handle: amazhist.handle.Handle):
         _fetch_order_list_all_year(handle)
     except Exception:
         if not is_shutdown_requested():
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         raise
 
     if is_shutdown_requested():
@@ -385,7 +377,7 @@ def _retry_order_from_list_page(handle: amazhist.handle.Handle, error_info: dict
         成功した場合 True
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     year = error_info["order_year"]
     page = error_info["order_page"]
@@ -497,7 +489,7 @@ def _retry_failed_years(handle: amazhist.handle.Handle) -> tuple[int, int]:
         return (0, 0)
 
     # 対象年をユニークにする
-    years = sorted(set(error.order_year for error in failed_years if error.order_year))
+    years = sorted({error.order_year for error in failed_years if error.order_year})
 
     if not years:
         logging.info("再巡回対象の年はありません")
@@ -776,7 +768,7 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
 
     # エラーが有効な場合のみ Selenium を起動
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     # シグナルハンドラを設定
     my_lib.graceful_shutdown.set_live_display(handle)
@@ -840,14 +832,14 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
         logging.exception(f"エラーID {error_id} の再取得中にエラーが発生しました: {e}")
         handle.set_status("❌ 再取得中にエラーが発生しました", is_error=True)
         if not is_shutdown_requested():
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         return False
 
 
 def retry_failed_items(handle: amazhist.handle.Handle):
     """エラーが発生したアイテムを再取得"""
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     # シグナルハンドラを設定
     my_lib.graceful_shutdown.set_live_display(handle)
@@ -881,7 +873,7 @@ def retry_failed_items(handle: amazhist.handle.Handle):
 
     except Exception:
         if not is_shutdown_requested():
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         raise
 
     if is_shutdown_requested():
@@ -895,7 +887,7 @@ if __name__ == "__main__":
     import my_lib.logger
     from docopt import docopt
 
-    assert __doc__ is not None
+    assert __doc__ is not None  # noqa: S101
     args = docopt(__doc__)
 
     my_lib.logger.init("test", level=logging.INFO)
@@ -918,6 +910,6 @@ if __name__ == "__main__":
 
             _fetch_order_list_by_year(handle, year, start_page)
     except Exception:
-        driver, wait = handle.get_selenium_driver()
+        driver, _wait = handle.get_selenium_driver()
         logging.error(traceback.format_exc())
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311

@@ -26,6 +26,7 @@ import pathlib
 import random
 import sys
 
+import my_lib.chrome_util
 import my_lib.selenium_util
 import rich.console
 import rich.table
@@ -57,8 +58,8 @@ def execute_fetch(handle: amazhist.handle.Handle) -> None:
     except Exception:
         # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
         if not amazhist.crawler.is_shutdown_requested() and handle.selenium is not None:
-            driver, wait = handle.get_selenium_driver()
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            driver, _wait = handle.get_selenium_driver()
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         raise
 
 
@@ -76,8 +77,8 @@ def execute_retry(handle: amazhist.handle.Handle) -> None:
     except Exception:
         # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
         if not amazhist.crawler.is_shutdown_requested() and handle.selenium is not None:
-            driver, wait = handle.get_selenium_driver()
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+            driver, _wait = handle.get_selenium_driver()
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         raise
 
 
@@ -123,7 +124,7 @@ def execute_retry_single(
                     handle.set_status(
                         f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
                     )
-                    my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
+                    my_lib.chrome_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
                 else:
                     # リトライ限度を超えた、または clear_profile_on_browser_error=False
                     logging.exception("セッションエラーが発生しました（リトライ不可）")
@@ -182,7 +183,7 @@ def execute_retry_mode(
                     handle.set_status(
                         f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
                     )
-                    my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
+                    my_lib.chrome_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
                 else:
                     # リトライ限度を超えた、または clear_profile_on_browser_error=False
                     logging.exception("セッションエラーが発生しました（リトライ不可）")
@@ -257,7 +258,7 @@ def execute(
                         handle.set_status(
                             f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
                         )
-                        my_lib.selenium_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
+                        my_lib.chrome_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
                     else:
                         # リトライ限度を超えた、または clear_profile_on_browser_error=False
                         logging.exception("セッションエラーが発生しました（リトライ不可）")
@@ -322,7 +323,7 @@ def show_error_log(config, show_all=False):
         resolved_count = handle.get_error_count(resolved=True)
         console.print(f"\n[bold]{title}[/bold]")
         console.print(
-            f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n"  # noqa: E501
+            f"  未解決: [red]{unresolved_count}[/red] 件  解決済み: [green]{resolved_count}[/green] 件\n"
         )
 
         # テーブルを作成
@@ -454,7 +455,7 @@ if __name__ == "__main__":
     import my_lib.logger
     from docopt import docopt
 
-    assert __doc__ is not None
+    assert __doc__ is not None  # noqa: S101
     args = docopt(__doc__)
 
     debug_mode: bool = args["-D"]

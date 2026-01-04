@@ -92,7 +92,7 @@ def fetch_by_year_page(
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     total_page = math.ceil(handle.get_order_count(year) / amazhist.const.ORDER_COUNT_PER_PAGE)
 

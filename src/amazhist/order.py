@@ -11,6 +11,7 @@ Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
   -n ORDER_NO   : 注文番号．
 """
+
 from __future__ import annotations
 
 import datetime
@@ -19,8 +20,8 @@ import logging
 import random
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import my_lib.selenium_util
 from selenium.common.exceptions import TimeoutException
@@ -63,7 +64,7 @@ def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
     Returns:
         パースに成功したか
     """
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
     date = amazhist.parser.parse_date_digital(date_text)
@@ -111,7 +112,7 @@ def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
         order_page=order.page,
     )
 
-    logging.info("{name} {price:,}円".format(name=item.name, price=item.price))
+    logging.info(f"{item.name} {item.price:,}円")
 
     handle.record_item(item)
 
@@ -130,7 +131,7 @@ def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
     """
     ITEM_XPATH = '//div[@data-component="purchasedItems"]'
 
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     is_unempty = False
     for i in range(len(driver.find_elements(By.XPATH, ITEM_XPATH))):
@@ -145,7 +146,7 @@ def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
             # シャットダウン要求により中断
             break
 
-        logging.info("{name} {price:,}円".format(name=item.name, price=item.price))
+        logging.info(f"{item.name} {item.price:,}円")
 
         handle.record_item(item)
         is_unempty = True
@@ -165,7 +166,7 @@ def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
     Returns:
         パースに成功したか
     """
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     date_str = order.date.strftime("%Y-%m-%d")
     logging.info(f"注文をパースしています: {date_str} - {order.no}")
@@ -197,7 +198,7 @@ def fetch_item_list(
     Returns:
         取得に成功したか
     """
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     try:
         visit_url_func(handle, order.url, get_caller_name_func())
@@ -218,7 +219,7 @@ def fetch_item_list(
 
     if not parse_order(handle, order):
         logging.warning(f"注文のパースに失敗しました: {order.no}")
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         handle.record_or_update_error(
             url=order.url,
             error_type="parse_error",
@@ -269,15 +270,13 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
     ORDER_COUNT_XPATH = "//span[contains(@class, 'num-orders')]"
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, wait = handle.get_selenium_driver()
+    driver, _wait = handle.get_selenium_driver()
 
     caller_name = _get_caller_name()
 
     # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
     # あり得ないページ数を指定する．
-    amazhist.crawler.visit_url(
-        handle, amazhist.crawler.gen_hist_url(year, 10000), caller_name
-    )
+    amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 10000), caller_name)
 
     if my_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
         order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
@@ -288,9 +287,7 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
         time.sleep(1)
 
         # NOTE: 注文数が表示されない場合，注文数が少ない可能性が高いので，先頭のページを表示する．
-        amazhist.crawler.visit_url(
-            handle, amazhist.crawler.gen_hist_url(year, 1), caller_name
-        )
+        amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 1), caller_name)
 
         # まずページ内の「○件の注文」テキストから件数を取得
         page_count_text = _extract_order_count_from_page(driver)
@@ -305,9 +302,7 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
             if count == amazhist.const.ORDER_COUNT_PER_PAGE:
                 page = 2
                 while True:
-                    amazhist.crawler.visit_url(
-                        handle, amazhist.crawler.gen_hist_url(year, page), caller_name
-                    )
+                    amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, page), caller_name)
                     page_count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
                     if page_count == 0:
                         break
@@ -342,7 +337,7 @@ if __name__ == "__main__":
     import my_lib.logger
     from docopt import docopt
 
-    assert __doc__ is not None
+    assert __doc__ is not None  # noqa: S101
     args = docopt(__doc__)
 
     my_lib.logger.init("test", level=logging.INFO)
@@ -355,10 +350,19 @@ if __name__ == "__main__":
         amazhist.crawler.visit_url(handle, amazhist.crawler.gen_order_url(no), "main")
         amazhist.crawler._keep_logged_on(handle)
 
-        parse_order(handle, Order(date=datetime.datetime.now(), no=no, url=amazhist.crawler.gen_order_url(no), page=1, time_filter=None))
+        order = Order(
+            date=datetime.datetime.now(),
+            no=no,
+            url=amazhist.crawler.gen_order_url(no),
+            page=1,
+            time_filter=None,
+        )
+        parse_order(handle, order)
     except Exception:
-        driver, wait = handle.get_selenium_driver()
+        driver, _wait = handle.get_selenium_driver()
         logging.error(traceback.format_exc())
         my_lib.selenium_util.dump_page(
-            driver, int(random.random() * 100), handle.config.debug_dir_path
+            driver,
+            int(random.random() * 100),  # noqa: S311
+            handle.config.debug_dir_path,
         )
