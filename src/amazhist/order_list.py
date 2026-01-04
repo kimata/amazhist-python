@@ -329,7 +329,7 @@ def fetch_by_year_page(
     return (is_skipped, page >= total_page, order_card_count, consecutive_cache_hits)
 
 
-def skip_by_year_page(handle: amazhist.handle.Handle, year: int, page: int) -> bool:
+def _skip_by_year_page(handle: amazhist.handle.Handle, year: int, page: int) -> bool:
     """ページをスキップ（キャッシュ済みの場合）
 
     Args:
@@ -422,7 +422,7 @@ def fetch_by_year(
             is_skipped |= is_skipped_page
             time.sleep(1)
         else:
-            is_last = skip_by_year_page(handle, year, page)
+            is_last = _skip_by_year_page(handle, year, page)
             # ページスキップ時は連続カウントをリセット（既存キャッシュは新規取得扱い）
             consecutive_cache_hits = 0
 
@@ -443,8 +443,3 @@ def fetch_by_year(
 
     if not is_skipped and not is_shutdown_requested_func() and not handle.debug_mode:
         handle.set_year_checked(year)
-
-
-def gen_status_label_by_year(year: int) -> str:
-    """年のプログレスバーラベルを生成（外部公開用）"""
-    return _gen_status_label_by_year(year)

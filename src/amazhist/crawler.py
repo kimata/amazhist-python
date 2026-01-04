@@ -210,7 +210,7 @@ def _fetch_order_list_by_year_page(
     )
 
 
-def fetch_year_list(handle: amazhist.handle.Handle):
+def _fetch_year_list(handle: amazhist.handle.Handle):
     """年リストを取得"""
     driver, _wait = handle.get_selenium_driver()
 
@@ -292,7 +292,7 @@ def _fetch_order_count(handle: amazhist.handle.Handle):
 def _fetch_order_list_all_year(handle: amazhist.handle.Handle):
     _driver, _wait = handle.get_selenium_driver()
 
-    year_list = fetch_year_list(handle)
+    year_list = _fetch_year_list(handle)
     _fetch_order_count(handle)
 
     # 年指定モードではその年の注文数のみをプログレスバーに設定

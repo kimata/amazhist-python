@@ -330,7 +330,7 @@ class TestKeepLoggedOn:
 
 
 class TestFetchYearList:
-    """fetch_year_list のテスト"""
+    """_fetch_year_list のテスト"""
 
     @pytest.fixture
     def mock_config(self, tmp_path):
@@ -394,7 +394,7 @@ class TestFetchYearList:
             unittest.mock.patch("amazhist.crawler._keep_logged_on"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
         ):
-            year_list = amazhist.crawler.fetch_year_list(handle)
+            year_list = amazhist.crawler._fetch_year_list(handle)
 
         assert year_list == [2022, 2023, 2024]
         handle._db.set_year_list.assert_called_once_with([2022, 2023, 2024])

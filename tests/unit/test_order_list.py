@@ -36,11 +36,6 @@ class TestGenStatusLabelByYear:
         assert "2025年" in result
         assert "[収集]" in result
 
-    def test_gen_status_label_by_year_public(self):
-        """公開用ラベル生成関数"""
-        result = amazhist.order_list.gen_status_label_by_year(2024)
-        assert "2024年" in result
-
 
 class TestStatusOrderItemAll:
     """STATUS_ORDER_ITEM_ALL のテスト"""
@@ -51,7 +46,7 @@ class TestStatusOrderItemAll:
 
 
 class TestSkipByYearPage:
-    """skip_by_year_page のテスト"""
+    """_skip_by_year_page のテスト"""
 
     @pytest.fixture
     def mock_config(self, tmp_path):
@@ -102,7 +97,7 @@ class TestSkipByYearPage:
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 15)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 15)
 
-        is_last = amazhist.order_list.skip_by_year_page(handle, 2025, 1)
+        is_last = amazhist.order_list._skip_by_year_page(handle, 2025, 1)
 
         # 15件で10件/ページなので、1ページ目は最終ではない
         assert is_last is False
@@ -118,7 +113,7 @@ class TestSkipByYearPage:
         handle.get_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL).update(10)
         handle._db.get_year_order_count.return_value = 15
 
-        is_last = amazhist.order_list.skip_by_year_page(handle, 2025, 2)
+        is_last = amazhist.order_list._skip_by_year_page(handle, 2025, 2)
 
         # 残り5件なので最終ページ
         assert is_last is True

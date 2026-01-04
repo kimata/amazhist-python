@@ -31,11 +31,11 @@ import amazhist.config
 import amazhist.database
 
 # SQLite スキーマファイルのパス
-SQLITE_SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
+_SQLITE_SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
 
 # ステータスバーの色定義
-STATUS_STYLE_NORMAL = "bold #FFFFFF on #e47911"  # Amazon オレンジ
-STATUS_STYLE_ERROR = "bold white on red"
+_STATUS_STYLE_NORMAL = "bold #FFFFFF on #e47911"  # Amazon オレンジ
+_STATUS_STYLE_ERROR = "bold white on red"
 
 
 @dataclass
@@ -143,7 +143,7 @@ class Handle:
         """データベースを初期化"""
         self._db = amazhist.database.open_database(
             self.config.cache_file_path,
-            SQLITE_SCHEMA_PATH,
+            _SQLITE_SCHEMA_PATH,
         )
         # NOTE: 再開した時には巡回すべきなのでページステータスを削除しておく
         years_to_clear = [
@@ -193,7 +193,7 @@ class Handle:
 
     def _create_status_bar(self) -> rich.table.Table:
         """ステータスバーを作成（左: タイトル、中央: 進捗、右: 時間）"""
-        style = STATUS_STYLE_ERROR if self._status_is_error else STATUS_STYLE_NORMAL
+        style = _STATUS_STYLE_ERROR if self._status_is_error else _STATUS_STYLE_NORMAL
         elapsed = time.time() - self._start_time
         elapsed_str = f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}"
 
