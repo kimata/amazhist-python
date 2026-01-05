@@ -652,3 +652,344 @@ class TestHandleErrorLog:
         handle._db.mark_errors_resolved_by_order_no.return_value = 2
         result = handle.mark_errors_resolved_by_order_no("ORDER-001")
         assert result == 2
+
+
+class TestNullProgress:
+    """_NullProgress のテスト"""
+
+    def test_null_progress_add_task(self):
+        """add_task が TaskID(0) を返す"""
+        null_progress = amazhist.handle._NullProgress()
+        result = null_progress.add_task("テスト", total=100)
+        assert result == 0
+
+    def test_null_progress_update(self):
+        """update が何もしない"""
+        import rich.progress
+
+        null_progress = amazhist.handle._NullProgress()
+        # 例外なく完了
+        null_progress.update(rich.progress.TaskID(0), advance=1)
+
+    def test_null_progress_rich(self):
+        """__rich__ が空のテキストを返す"""
+        null_progress = amazhist.handle._NullProgress()
+        result = null_progress.__rich__()
+        assert str(result) == ""
+
+
+class TestNullLive:
+    """_NullLive のテスト"""
+
+    def test_null_live_start(self):
+        """start が何もしない"""
+        null_live = amazhist.handle._NullLive()
+        null_live.start()  # 例外なく完了
+
+    def test_null_live_stop(self):
+        """stop が何もしない"""
+        null_live = amazhist.handle._NullLive()
+        null_live.stop()  # 例外なく完了
+
+    def test_null_live_refresh(self):
+        """refresh が何もしない"""
+        null_live = amazhist.handle._NullLive()
+        null_live.refresh()  # 例外なく完了
+
+
+class TestDisplayRenderable:
+    """_DisplayRenderable のテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_display_renderable_rich(self, mock_config, tmp_path):
+        """__rich__ が _create_display を呼び出す"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            renderable = amazhist.handle._DisplayRenderable(handle)
+
+            with unittest.mock.patch.object(handle, "_create_display", return_value="test") as mock_create:
+                result = renderable.__rich__()
+
+                mock_create.assert_called_once()
+                assert result == "test"
+
+            handle.finish()
+
+
+class TestHandleSelenium:
+    """Handle の Selenium テスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_get_selenium_driver_initialized(self, mock_config, tmp_path):
+        """Selenium 初期化済みの場合"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            mock_driver = unittest.mock.MagicMock()
+            mock_wait = unittest.mock.MagicMock()
+            handle.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+
+            driver, wait = handle.get_selenium_driver()
+
+            assert driver is mock_driver
+            assert wait is mock_wait
+
+            handle.finish()
+
+
+class TestHandleDatabaseProperty:
+    """Handle の db プロパティテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_db_property_not_initialized(self, mock_config, tmp_path):
+        """db プロパティ未初期化時に例外"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._db = None
+
+            with pytest.raises(RuntimeError, match="Database is not initialized"):
+                _ = handle.db
+
+            handle.finish()
+
+    def test_db_property_initialized(self, mock_config, tmp_path):
+        """db プロパティ初期化済みの場合"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            mock_db = unittest.mock.MagicMock()
+            handle._db = mock_db
+
+            db = handle.db
+
+            assert db is mock_db
+
+            handle.finish()
+
+
+class TestHandleStatusBar:
+    """ステータスバー作成のテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_create_status_bar_normal(self, mock_config, tmp_path):
+        """通常時のステータスバー"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._status_text = "処理中"
+            handle._status_is_error = False
+
+            table = handle._create_status_bar()
+
+            assert table is not None
+
+            handle.finish()
+
+    def test_create_status_bar_error(self, mock_config, tmp_path):
+        """エラー時のステータスバー"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._status_text = "エラー"
+            handle._status_is_error = True
+
+            table = handle._create_status_bar()
+
+            assert table is not None
+
+            handle.finish()
+
+    def test_create_display_without_tasks(self, mock_config, tmp_path):
+        """タスクなしの表示"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._status_text = "テスト"
+
+            display = handle._create_display()
+
+            assert display is not None
+
+            handle.finish()
+
+
+class TestHandleHasProgressBar:
+    """has_progress_bar テスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_has_progress_bar_exists(self, mock_config, tmp_path):
+        """プログレスバーが存在する場合"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle.set_progress_bar("テスト", 100)
+
+            assert handle.has_progress_bar("テスト") is True
+
+            handle.finish()
+
+    def test_has_progress_bar_not_exists(self, mock_config, tmp_path):
+        """プログレスバーが存在しない場合"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            assert handle.has_progress_bar("存在しない") is False
+
+            handle.finish()
