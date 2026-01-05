@@ -251,7 +251,7 @@ class Handle:
 
         try:
             driver = my_lib.selenium_util.create_driver(
-                "Amazhist", self.config.selenium_data_dir_path, use_subprocess=False
+                "Amazhist", self.config.selenium_data_dir_path, use_undetected=True
             )
             wait = selenium.webdriver.support.wait.WebDriverWait(driver, 5)
 
