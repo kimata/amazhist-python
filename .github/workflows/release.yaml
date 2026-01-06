@@ -8,7 +8,7 @@ on:
 
 env:
     PROJECT_NAME: amazhist
-    SCRIPT_NAME: src/app.py
+    SCRIPT_NAME: src/amazhist/__main__.py
 
 jobs:
     prepare:
