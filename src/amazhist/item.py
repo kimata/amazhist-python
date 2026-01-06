@@ -23,6 +23,7 @@ from selenium.webdriver.common.by import By
 import amazhist.config
 import amazhist.const
 import amazhist.crawler
+import amazhist.exceptions
 import amazhist.handle
 import amazhist.parser
 
@@ -131,21 +132,27 @@ def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url:
         png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
 
         if not png_data:
-            raise RuntimeError(f"サムネイル画像データが空です: {thumb_path}")
+            raise amazhist.exceptions.ThumbnailEmptyError(
+                "サムネイル画像データが空です", path=str(thumb_path)
+            )
 
         with thumb_path.open("wb") as f:
             f.write(png_data)
 
         if thumb_path.stat().st_size == 0:
             thumb_path.unlink()
-            raise RuntimeError(f"サムネイル画像のサイズが0です: {thumb_path}")
+            raise amazhist.exceptions.ThumbnailSizeError(
+                "サムネイル画像のサイズが0です", path=str(thumb_path)
+            )
 
         try:
             with PIL.Image.open(thumb_path) as img:
                 img.verify()
         except Exception as e:
             thumb_path.unlink()
-            raise RuntimeError(f"サムネイル画像が破損しています: {thumb_path}") from e
+            raise amazhist.exceptions.ThumbnailCorruptError(
+                "サムネイル画像が破損しています", path=str(thumb_path)
+            ) from e
 
 
 def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.order.Order) -> Item | None:

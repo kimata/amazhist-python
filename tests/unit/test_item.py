@@ -11,6 +11,7 @@ import pytest
 
 import amazhist.config
 import amazhist.crawler
+import amazhist.exceptions
 import amazhist.handle
 import amazhist.item
 
@@ -482,7 +483,7 @@ class TestSaveThumbnailErrors:
 
         with (
             unittest.mock.patch("my_lib.selenium_util.browser_tab"),
-            pytest.raises(RuntimeError, match="サムネイル画像データが空です"),
+            pytest.raises(amazhist.exceptions.ThumbnailEmptyError),
         ):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
@@ -506,7 +507,7 @@ class TestSaveThumbnailErrors:
         with (
             unittest.mock.patch("my_lib.selenium_util.browser_tab"),
             unittest.mock.patch("pathlib.Path.stat", return_value=mock_stat_result),
-            pytest.raises(RuntimeError, match="サムネイル画像のサイズが0です"),
+            pytest.raises(amazhist.exceptions.ThumbnailSizeError),
         ):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
@@ -525,7 +526,7 @@ class TestSaveThumbnailErrors:
         with (
             unittest.mock.patch("my_lib.selenium_util.browser_tab"),
             unittest.mock.patch("PIL.Image.open", side_effect=Exception("破損した画像")),
-            pytest.raises(RuntimeError, match="サムネイル画像が破損しています"),
+            pytest.raises(amazhist.exceptions.ThumbnailCorruptError),
         ):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
