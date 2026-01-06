@@ -123,7 +123,7 @@ class TestFetchOrderList:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -206,7 +206,7 @@ class TestVisitUrl:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -295,7 +295,7 @@ class TestKeepLoggedOn:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -371,7 +371,7 @@ class TestFetchYearList:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -442,7 +442,7 @@ class TestRetryFailedItems:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -676,7 +676,7 @@ class TestDebugMode:
             )
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -780,7 +780,7 @@ class TestResolveCaptcha:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -949,7 +949,7 @@ class TestExecuteLogin:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -1081,7 +1081,7 @@ class TestKeepLoggedOnFailure:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -1146,7 +1146,7 @@ class TestFetchOrderCount:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1218,7 +1218,7 @@ class TestFetchOrderListAllYear:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1354,7 +1354,7 @@ class TestRetryOrderFromListPage:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1694,7 +1694,7 @@ class TestRetryFailedYears:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1860,7 +1860,7 @@ class TestRetrySingleOrder:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2030,7 +2030,7 @@ class TestRetryErrorById:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2307,7 +2307,7 @@ class TestRetryFailedItemsException:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2381,7 +2381,7 @@ class TestRetryFailedOrdersShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2450,7 +2450,7 @@ class TestRetryFailedCategoriesShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2536,7 +2536,7 @@ class TestRetryFailedThumbnailsShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2632,7 +2632,7 @@ class TestFetchOrderListExceptionWithShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -2694,7 +2694,7 @@ class TestExecuteLoginWithoutContinue:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -2791,7 +2791,7 @@ class TestRetryOrderFromListPageEdgeCases:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             yield h
             h.finish()
 
@@ -2977,7 +2977,7 @@ class TestRetryFailedYearsLoopBranch:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -3034,7 +3034,7 @@ class TestRetryFailedOrdersWithOrderNo:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -3098,7 +3098,7 @@ class TestRetryFailedItemsExceptionWithoutShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()

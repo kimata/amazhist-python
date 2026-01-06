@@ -7,11 +7,8 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import my_lib.chrome_util
+import my_lib.browser_manager
 import my_lib.cui_progress
-import my_lib.selenium_util
-import selenium.webdriver.remote.webdriver
-import selenium.webdriver.support.wait
 
 import amazhist.database
 
@@ -29,20 +26,16 @@ _SQLITE_SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "
 
 
 @dataclass
-class SeleniumInfo:
-    driver: selenium.webdriver.remote.webdriver.WebDriver
-    wait: selenium.webdriver.support.wait.WebDriverWait
-
-
-@dataclass
 class Handle:
     config: amazhist.config.Config
     ignore_cache: bool = False
     target_year: int | None = None
     debug_mode: bool = False
     clear_profile_on_browser_error: bool = False
-    selenium: SeleniumInfo | None = None
     _db: amazhist.database.Database | None = field(default=None, repr=False)
+    _browser_manager: my_lib.browser_manager.BrowserManager | None = field(
+        default=None, init=False, repr=False
+    )
 
     # プログレス管理
     _progress_manager: my_lib.cui_progress.ProgressManager = field(
@@ -56,6 +49,11 @@ class Handle:
     def __post_init__(self) -> None:
         self._prepare_directory()
         self._init_database()
+        self._browser_manager = my_lib.browser_manager.BrowserManager(
+            profile_name="Amazhist",
+            data_dir=self.config.selenium_data_dir_path,
+            clear_profile_on_error=self.clear_profile_on_browser_error,
+        )
 
         if self.ignore_cache:
             logging.info("キャッシュ無視モード: キャッシュを無視してデータを収集します")
@@ -95,24 +93,14 @@ class Handle:
 
     # --- Selenium 関連 ---
     def get_selenium_driver(self) -> tuple[WebDriver, WebDriverWait]:
-        if self.selenium is not None:
-            return (self.selenium.driver, self.selenium.wait)
+        """Selenium ドライバーを取得（必要に応じて起動）"""
+        if self._browser_manager is None:
+            raise RuntimeError("BrowserManager is not initialized")
+        return self._browser_manager.get_driver()
 
-        try:
-            driver = my_lib.selenium_util.create_driver(
-                "Amazhist", self.config.selenium_data_dir_path, use_undetected=True
-            )
-            wait = selenium.webdriver.support.wait.WebDriverWait(driver, 5)
-
-            my_lib.selenium_util.clear_cache(driver)
-
-            self.selenium = SeleniumInfo(driver=driver, wait=wait)
-
-            return (driver, wait)
-        except Exception as e:
-            if self.clear_profile_on_browser_error:
-                my_lib.chrome_util.delete_profile("Amazhist", self.config.selenium_data_dir_path)
-            raise my_lib.selenium_util.SeleniumError(f"Selenium の起動に失敗しました: {e}") from e
+    def has_selenium_driver(self) -> bool:
+        """Selenium ドライバーが起動済みか確認"""
+        return self._browser_manager is not None and self._browser_manager.has_driver()
 
     # --- ログイン情報 ---
     def get_login_user(self) -> str:
@@ -226,10 +214,9 @@ class Handle:
     # --- 終了処理 ---
     def quit_selenium(self) -> None:
         """Selenium ドライバーを終了"""
-        if self.selenium is not None:
+        if self._browser_manager is not None and self._browser_manager.has_driver():
             self.set_status("🛑 クローラを終了しています...")
-            my_lib.selenium_util.quit_driver_gracefully(self.selenium.driver, wait_sec=5)
-            self.selenium = None
+            self._browser_manager.quit()
 
     def finish(self) -> None:
         self.quit_selenium()

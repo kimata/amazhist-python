@@ -56,7 +56,7 @@ def execute_fetch(handle: amazhist.handle.Handle) -> None:
         raise
     except Exception:
         # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
-        if not amazhist.crawler.is_shutdown_requested() and handle.selenium is not None:
+        if not amazhist.crawler.is_shutdown_requested() and handle.has_selenium_driver():
             driver, _wait = handle.get_selenium_driver()
             my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         raise
@@ -75,7 +75,7 @@ def execute_retry(handle: amazhist.handle.Handle) -> None:
         raise
     except Exception:
         # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
-        if not amazhist.crawler.is_shutdown_requested() and handle.selenium is not None:
+        if not amazhist.crawler.is_shutdown_requested() and handle.has_selenium_driver():
             driver, _wait = handle.get_selenium_driver()
             my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
         raise

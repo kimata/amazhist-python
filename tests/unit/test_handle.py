@@ -691,7 +691,7 @@ class TestHandleSelenium:
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            handle.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            handle.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
 
             driver, wait = handle.get_selenium_driver()
 
@@ -997,13 +997,12 @@ class TestGetSeleniumDriverCreation:
             unittest.mock.patch("selenium.webdriver.support.wait.WebDriverWait"),
         ):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            assert handle.selenium is None
+            assert not handle.has_selenium_driver()
 
             driver, wait = handle.get_selenium_driver()
 
             assert driver is mock_driver
-            assert handle.selenium is not None
-            assert handle.selenium.driver is mock_driver
+            assert handle.has_selenium_driver()
 
             handle.finish()
 

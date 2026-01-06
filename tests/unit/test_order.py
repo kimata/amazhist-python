@@ -83,7 +83,7 @@ class TestParseOrder:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -173,7 +173,7 @@ class TestParseOrderCount:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -364,7 +364,7 @@ class TestParseOrderDigital:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -581,7 +581,7 @@ class TestParseOrderDefault:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -734,7 +734,7 @@ class TestFetchItemList:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.selenium = amazhist.handle.SeleniumInfo(driver=mock_driver, wait=mock_wait)
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
