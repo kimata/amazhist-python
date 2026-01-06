@@ -65,7 +65,7 @@ class TestExecuteFetch:
     def test_execute_fetch_success(self, handle):
         """正常にフェッチ実行"""
         with unittest.mock.patch("amazhist.crawler.fetch_order_list") as mock_fetch:
-            app.execute_fetch(handle)
+            amazhist.cli.execute_fetch(handle)
             mock_fetch.assert_called_once_with(handle)
 
     def test_execute_fetch_error_dumps_page(self, handle):
@@ -79,7 +79,7 @@ class TestExecuteFetch:
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="フェッチエラー"),
         ):
-            app.execute_fetch(handle)
+            amazhist.cli.execute_fetch(handle)
             mock_dump.assert_called_once()
 
 
@@ -318,7 +318,7 @@ class TestExecuteFetchExceptions:
             ),
             pytest.raises(selenium.common.exceptions.InvalidSessionIdException),
         ):
-            app.execute_fetch(handle)
+            amazhist.cli.execute_fetch(handle)
 
     def test_execute_fetch_selenium_error(self, handle):
         """SeleniumError 時はダンプせず再送出"""
@@ -331,7 +331,7 @@ class TestExecuteFetchExceptions:
             ),
             pytest.raises(my_lib.selenium_util.SeleniumError),
         ):
-            app.execute_fetch(handle)
+            amazhist.cli.execute_fetch(handle)
 
     def test_execute_fetch_generic_exception_with_shutdown(self, handle):
         """シャットダウン要求時はダンプをスキップ"""
@@ -344,7 +344,7 @@ class TestExecuteFetchExceptions:
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="generic error"),
         ):
-            app.execute_fetch(handle)
+            amazhist.cli.execute_fetch(handle)
             mock_dump.assert_not_called()
 
     def test_execute_fetch_generic_exception_no_selenium(self, handle):
@@ -360,7 +360,7 @@ class TestExecuteFetchExceptions:
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="generic error"),
         ):
-            app.execute_fetch(handle)
+            amazhist.cli.execute_fetch(handle)
             mock_dump.assert_not_called()
 
 
@@ -413,7 +413,7 @@ class TestExecuteRetryExceptions:
     def test_execute_retry_success(self, handle):
         """正常にリトライ実行"""
         with unittest.mock.patch("amazhist.crawler.retry_failed_items") as mock_retry:
-            app.execute_retry(handle)
+            amazhist.cli.execute_retry(handle)
             mock_retry.assert_called_once_with(handle)
 
     def test_execute_retry_invalid_session_exception(self, handle):
@@ -427,7 +427,7 @@ class TestExecuteRetryExceptions:
             ),
             pytest.raises(selenium.common.exceptions.InvalidSessionIdException),
         ):
-            app.execute_retry(handle)
+            amazhist.cli.execute_retry(handle)
 
     def test_execute_retry_selenium_error(self, handle):
         """SeleniumError 時はダンプせず再送出"""
@@ -440,7 +440,7 @@ class TestExecuteRetryExceptions:
             ),
             pytest.raises(my_lib.selenium_util.SeleniumError),
         ):
-            app.execute_retry(handle)
+            amazhist.cli.execute_retry(handle)
 
     def test_execute_retry_generic_exception_with_dump(self, handle):
         """汎用例外時にページダンプを実行"""
@@ -453,7 +453,7 @@ class TestExecuteRetryExceptions:
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="retry error"),
         ):
-            app.execute_retry(handle)
+            amazhist.cli.execute_retry(handle)
             mock_dump.assert_called_once()
 
     def test_execute_retry_generic_exception_with_shutdown(self, handle):
@@ -467,7 +467,7 @@ class TestExecuteRetryExceptions:
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="retry error"),
         ):
-            app.execute_retry(handle)
+            amazhist.cli.execute_retry(handle)
             mock_dump.assert_not_called()
 
     def test_execute_retry_generic_exception_no_selenium(self, handle):
@@ -483,7 +483,7 @@ class TestExecuteRetryExceptions:
             unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
             pytest.raises(Exception, match="retry error"),
         ):
-            app.execute_retry(handle)
+            amazhist.cli.execute_retry(handle)
             mock_dump.assert_not_called()
 
 
@@ -529,7 +529,7 @@ class TestExecuteRetrySingle:
             unittest.mock.patch("amazhist.crawler.retry_error_by_id", return_value=True),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1)
+            result = amazhist.cli.execute_retry_single(mock_config, error_id=1)
             assert result == 0
 
     def test_execute_retry_single_failure(self, mock_config, tmp_path):
@@ -541,7 +541,7 @@ class TestExecuteRetrySingle:
             unittest.mock.patch("amazhist.crawler.retry_error_by_id", return_value=False),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1)
+            result = amazhist.cli.execute_retry_single(mock_config, error_id=1)
             assert result == 1
 
     def test_execute_retry_single_session_error_with_retry(self, mock_config, tmp_path):
@@ -564,7 +564,9 @@ class TestExecuteRetrySingle:
             unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1, clear_profile_on_browser_error=True)
+            result = amazhist.cli.execute_retry_single(
+                mock_config, error_id=1, clear_profile_on_browser_error=True
+            )
             assert result == 0
             mock_delete.assert_called_once()
 
@@ -582,7 +584,9 @@ class TestExecuteRetrySingle:
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1, clear_profile_on_browser_error=False)
+            result = amazhist.cli.execute_retry_single(
+                mock_config, error_id=1, clear_profile_on_browser_error=False
+            )
             assert result == 1
 
     def test_execute_retry_single_selenium_error(self, mock_config, tmp_path):
@@ -599,7 +603,7 @@ class TestExecuteRetrySingle:
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1)
+            result = amazhist.cli.execute_retry_single(mock_config, error_id=1)
             assert result == 1
 
     def test_execute_retry_single_generic_error(self, mock_config, tmp_path):
@@ -615,7 +619,7 @@ class TestExecuteRetrySingle:
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1)
+            result = amazhist.cli.execute_retry_single(mock_config, error_id=1)
             assert result == 1
 
     def test_execute_retry_single_shutdown_requested(self, mock_config, tmp_path):
@@ -631,7 +635,7 @@ class TestExecuteRetrySingle:
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1)
+            result = amazhist.cli.execute_retry_single(mock_config, error_id=1)
             assert result == 0
 
 
@@ -677,7 +681,7 @@ class TestExecuteRetryMode:
             unittest.mock.patch("amazhist.cli.execute_retry") as mock_retry,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config)
+            result = amazhist.cli.execute_retry_mode(mock_config)
             assert result == 0
             mock_retry.assert_called_once()
 
@@ -701,7 +705,7 @@ class TestExecuteRetryMode:
             unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config, clear_profile_on_browser_error=True)
+            result = amazhist.cli.execute_retry_mode(mock_config, clear_profile_on_browser_error=True)
             assert result == 0
             mock_delete.assert_called_once()
 
@@ -714,12 +718,12 @@ class TestExecuteRetryMode:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_retry",
+                "amazhist.cli.execute_retry",
                 side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config, clear_profile_on_browser_error=False)
+            result = amazhist.cli.execute_retry_mode(mock_config, clear_profile_on_browser_error=False)
             assert result == 1
 
     def test_execute_retry_mode_selenium_error(self, mock_config, tmp_path):
@@ -731,12 +735,12 @@ class TestExecuteRetryMode:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_retry",
+                "amazhist.cli.execute_retry",
                 side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config)
+            result = amazhist.cli.execute_retry_mode(mock_config)
             assert result == 1
 
     def test_execute_retry_mode_generic_error(self, mock_config, tmp_path):
@@ -746,13 +750,13 @@ class TestExecuteRetryMode:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_retry",
+                "amazhist.cli.execute_retry",
                 side_effect=Exception("generic error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config)
+            result = amazhist.cli.execute_retry_mode(mock_config)
             assert result == 1
 
     def test_execute_retry_mode_shutdown_requested(self, mock_config, tmp_path):
@@ -762,13 +766,13 @@ class TestExecuteRetryMode:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_retry",
+                "amazhist.cli.execute_retry",
                 side_effect=Exception("interrupted"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config)
+            result = amazhist.cli.execute_retry_mode(mock_config)
             assert result == 0
 
 
@@ -852,7 +856,7 @@ class TestExecuteAdvanced:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_fetch",
+                "amazhist.cli.execute_fetch",
                 side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
@@ -870,7 +874,7 @@ class TestExecuteAdvanced:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_fetch",
+                "amazhist.cli.execute_fetch",
                 side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
@@ -889,7 +893,7 @@ class TestExecuteAdvanced:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_fetch",
+                "amazhist.cli.execute_fetch",
                 side_effect=Exception("generic error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
@@ -911,7 +915,7 @@ class TestExecuteAdvanced:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_fetch",
+                "amazhist.cli.execute_fetch",
                 side_effect=Exception("interrupted"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
@@ -1238,7 +1242,9 @@ class TestRetrySingleExhausted:
             unittest.mock.patch("my_lib.chrome_util.delete_profile"),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_single(mock_config, error_id=1, clear_profile_on_browser_error=True)
+            result = amazhist.cli.execute_retry_single(
+                mock_config, error_id=1, clear_profile_on_browser_error=True
+            )
             assert result == 1
 
 
@@ -1285,13 +1291,13 @@ class TestRetryModeExhausted:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_retry",
+                "amazhist.cli.execute_retry",
                 side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
             ),
             unittest.mock.patch("my_lib.chrome_util.delete_profile"),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
-            result = app.execute_retry_mode(mock_config, clear_profile_on_browser_error=True)
+            result = amazhist.cli.execute_retry_mode(mock_config, clear_profile_on_browser_error=True)
             assert result == 1
 
 
@@ -1338,7 +1344,7 @@ class TestExecuteExhausted:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
-                "app.execute_fetch",
+                "amazhist.cli.execute_fetch",
                 side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
