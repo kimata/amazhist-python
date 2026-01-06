@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # ruff: noqa: S101
 """
-app.py のテスト
+cli.py のテスト
 """
 
 import unittest.mock
 
 import pytest
 
+import amazhist.cli as app
 import amazhist.config
 import amazhist.crawler
 import amazhist.database
 import amazhist.handle
-import app
 
 
 class TestExecuteFetch:
@@ -123,7 +123,7 @@ class TestExecute:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch("amazhist.history.generate_table_excel") as mock_excel,
-            unittest.mock.patch("app.execute_fetch") as mock_fetch,
+            unittest.mock.patch("amazhist.cli.execute_fetch") as mock_fetch,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
             app.execute(mock_config, is_export_mode=True)
@@ -138,7 +138,7 @@ class TestExecute:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch("amazhist.history.generate_table_excel") as mock_excel,
-            unittest.mock.patch("app.execute_fetch") as mock_fetch,
+            unittest.mock.patch("amazhist.cli.execute_fetch") as mock_fetch,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
             app.execute(mock_config, is_export_mode=False)
@@ -674,7 +674,7 @@ class TestExecuteRetryMode:
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("app.execute_retry") as mock_retry,
+            unittest.mock.patch("amazhist.cli.execute_retry") as mock_retry,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
             result = app.execute_retry_mode(mock_config)
@@ -697,7 +697,7 @@ class TestExecuteRetryMode:
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("app.execute_retry", side_effect=side_effect_fn),
+            unittest.mock.patch("amazhist.cli.execute_retry", side_effect=side_effect_fn),
             unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete,
             unittest.mock.patch("builtins.input", return_value=""),
         ):
@@ -812,7 +812,7 @@ class TestExecuteAdvanced:
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
-            unittest.mock.patch("app.execute_fetch"),
+            unittest.mock.patch("amazhist.cli.execute_fetch"),
         ):
             # debug_mode=True の場合は input を呼ばない
             result = app.execute(mock_config, is_export_mode=True, debug_mode=True)
@@ -834,7 +834,7 @@ class TestExecuteAdvanced:
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("app.execute_fetch", side_effect=side_effect_fn),
+            unittest.mock.patch("amazhist.cli.execute_fetch", side_effect=side_effect_fn),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
             unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete,
             unittest.mock.patch("builtins.input", return_value=""),

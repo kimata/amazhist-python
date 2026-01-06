@@ -25,6 +25,9 @@ dependencies = [
     "undetected-chromedriver>=3.5.5",
 ]
 
+[project.scripts]
+amazhist = "amazhist.__main__:main"
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
@@ -72,7 +75,7 @@ exclude = [
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 include = ["src", "tests"]
 reportMissingImports = false
 reportArgumentType = false

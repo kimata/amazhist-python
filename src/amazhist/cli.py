@@ -3,9 +3,9 @@
 Amazon.co.jp の購入履歴情報を収集して，Excel ファイルとして出力します．
 
 Usage:
-  amazhist.py [-c CONFIG] [-e] [-f] [-y YEAR] [-N] [-D] [-R]
-  amazhist.py [-c CONFIG] -r [-i ID] [-R]
-  amazhist.py [-c CONFIG] -E [-a | -i ID]
+  amazhist [-c CONFIG] [-e] [-f] [-y YEAR] [-N] [-D] [-R]
+  amazhist [-c CONFIG] -r [-i ID] [-R]
+  amazhist [-c CONFIG] -E [-a | -i ID]
 
 Options:
   -c CONFIG     : CONFIG を設定ファイルとして読み込んで実行します．[default: config.yaml]
@@ -424,13 +424,15 @@ def show_error_detail(config, error_id: int):
         handle.finish()
 
 
-######################################################################
-if __name__ == "__main__":
+def main() -> None:
+    """CLI エントリポイント"""
     import my_lib.config
     import my_lib.logger
     from docopt import docopt
 
-    assert __doc__ is not None  # noqa: S101
+    if __doc__ is None:
+        raise RuntimeError("__doc__ is not set")
+
     args = docopt(__doc__)
 
     debug_mode: bool = args["-D"]
@@ -457,7 +459,7 @@ if __name__ == "__main__":
 
     target_year: int | None = int(target_year_str) if target_year_str else None
 
-    config = my_lib.config.load(args["-c"], pathlib.Path(SCHEMA_CONFIG))
+    config = my_lib.config.load(config_file, pathlib.Path(SCHEMA_CONFIG))
 
     if is_show_error_log:
         if error_id_str:
@@ -481,3 +483,7 @@ if __name__ == "__main__":
                 clear_profile_on_browser_error=clear_profile_on_browser_error,
             )
         )
+
+
+if __name__ == "__main__":
+    main()
