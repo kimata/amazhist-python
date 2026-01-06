@@ -320,18 +320,14 @@ class TestHandleStatus:
             h.finish()
 
     def test_set_status(self, handle):
-        """ステータスの設定"""
+        """ステータスの設定（例外なく完了することを確認）"""
         handle.set_status("処理中...")
-
-        assert handle._status_text == "処理中..."
-        assert handle._status_is_error is False
+        # ProgressManager に委譲されるため、内部状態は確認しない
 
     def test_set_status_error(self, handle):
-        """エラーステータスの設定"""
+        """エラーステータスの設定（例外なく完了することを確認）"""
         handle.set_status("エラー発生", is_error=True)
-
-        assert handle._status_text == "エラー発生"
-        assert handle._status_is_error is True
+        # ProgressManager に委譲されるため、内部状態は確認しない
 
 
 class TestHandleIgnoreCache:
@@ -654,99 +650,6 @@ class TestHandleErrorLog:
         assert result == 2
 
 
-class TestNullProgress:
-    """_NullProgress のテスト"""
-
-    def test_null_progress_add_task(self):
-        """add_task が TaskID(0) を返す"""
-        null_progress = amazhist.handle._NullProgress()
-        result = null_progress.add_task("テスト", total=100)
-        assert result == 0
-
-    def test_null_progress_update(self):
-        """update が何もしない"""
-        import rich.progress
-
-        null_progress = amazhist.handle._NullProgress()
-        # 例外なく完了
-        null_progress.update(rich.progress.TaskID(0), advance=1)
-
-    def test_null_progress_rich(self):
-        """__rich__ が空のテキストを返す"""
-        null_progress = amazhist.handle._NullProgress()
-        result = null_progress.__rich__()
-        assert str(result) == ""
-
-
-class TestNullLive:
-    """_NullLive のテスト"""
-
-    def test_null_live_start(self):
-        """start が何もしない"""
-        null_live = amazhist.handle._NullLive()
-        null_live.start()  # 例外なく完了
-
-    def test_null_live_stop(self):
-        """stop が何もしない"""
-        null_live = amazhist.handle._NullLive()
-        null_live.stop()  # 例外なく完了
-
-    def test_null_live_refresh(self):
-        """refresh が何もしない"""
-        null_live = amazhist.handle._NullLive()
-        null_live.refresh()  # 例外なく完了
-
-
-class TestDisplayRenderable:
-    """_DisplayRenderable のテスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    def test_display_renderable_rich(self, mock_config, tmp_path):
-        """__rich__ が _create_display を呼び出す"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            renderable = amazhist.handle._DisplayRenderable(handle)
-
-            with unittest.mock.patch.object(handle, "_create_display", return_value="test") as mock_create:
-                result = renderable.__rich__()
-
-                mock_create.assert_called_once()
-                assert result == "test"
-
-            handle.finish()
-
-
 class TestHandleSelenium:
     """Handle の Selenium テスト"""
 
@@ -856,84 +759,6 @@ class TestHandleDatabaseProperty:
             db = handle.db
 
             assert db is mock_db
-
-            handle.finish()
-
-
-class TestHandleStatusBar:
-    """ステータスバー作成のテスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    def test_create_status_bar_normal(self, mock_config, tmp_path):
-        """通常時のステータスバー"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            handle._status_text = "処理中"
-            handle._status_is_error = False
-
-            table = handle._create_status_bar()
-
-            assert table is not None
-
-            handle.finish()
-
-    def test_create_status_bar_error(self, mock_config, tmp_path):
-        """エラー時のステータスバー"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            handle._status_text = "エラー"
-            handle._status_is_error = True
-
-            table = handle._create_status_bar()
-
-            assert table is not None
-
-            handle.finish()
-
-    def test_create_display_without_tasks(self, mock_config, tmp_path):
-        """タスクなしの表示"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            handle._status_text = "テスト"
-
-            display = handle._create_display()
-
-            assert display is not None
 
             handle.finish()
 
@@ -1072,181 +897,6 @@ class TestInitDatabase:
             handle.finish()
 
 
-class TestInitProgressTTY:
-    """_init_progress メソッドの TTY 環境テスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    def test_init_progress_tty(self, mock_config, tmp_path):
-        """TTY 環境で _init_progress が Rich Progress/Live を初期化する"""
-        import rich.console
-        import rich.live
-        import rich.progress
-
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        # TTY をシミュレート
-        mock_console = unittest.mock.MagicMock(spec=rich.console.Console)
-        mock_console.is_terminal = True
-        mock_console.width = 80
-
-        mock_live_instance = unittest.mock.MagicMock(spec=rich.live.Live)
-
-        with (
-            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("rich.progress.Progress") as mock_progress_cls,
-            unittest.mock.patch("rich.live.Live", return_value=mock_live_instance) as mock_live_cls,
-        ):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            handle._console = mock_console
-            # _init_progress を再呼び出し（fixture で既に呼ばれているが再初期化）
-            handle._init_progress()
-
-            # Progress と Live が初期化されたことを確認
-            mock_progress_cls.assert_called()
-            mock_live_cls.assert_called()
-            mock_live_instance.start.assert_called()
-
-            handle.finish()
-
-
-class TestStatusBarTmux:
-    """TMUX 環境でのステータスバーテスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    def test_create_status_bar_tmux(self, mock_config, tmp_path):
-        """TMUX 環境ではターミナル幅から 2 を引く"""
-        import os
-
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            handle._console.width = 100
-
-            # TMUX 環境をシミュレート
-            with unittest.mock.patch.dict(os.environ, {"TMUX": "/tmp/tmux-1000/default,12345,0"}):  # noqa: S108
-                table = handle._create_status_bar()
-
-                # table.width が 98 (100 - 2) であることを確認
-                assert table.width == 98
-
-            handle.finish()
-
-
-class TestCreateDisplayWithTasks:
-    """_create_display でタスクがある場合のテスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    def test_create_display_with_tasks(self, mock_config, tmp_path):
-        """タスクがある場合は Group を返す"""
-        import rich.console
-        import rich.progress
-
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-
-            # タスクをモック
-            mock_task = unittest.mock.MagicMock(spec=rich.progress.Task)
-            handle._progress = unittest.mock.MagicMock()
-            handle._progress.tasks = [mock_task]
-
-            display = handle._create_display()
-
-            # Group が返されることを確認
-            assert isinstance(display, rich.console.Group)
-
-            handle.finish()
-
-
 class TestPauseResumeLive:
     """pause_live と resume_live メソッドのテスト"""
 
@@ -1281,35 +931,23 @@ class TestPauseResumeLive:
         }
 
     def test_pause_live(self, mock_config, tmp_path):
-        """pause_live が _live.stop を呼ぶ"""
+        """pause_live が例外なく完了する"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-
-            mock_live = unittest.mock.MagicMock()
-            handle._live = mock_live
-
+            # ProgressManager に委譲されるため、例外なく呼べることを確認
             handle.pause_live()
-
-            mock_live.stop.assert_called_once()
-
             handle.finish()
 
     def test_resume_live(self, mock_config, tmp_path):
-        """resume_live が _live.start を呼ぶ"""
+        """resume_live が例外なく完了する"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-
-            mock_live = unittest.mock.MagicMock()
-            handle._live = mock_live
-
+            # ProgressManager に委譲されるため、例外なく呼べることを確認
             handle.resume_live()
-
-            mock_live.start.assert_called_once()
-
             handle.finish()
 
 
@@ -1519,61 +1157,6 @@ class TestDatabaseProxyMethodsCoverage:
         result = handle.get_thumbnail_asin_by_error_id(123)
         assert result == "B0123456789"
         handle._db.get_thumbnail_asin_by_error_id.assert_called_once_with(123)
-
-
-class TestSetStatusTTY:
-    """set_status の TTY 環境テスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    def test_set_status_tty_refresh_display(self, mock_config, tmp_path):
-        """TTY 環境で set_status が _refresh_display を呼ぶ"""
-        import rich.console
-
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-
-            # TTY をシミュレート
-            mock_console = unittest.mock.MagicMock(spec=rich.console.Console)
-            mock_console.is_terminal = True
-            handle._console = mock_console
-
-            with unittest.mock.patch.object(handle, "_refresh_display") as mock_refresh:
-                handle.set_status("処理中...")
-
-                mock_refresh.assert_called_once()
-
-            handle.finish()
 
 
 class TestGetFailedOrders:

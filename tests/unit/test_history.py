@@ -160,8 +160,12 @@ class TestGenerateTableExcel:
         def mock_gen_sheet(book, *args, **kwargs):
             book.create_sheet("テスト")
 
-        with unittest.mock.patch("my_lib.openpyxl_util.generate_list_sheet", side_effect=mock_gen_sheet):
+        with (
+            unittest.mock.patch("my_lib.openpyxl_util.generate_list_sheet", side_effect=mock_gen_sheet),
+            unittest.mock.patch.object(handle, "set_status") as mock_set_status,
+        ):
             amazhist.history.generate_table_excel(handle, excel_path)
 
-        # 最終ステータスが完了になっている
-        assert "完了" in handle._status_text
+        # set_status が「完了」で呼ばれていることを確認
+        call_args_list = [call[0][0] for call in mock_set_status.call_args_list]
+        assert any("完了" in arg for arg in call_args_list)

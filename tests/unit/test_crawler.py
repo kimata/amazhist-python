@@ -1167,7 +1167,7 @@ class TestFetchOrderCount:
         handle._db.get_year_order_count.return_value = 10
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[収集] 年数"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with unittest.mock.patch("amazhist.order.parse_order_count", return_value=20):
             amazhist.crawler._fetch_order_count(handle)
@@ -1281,7 +1281,7 @@ class TestFetchOrderListAllYear:
         handle._db.get_year_order_count.return_value = 10
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[収集] 全注文"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with (
             unittest.mock.patch("amazhist.crawler._fetch_year_list", return_value=[2019]),
@@ -1746,7 +1746,7 @@ class TestRetryFailedYears:
         handle._db.get_failed_years.return_value = [error]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] 年"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with (
             unittest.mock.patch("amazhist.crawler._fetch_order_list_by_year"),
@@ -1778,7 +1778,7 @@ class TestRetryFailedYears:
         handle._db.get_failed_years.return_value = [error]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] 年"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with (
             unittest.mock.patch(
@@ -1809,7 +1809,7 @@ class TestRetryFailedYears:
         handle._db.get_failed_years.return_value = [error]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] 年"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True):
             success, fail = amazhist.crawler._retry_failed_years(handle)
@@ -2399,7 +2399,7 @@ class TestRetryFailedOrdersShutdown:
         ]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] 注文"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True):
             success, fail = amazhist.crawler._retry_failed_orders(handle)
@@ -2462,7 +2462,7 @@ class TestRetryFailedCategoriesShutdown:
         ]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] カテゴリ"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True):
             success, fail = amazhist.crawler._retry_failed_categories(handle)
@@ -2478,7 +2478,7 @@ class TestRetryFailedCategoriesShutdown:
         ]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] カテゴリ"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with (
             unittest.mock.patch(
@@ -2553,7 +2553,7 @@ class TestRetryFailedThumbnailsShutdown:
         ]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] サムネイル"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True):
             success, fail = amazhist.crawler._retry_failed_thumbnails(handle)
@@ -2574,7 +2574,7 @@ class TestRetryFailedThumbnailsShutdown:
         ]
 
         mock_progress = unittest.mock.MagicMock()
-        handle.progress_bar["[再取得] サムネイル"] = mock_progress
+        handle.get_progress_bar = unittest.mock.MagicMock(return_value=mock_progress)
 
         with (
             unittest.mock.patch(
