@@ -1046,7 +1046,9 @@ class TestGetSeleniumDriverCreation:
                 handle.get_selenium_driver()
 
             # clear_profile_on_browser_error=True なのでプロファイル削除される
-            mock_delete_profile.assert_called_once_with("Amazhist", handle.config.selenium_data_dir_path)
+            # BrowserManager はリトライ時にもプロファイル削除するため、複数回呼ばれる
+            assert mock_delete_profile.call_count >= 1
+            mock_delete_profile.assert_called_with("Amazhist", handle.config.selenium_data_dir_path)
 
             handle.finish()
 
