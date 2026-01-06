@@ -19,18 +19,21 @@
 ## ディレクトリ構成
 
 ```
-src/
-├── app.py                  # エントリーポイント（CLI）
-└── amazhist/
-    ├── config.py           # 設定管理（dataclass ベース）
-    ├── const.py            # 定数定義（URL、リトライ設定等）
-    ├── crawler.py          # Web スクレイピング（Selenium）
-    ├── database.py         # SQLite データベース層
-    ├── handle.py           # 状態管理（Handle クラス）
-    ├── history.py          # Excel 生成ロジック
-    ├── item.py             # 商品情報パース
-    ├── order.py            # 注文情報パース
-    └── parser.py           # テキスト解析（日付、価格）
+src/amazhist/
+├── __init__.py             # パッケージ初期化
+├── __main__.py             # エントリーポイント（python -m amazhist）
+├── cli.py                  # CLI 引数解析・メイン処理
+├── config.py               # 設定管理（dataclass ベース）
+├── const.py                # 定数定義（URL、リトライ設定等）
+├── crawler.py              # Web スクレイピング（Selenium）
+├── database.py             # SQLite データベース層
+├── exceptions.py           # カスタム例外クラス
+├── handle.py               # 状態管理（Handle クラス）
+├── history.py              # Excel 生成ロジック
+├── item.py                 # 商品情報パース
+├── order.py                # 注文情報パース
+├── order_list.py           # 注文リスト管理
+└── parser.py               # テキスト解析（日付、価格）
 
 tests/
 ├── conftest.py             # pytest 設定
@@ -61,14 +64,14 @@ uv sync
 ### アプリケーション実行
 
 ```bash
-uv run python src/app.py              # 通常実行
-uv run python src/app.py -e           # Excel 出力のみ
-uv run python src/app.py -f           # 全データ強制再収集
-uv run python src/app.py -r           # エラー項目のみ再取得
-uv run python src/app.py -N           # サムネイルなし
-uv run python src/app.py -D           # デバッグモード
-uv run python src/app.py -E           # 未解決エラーログ表示
-uv run python src/app.py -E -a        # 全エラーログ表示
+uv run amazhist                       # 通常実行
+uv run amazhist -e                    # Excel 出力のみ
+uv run amazhist -f                    # 全データ強制再収集
+uv run amazhist -r                    # エラー項目のみ再取得
+uv run amazhist -N                    # サムネイルなし
+uv run amazhist -D                    # デバッグモード
+uv run amazhist -E                    # 未解決エラーログ表示
+uv run amazhist -E -a                 # 全エラーログ表示
 ```
 
 ### テスト実行
@@ -114,7 +117,7 @@ uv run ruff format src/               # フォーマット
 ### 実行フロー
 
 ```
-app.py (エントリー)
+cli.py (エントリー: uv run amazhist)
     ↓
 Config.load() で設定読み込み
     ↓
