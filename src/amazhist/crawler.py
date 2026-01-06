@@ -29,6 +29,7 @@ from selenium.webdriver.common.by import By
 
 import amazhist.config
 import amazhist.const
+import amazhist.exceptions
 import amazhist.handle
 import amazhist.item
 import amazhist.order
@@ -37,13 +38,9 @@ import amazhist.parser
 
 _STATUS_ORDER_COUNT = "[収集] 年数"
 
-
-class LoginError(Exception):
-    """ログイン失敗を示す例外"""
-
-
-class CaptchaError(Exception):
-    """CAPTCHA解決失敗を示す例外"""
+# 後方互換性のために例外クラスをエクスポート
+LoginError = amazhist.exceptions.LoginError
+CaptchaError = amazhist.exceptions.CaptchaError
 
 
 def _get_caller_name() -> str:
