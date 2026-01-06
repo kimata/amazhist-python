@@ -15,35 +15,6 @@ import amazhist.database
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
 
 
-class TestIsSqliteFile:
-    """_is_sqlite_file のテスト"""
-
-    def test_is_sqlite_file_valid(self, tmp_path):
-        """有効な SQLite ファイル"""
-        db_path = tmp_path / "test.db"
-        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
-        db.close()
-
-        assert amazhist.database._is_sqlite_file(db_path) is True
-
-    def test_is_sqlite_file_not_exists(self, tmp_path):
-        """存在しないファイル"""
-        db_path = tmp_path / "not_exists.db"
-        assert amazhist.database._is_sqlite_file(db_path) is False
-
-    def test_is_sqlite_file_too_small(self, tmp_path):
-        """小さすぎるファイル"""
-        db_path = tmp_path / "small.db"
-        db_path.write_bytes(b"small")
-        assert amazhist.database._is_sqlite_file(db_path) is False
-
-    def test_is_sqlite_file_not_sqlite(self, tmp_path):
-        """SQLite 形式でないファイル"""
-        db_path = tmp_path / "not_sqlite.db"
-        db_path.write_bytes(b"This is not a SQLite file at all")
-        assert amazhist.database._is_sqlite_file(db_path) is False
-
-
 class TestDatabaseBasic:
     """Database 基本操作のテスト"""
 

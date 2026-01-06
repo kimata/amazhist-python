@@ -34,18 +34,6 @@ class ErrorLog:
     created_at: datetime.datetime | None = None
 
 
-_SQLITE_MAGIC = b"SQLite format 3\x00"
-
-
-def _is_sqlite_file(path: pathlib.Path) -> bool:
-    """ファイルが SQLite 形式かどうかを判定"""
-    if not path.exists() or path.stat().st_size < 16:
-        return False
-    with path.open("rb") as f:
-        header = f.read(16)
-    return header.startswith(_SQLITE_MAGIC)
-
-
 class Database:
     """SQLite データベースアクセス層"""
 
