@@ -26,7 +26,6 @@ import pathlib
 import random
 import sys
 
-import my_lib.chrome_util
 import my_lib.selenium_util
 import rich.console
 import rich.table
@@ -107,42 +106,34 @@ def execute_retry_single(
     exit_code = 0
 
     try:
-        for retry in range(_MAX_SESSION_RETRY_COUNT + 1):
-            try:
-                success = amazhist.crawler.retry_error_by_id(handle, error_id)
-                if not success:
-                    exit_code = 1
-                break  # 成功したらループを抜ける
-            except selenium.common.exceptions.InvalidSessionIdException:
-                # quit_selenium() は finally で呼ばれる
-                if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
-                    logging.warning(
-                        "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
-                        retry + 1,
-                        _MAX_SESSION_RETRY_COUNT,
-                    )
-                    handle.set_status(
-                        f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
-                    )
-                    my_lib.chrome_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
-                else:
-                    # リトライ限度を超えた、または clear_profile_on_browser_error=False
-                    logging.exception("セッションエラーが発生しました（リトライ不可）")
-                    handle.set_status("❌ セッションエラー", is_error=True)
-                    return 1
-            except my_lib.selenium_util.SeleniumError as e:
-                logging.exception("Selenium の起動に失敗しました")
-                handle.set_status(f"❌ {e}", is_error=True)
-                return 1
-            except Exception:
-                # シャットダウン要求時は正常終了扱い（tracebackを出さない）
-                if not amazhist.crawler.is_shutdown_requested():
-                    logging.exception("エラーの再取得に失敗しました")
-                    handle.set_status("❌ エラーが発生しました", is_error=True)
-                    exit_code = 1
-                break  # 他の例外ではリトライしない
-            finally:
-                handle.quit_selenium()
+        try:
+            success = my_lib.selenium_util.with_session_retry(
+                lambda: amazhist.crawler.retry_error_by_id(handle, error_id),
+                driver_name="Amazhist",
+                data_dir=handle.config.selenium_data_dir_path,
+                max_retries=_MAX_SESSION_RETRY_COUNT,
+                clear_profile_on_error=clear_profile_on_browser_error,
+                on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
+                before_retry=handle.quit_selenium,
+            )
+            if not success:
+                exit_code = 1
+        except selenium.common.exceptions.InvalidSessionIdException:
+            logging.exception("セッションエラーが発生しました（リトライ不可）")
+            handle.set_status("❌ セッションエラー", is_error=True)
+            return 1
+        except my_lib.selenium_util.SeleniumError as e:
+            logging.exception("Selenium の起動に失敗しました")
+            handle.set_status(f"❌ {e}", is_error=True)
+            return 1
+        except Exception:
+            # シャットダウン要求時は正常終了扱い（tracebackを出さない）
+            if not amazhist.crawler.is_shutdown_requested():
+                logging.exception("エラーの再取得に失敗しました")
+                handle.set_status("❌ エラーが発生しました", is_error=True)
+                exit_code = 1
+        finally:
+            handle.quit_selenium()
     finally:
         handle.finish()
 
@@ -168,40 +159,32 @@ def execute_retry_mode(
     exit_code = 0
 
     try:
-        for retry in range(_MAX_SESSION_RETRY_COUNT + 1):
-            try:
-                execute_retry(handle)
-                break  # 成功したらループを抜ける
-            except selenium.common.exceptions.InvalidSessionIdException:
-                # quit_selenium() は finally で呼ばれる
-                if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
-                    logging.warning(
-                        "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
-                        retry + 1,
-                        _MAX_SESSION_RETRY_COUNT,
-                    )
-                    handle.set_status(
-                        f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
-                    )
-                    my_lib.chrome_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
-                else:
-                    # リトライ限度を超えた、または clear_profile_on_browser_error=False
-                    logging.exception("セッションエラーが発生しました（リトライ不可）")
-                    handle.set_status("❌ セッションエラー", is_error=True)
-                    return 1
-            except my_lib.selenium_util.SeleniumError as e:
-                logging.exception("Selenium の起動に失敗しました")
-                handle.set_status(f"❌ {e}", is_error=True)
-                return 1
-            except Exception:
-                # シャットダウン要求時は正常終了扱い（tracebackを出さない）
-                if not amazhist.crawler.is_shutdown_requested():
-                    logging.exception("エラーアイテムの再取得に失敗しました")
-                    handle.set_status("❌ エラーが発生しました", is_error=True)
-                    exit_code = 1
-                break  # 他の例外ではリトライしない
-            finally:
-                handle.quit_selenium()
+        try:
+            my_lib.selenium_util.with_session_retry(
+                lambda: execute_retry(handle),
+                driver_name="Amazhist",
+                data_dir=handle.config.selenium_data_dir_path,
+                max_retries=_MAX_SESSION_RETRY_COUNT,
+                clear_profile_on_error=clear_profile_on_browser_error,
+                on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
+                before_retry=handle.quit_selenium,
+            )
+        except selenium.common.exceptions.InvalidSessionIdException:
+            logging.exception("セッションエラーが発生しました（リトライ不可）")
+            handle.set_status("❌ セッションエラー", is_error=True)
+            return 1
+        except my_lib.selenium_util.SeleniumError as e:
+            logging.exception("Selenium の起動に失敗しました")
+            handle.set_status(f"❌ {e}", is_error=True)
+            return 1
+        except Exception:
+            # シャットダウン要求時は正常終了扱い（tracebackを出さない）
+            if not amazhist.crawler.is_shutdown_requested():
+                logging.exception("エラーアイテムの再取得に失敗しました")
+                handle.set_status("❌ エラーが発生しました", is_error=True)
+                exit_code = 1
+        finally:
+            handle.quit_selenium()
     finally:
         handle.finish()
 
@@ -243,41 +226,33 @@ def execute(
 
     try:
         if not is_export_mode:
-            for retry in range(_MAX_SESSION_RETRY_COUNT + 1):
-                try:
-                    execute_fetch(handle)
-                    break  # 成功したらループを抜ける
-                except selenium.common.exceptions.InvalidSessionIdException:
-                    # quit_selenium() は finally で呼ばれる
-                    if retry < _MAX_SESSION_RETRY_COUNT and clear_profile_on_browser_error:
-                        logging.warning(
-                            "セッションエラーが発生しました。プロファイルを削除してリトライします（%d/%d）",
-                            retry + 1,
-                            _MAX_SESSION_RETRY_COUNT,
-                        )
-                        handle.set_status(
-                            f"🔄 セッションエラー、リトライ中... ({retry + 1}/{_MAX_SESSION_RETRY_COUNT})"
-                        )
-                        my_lib.chrome_util.delete_profile("Amazhist", handle.config.selenium_data_dir_path)
-                    else:
-                        # リトライ限度を超えた、または clear_profile_on_browser_error=False
-                        logging.exception("セッションエラーが発生しました（リトライ不可）")
-                        handle.set_status("❌ セッションエラー", is_error=True)
-                        return 1
-                except my_lib.selenium_util.SeleniumError as e:
-                    logging.exception("Selenium の起動に失敗しました")
-                    handle.set_status(f"❌ {e}", is_error=True)
-                    return 1
-                except Exception:
-                    # シャットダウン要求時は正常終了扱い（tracebackを出さない）
-                    if not amazhist.crawler.is_shutdown_requested():
-                        driver, _ = handle.get_selenium_driver()
-                        logging.exception("Failed to fetch data: %s", driver.current_url)
-                        handle.set_status("❌ データの収集中にエラーが発生しました", is_error=True)
-                        exit_code = 1
-                    break  # 他の例外ではリトライしない
-                finally:
-                    handle.quit_selenium()
+            try:
+                my_lib.selenium_util.with_session_retry(
+                    lambda: execute_fetch(handle),
+                    driver_name="Amazhist",
+                    data_dir=handle.config.selenium_data_dir_path,
+                    max_retries=_MAX_SESSION_RETRY_COUNT,
+                    clear_profile_on_error=clear_profile_on_browser_error,
+                    on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
+                    before_retry=handle.quit_selenium,
+                )
+            except selenium.common.exceptions.InvalidSessionIdException:
+                logging.exception("セッションエラーが発生しました（リトライ不可）")
+                handle.set_status("❌ セッションエラー", is_error=True)
+                return 1
+            except my_lib.selenium_util.SeleniumError as e:
+                logging.exception("Selenium の起動に失敗しました")
+                handle.set_status(f"❌ {e}", is_error=True)
+                return 1
+            except Exception:
+                # シャットダウン要求時は正常終了扱い（tracebackを出さない）
+                if not amazhist.crawler.is_shutdown_requested():
+                    driver, _ = handle.get_selenium_driver()
+                    logging.exception("Failed to fetch data: %s", driver.current_url)
+                    handle.set_status("❌ データの収集中にエラーが発生しました", is_error=True)
+                    exit_code = 1
+            finally:
+                handle.quit_selenium()
 
         try:
             amazhist.history.generate_table_excel(handle, handle.config.excel_file_path, is_need_thumb)
