@@ -80,6 +80,19 @@ class TestDatabaseBasic:
         with pytest.raises(RuntimeError, match="Database connection is closed"):
             db._get_conn()
 
+    def test_close_twice(self, tmp_path):
+        """接続を2回閉じる (line 70->exit)"""
+        db_path = tmp_path / "test.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+
+        # 1回目の close
+        db.close()
+        assert db._conn is None
+
+        # 2回目の close（何も起きない）
+        db.close()
+        assert db._conn is None
+
 
 class TestDatabaseItems:
     """Database アイテム操作のテスト"""
@@ -600,6 +613,347 @@ class TestDatabaseErrorLog:
         assert count == 2
         assert db.get_error_count(resolved=False) == 1
         assert db.get_error_count(resolved=True) == 2
+
+
+class TestDatabaseYearStatusExtended:
+    """Database 年別ステータスの追加テスト"""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Database インスタンス"""
+        db_path = tmp_path / "test.db"
+        database = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        yield database
+        database.close()
+
+    def test_get_item_count_by_year(self, db):
+        """指定年の商品数を取得 (lines 141-147)"""
+        # 2025年の商品を追加
+        db.upsert_item(
+            {
+                "no": "001",
+                "asin": "A1",
+                "date": datetime.datetime(2025, 1, 10),
+                "name": "商品1",
+                "order_time_filter": 2025,
+            }
+        )
+        db.upsert_item(
+            {
+                "no": "002",
+                "asin": "A2",
+                "date": datetime.datetime(2025, 2, 15),
+                "name": "商品2",
+                "order_time_filter": 2025,
+            }
+        )
+        # 2024年の商品を追加
+        db.upsert_item(
+            {
+                "no": "003",
+                "asin": "A3",
+                "date": datetime.datetime(2024, 12, 1),
+                "name": "商品3",
+                "order_time_filter": 2024,
+            }
+        )
+
+        # 2025年の商品数
+        assert db.get_item_count_by_year(2025) == 2
+        # 2024年の商品数
+        assert db.get_item_count_by_year(2024) == 1
+        # 存在しない年
+        assert db.get_item_count_by_year(2023) == 0
+
+    def test_set_year_status_with_existing_record(self, db):
+        """既存レコードがある場合の年ステータス更新 (lines 208-209)"""
+        # まず新規レコードを作成
+        db.set_year_status(2025, order_count=50, checked=False)
+
+        assert db.get_year_order_count(2025) == 50
+        assert db.is_year_checked(2025) is False
+
+        # 既存レコードを更新（order_count のみ）
+        db.set_year_status(2025, order_count=100)
+
+        assert db.get_year_order_count(2025) == 100
+        assert db.is_year_checked(2025) is False  # checked は変更されない
+
+        # 既存レコードを更新（checked のみ）
+        db.set_year_status(2025, checked=True)
+
+        assert db.get_year_order_count(2025) == 100  # order_count は変更されない
+        assert db.is_year_checked(2025) is True
+
+    def test_reset_year_status(self, db):
+        """年ステータスのリセット (lines 242-249)"""
+        # 年ステータスを設定
+        db.set_year_status(2025, order_count=100, checked=True)
+        # ページステータスを設定
+        db.set_page_checked(2025, 1, True)
+        db.set_page_checked(2025, 2, True)
+
+        # 確認
+        assert db.get_year_order_count(2025) == 100
+        assert db.is_year_checked(2025) is True
+        assert db.is_page_checked(2025, 1) is True
+        assert db.is_page_checked(2025, 2) is True
+
+        # リセット
+        db.reset_year_status(2025)
+
+        # 年ステータスがリセットされている
+        assert db.get_year_order_count(2025) == 0
+        assert db.is_year_checked(2025) is False
+        # ページステータスもリセットされている
+        assert db.is_page_checked(2025, 1) is False
+        assert db.is_page_checked(2025, 2) is False
+
+
+class TestDatabaseMetadataExtended:
+    """Database メタデータの追加テスト"""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Database インスタンス"""
+        db_path = tmp_path / "test.db"
+        database = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        yield database
+        database.close()
+
+    def test_get_last_modified_default(self, db):
+        """最終更新日時のデフォルト値 (line 316)"""
+        # メタデータが設定されていない場合はデフォルト値を返す
+        result = db.get_last_modified()
+        assert result.year == 1994
+        assert result.month == 7
+        assert result.day == 5
+
+
+class TestDatabaseItemsExtended:
+    """Database アイテム操作の追加テスト"""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Database インスタンス"""
+        db_path = tmp_path / "test.db"
+        database = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        yield database
+        database.close()
+
+    def test_row_to_item_with_invalid_date(self, db):
+        """date がパース不能な場合のフォールバック (line 165)"""
+        # 直接 SQL で不正な日付フォーマットのレコードを挿入
+        conn = db._get_conn()
+        conn.execute(
+            """
+            INSERT INTO items (order_no, date, name, asin, count, price, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("ORDER-INVALID-DATE", "invalid-date-format", "日付不正商品", "ASIN001", 1, 1000, "[]"),
+        )
+        conn.commit()
+
+        # get_item_list で取得してみる
+        items = db.get_item_list()
+        assert len(items) == 1
+        # パース失敗の場合は 1970-01-01 にフォールバック
+        assert items[0].date.year == 1970
+        assert items[0].date.month == 1
+        assert items[0].date.day == 1
+
+
+class TestDatabaseErrorLogExtended:
+    """Database エラーログの追加テスト"""
+
+    @pytest.fixture
+    def db(self, tmp_path):
+        """Database インスタンス"""
+        db_path = tmp_path / "test.db"
+        database = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        yield database
+        database.close()
+
+    def test_get_unresolved_error_count_by_year(self, db):
+        """指定年の未解決エラー数を取得 (lines 449-455)"""
+        # 2025年のエラーを記録
+        db.record_error(
+            url="url1",
+            error_type="error",
+            context="order",
+            order_year=2025,
+        )
+        db.record_error(
+            url="url2",
+            error_type="error",
+            context="order",
+            order_year=2025,
+        )
+        # 2024年のエラーを記録
+        db.record_error(
+            url="url3",
+            error_type="error",
+            context="order",
+            order_year=2024,
+        )
+        # 解決済みのエラー（カウントされない）
+        error_id = db.record_error(
+            url="url4",
+            error_type="error",
+            context="order",
+            order_year=2025,
+        )
+        db.mark_error_resolved(error_id)
+
+        assert db.get_unresolved_error_count_by_year(2025) == 2
+        assert db.get_unresolved_error_count_by_year(2024) == 1
+        assert db.get_unresolved_error_count_by_year(2023) == 0
+
+    def test_get_failed_orders(self, db):
+        """エラーが発生した注文情報を取得 (lines 481-490)"""
+        # order コンテキストのエラーを記録
+        db.record_error(
+            url="https://amazon.co.jp/order/1",
+            error_type="timeout",
+            context="order",
+            order_no="ORDER-001",
+            order_year=2025,
+            order_page=1,
+            order_index=0,
+        )
+        db.record_error(
+            url="https://amazon.co.jp/order/2",
+            error_type="parse_error",
+            context="order",
+            order_no="ORDER-002",
+            order_year=2025,
+            order_page=2,
+            order_index=1,
+        )
+        # thumbnail コンテキストのエラー（含まれない）
+        db.record_error(
+            url="https://images.amazon.com/thumb.jpg",
+            error_type="fetch_error",
+            context="thumbnail",
+            order_no="ORDER-003",
+            order_year=2025,
+        )
+
+        failed_orders = db.get_failed_orders()
+        assert len(failed_orders) == 2
+
+        # 最新順なので ORDER-002 が先
+        assert failed_orders[0]["order_no"] == "ORDER-002"
+        assert failed_orders[0]["order_year"] == 2025
+        assert failed_orders[0]["order_page"] == 2
+        assert failed_orders[0]["order_index"] == 1
+        assert failed_orders[0]["error_type"] == "parse_error"
+
+        assert failed_orders[1]["order_no"] == "ORDER-001"
+        assert failed_orders[1]["order_year"] == 2025
+        assert failed_orders[1]["order_page"] == 1
+        assert failed_orders[1]["order_index"] == 0
+        assert failed_orders[1]["error_type"] == "timeout"
+
+    def test_get_thumbnail_asin_by_error_id(self, db):
+        """エラーIDからサムネイルの ASIN を取得 (lines 588-599)"""
+        # アイテムを追加
+        db.upsert_item(
+            {
+                "no": "ORDER-001",
+                "asin": "ASIN001",
+                "date": datetime.datetime(2025, 1, 10),
+                "name": "テスト商品",
+                "url": "https://amazon.co.jp/dp/ASIN001",
+            }
+        )
+
+        # サムネイルエラーを記録
+        error_id = db.record_error(
+            url="https://images.amazon.com/ASIN001.jpg",
+            error_type="fetch_error",
+            context="thumbnail",
+            item_name="テスト商品",
+        )
+
+        # ASIN を取得
+        asin = db.get_thumbnail_asin_by_error_id(error_id)
+        assert asin == "ASIN001"
+
+        # 存在しないエラーID
+        asin = db.get_thumbnail_asin_by_error_id(9999)
+        assert asin is None
+
+        # thumbnail コンテキストでないエラー
+        other_error_id = db.record_error(
+            url="https://amazon.co.jp/order/1",
+            error_type="error",
+            context="order",
+        )
+        asin = db.get_thumbnail_asin_by_error_id(other_error_id)
+        assert asin is None
+
+    def test_get_error_by_id(self, db):
+        """IDでエラーを取得 (lines 626-629)"""
+        error_id = db.record_error(
+            url="https://amazon.co.jp/order/1",
+            error_type="timeout",
+            context="order",
+            message="リクエストがタイムアウトしました",
+            order_no="ORDER-001",
+        )
+
+        # 存在するID
+        error = db.get_error_by_id(error_id)
+        assert error is not None
+        assert error.id == error_id
+        assert error.url == "https://amazon.co.jp/order/1"
+        assert error.error_type == "timeout"
+        assert error.context == "order"
+        assert error.error_message == "リクエストがタイムアウトしました"
+        assert error.order_no == "ORDER-001"
+
+        # 存在しないID
+        error = db.get_error_by_id(9999)
+        assert error is None
+
+    def test_get_failed_years(self, db):
+        """年単位のエラー（order_count_fallback）を取得 (lines 729-739)"""
+        # order_count_fallback エラーを記録
+        db.record_error(
+            url="https://amazon.co.jp/orders/2025",
+            error_type="order_count_fallback",
+            context="order",
+            order_year=2025,
+        )
+        db.record_error(
+            url="https://amazon.co.jp/orders/2024",
+            error_type="order_count_fallback",
+            context="order",
+            order_year=2024,
+        )
+        # 解決済みのエラー（含まれない）
+        error_id = db.record_error(
+            url="https://amazon.co.jp/orders/2023",
+            error_type="order_count_fallback",
+            context="order",
+            order_year=2023,
+        )
+        db.mark_error_resolved(error_id)
+        # 別のエラータイプ（含まれない）
+        db.record_error(
+            url="https://amazon.co.jp/orders/2022",
+            error_type="timeout",
+            context="order",
+            order_year=2022,
+        )
+
+        failed_years = db.get_failed_years()
+        assert len(failed_years) == 2
+
+        # order_year 順にソートされている
+        assert failed_years[0].order_year == 2024
+        assert failed_years[1].order_year == 2025
 
 
 class TestDatabaseUtility:

@@ -993,3 +993,659 @@ class TestHandleHasProgressBar:
             assert handle.has_progress_bar("存在しない") is False
 
             handle.finish()
+
+
+class TestInitDatabase:
+    """_init_database メソッドのテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_init_database_normal(self, mock_config, tmp_path):
+        """_init_database が正常に動作する（target_year なし）"""
+        import datetime
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        mock_db = unittest.mock.MagicMock()
+        mock_db.get_last_modified.return_value = datetime.datetime(2024, 5, 1)
+
+        with unittest.mock.patch("amazhist.database.open_database", return_value=mock_db) as mock_open:
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            # open_database が呼ばれたことを確認
+            mock_open.assert_called_once()
+
+            # clear_page_status が今年と最終更新年に対して呼ばれたことを確認
+            current_year = datetime.datetime.now().year
+            calls = mock_db.clear_page_status.call_args_list
+            years_cleared = [call[0][0] for call in calls]
+            assert current_year in years_cleared
+            assert 2024 in years_cleared
+
+            handle.finish()
+
+    def test_init_database_with_target_year(self, mock_config, tmp_path):
+        """_init_database が target_year 指定時に動作する"""
+        import datetime
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        mock_db = unittest.mock.MagicMock()
+        mock_db.get_last_modified.return_value = datetime.datetime(2024, 5, 1)
+
+        with unittest.mock.patch("amazhist.database.open_database", return_value=mock_db):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config), target_year=2022)
+
+            # clear_page_status が target_year に対しても呼ばれたことを確認
+            calls = mock_db.clear_page_status.call_args_list
+            years_cleared = [call[0][0] for call in calls]
+            assert 2022 in years_cleared
+
+            handle.finish()
+
+
+class TestInitProgressTTY:
+    """_init_progress メソッドの TTY 環境テスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_init_progress_tty(self, mock_config, tmp_path):
+        """TTY 環境で _init_progress が Rich Progress/Live を初期化する"""
+        import rich.console
+        import rich.live
+        import rich.progress
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        # TTY をシミュレート
+        mock_console = unittest.mock.MagicMock(spec=rich.console.Console)
+        mock_console.is_terminal = True
+        mock_console.width = 80
+
+        mock_live_instance = unittest.mock.MagicMock(spec=rich.live.Live)
+
+        with (
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
+            unittest.mock.patch("rich.progress.Progress") as mock_progress_cls,
+            unittest.mock.patch("rich.live.Live", return_value=mock_live_instance) as mock_live_cls,
+        ):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._console = mock_console
+            # _init_progress を再呼び出し（fixture で既に呼ばれているが再初期化）
+            handle._init_progress()
+
+            # Progress と Live が初期化されたことを確認
+            mock_progress_cls.assert_called()
+            mock_live_cls.assert_called()
+            mock_live_instance.start.assert_called()
+
+            handle.finish()
+
+
+class TestStatusBarTmux:
+    """TMUX 環境でのステータスバーテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_create_status_bar_tmux(self, mock_config, tmp_path):
+        """TMUX 環境ではターミナル幅から 2 を引く"""
+        import os
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._console.width = 100
+
+            # TMUX 環境をシミュレート
+            with unittest.mock.patch.dict(os.environ, {"TMUX": "/tmp/tmux-1000/default,12345,0"}):  # noqa: S108
+                table = handle._create_status_bar()
+
+                # table.width が 98 (100 - 2) であることを確認
+                assert table.width == 98
+
+            handle.finish()
+
+
+class TestCreateDisplayWithTasks:
+    """_create_display でタスクがある場合のテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_create_display_with_tasks(self, mock_config, tmp_path):
+        """タスクがある場合は Group を返す"""
+        import rich.console
+        import rich.progress
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            # タスクをモック
+            mock_task = unittest.mock.MagicMock(spec=rich.progress.Task)
+            handle._progress = unittest.mock.MagicMock()
+            handle._progress.tasks = [mock_task]
+
+            display = handle._create_display()
+
+            # Group が返されることを確認
+            assert isinstance(display, rich.console.Group)
+
+            handle.finish()
+
+
+class TestPauseResumeLive:
+    """pause_live と resume_live メソッドのテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_pause_live(self, mock_config, tmp_path):
+        """pause_live が _live.stop を呼ぶ"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            mock_live = unittest.mock.MagicMock()
+            handle._live = mock_live
+
+            handle.pause_live()
+
+            mock_live.stop.assert_called_once()
+
+            handle.finish()
+
+    def test_resume_live(self, mock_config, tmp_path):
+        """resume_live が _live.start を呼ぶ"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            mock_live = unittest.mock.MagicMock()
+            handle._live = mock_live
+
+            handle.resume_live()
+
+            mock_live.start.assert_called_once()
+
+            handle.finish()
+
+
+class TestGetSeleniumDriverCreation:
+    """get_selenium_driver の新規作成とエラーハンドリングのテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_get_selenium_driver_create_new(self, mock_config, tmp_path):
+        """Selenium ドライバーを新規作成"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        mock_driver = unittest.mock.MagicMock()
+
+        with (
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
+            unittest.mock.patch("my_lib.selenium_util.create_driver", return_value=mock_driver),
+            unittest.mock.patch("my_lib.selenium_util.clear_cache"),
+            unittest.mock.patch("selenium.webdriver.support.wait.WebDriverWait"),
+        ):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            assert handle.selenium is None
+
+            driver, wait = handle.get_selenium_driver()
+
+            assert driver is mock_driver
+            assert handle.selenium is not None
+            assert handle.selenium.driver is mock_driver
+
+            handle.finish()
+
+    def test_get_selenium_driver_error_without_clear_profile(self, mock_config, tmp_path):
+        """Selenium 起動失敗時にエラーを投げる（プロファイル削除なし）"""
+        import my_lib.selenium_util
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with (
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
+            unittest.mock.patch("my_lib.selenium_util.create_driver", side_effect=Exception("起動失敗")),
+            unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete_profile,
+        ):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            with pytest.raises(my_lib.selenium_util.SeleniumError, match="Selenium の起動に失敗しました"):
+                handle.get_selenium_driver()
+
+            # clear_profile_on_browser_error=False なのでプロファイル削除されない
+            mock_delete_profile.assert_not_called()
+
+            handle.finish()
+
+    def test_get_selenium_driver_error_with_clear_profile(self, mock_config, tmp_path):
+        """Selenium 起動失敗時にプロファイルを削除"""
+        import my_lib.selenium_util
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with (
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
+            unittest.mock.patch("my_lib.selenium_util.create_driver", side_effect=Exception("起動失敗")),
+            unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete_profile,
+        ):
+            handle = amazhist.handle.Handle(
+                config=amazhist.config.Config.load(mock_config), clear_profile_on_browser_error=True
+            )
+
+            with pytest.raises(my_lib.selenium_util.SeleniumError, match="Selenium の起動に失敗しました"):
+                handle.get_selenium_driver()
+
+            # clear_profile_on_browser_error=True なのでプロファイル削除される
+            mock_delete_profile.assert_called_once_with("Amazhist", handle.config.selenium_data_dir_path)
+
+            handle.finish()
+
+
+class TestDatabaseProxyMethodsCoverage:
+    """データベースプロキシメソッドのカバレッジテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    @pytest.fixture
+    def handle(self, mock_config, tmp_path):
+        """Handle インスタンス（ignore_cache=False）"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            h._db = unittest.mock.MagicMock()
+            yield h
+            h.finish()
+
+    def test_get_item_count_by_year(self, handle):
+        """get_item_count_by_year が db を呼び出す"""
+        handle._db.get_item_count_by_year.return_value = 50
+        result = handle.get_item_count_by_year(2024)
+        assert result == 50
+        handle._db.get_item_count_by_year.assert_called_once_with(2024)
+
+    def test_get_order_stat_no_ignore_cache(self, handle):
+        """ignore_cache=False の場合 DB を呼び出す"""
+        handle._db.exists_order.return_value = True
+        result = handle.get_order_stat("ORDER-123")
+        assert result is True
+        handle._db.exists_order.assert_called_once_with("ORDER-123")
+
+    def test_get_cache_last_modified(self, handle):
+        """get_cache_last_modified が db を呼び出す"""
+        import datetime
+
+        expected = datetime.datetime(2024, 6, 15, 10, 30, 0)
+        handle._db.get_last_modified.return_value = expected
+        result = handle.get_cache_last_modified()
+        assert result == expected
+        handle._db.get_last_modified.assert_called_once()
+
+    def test_get_page_checked_no_ignore_cache(self, handle):
+        """ignore_cache=False の場合 DB を呼び出す"""
+        handle._db.is_page_checked.return_value = True
+        result = handle.get_page_checked(2024, 3)
+        assert result is True
+        handle._db.is_page_checked.assert_called_once_with(2024, 3)
+
+    def test_get_year_checked_no_ignore_cache(self, handle):
+        """ignore_cache=False の場合 DB を呼び出す"""
+        handle._db.is_year_checked.return_value = True
+        result = handle.get_year_checked(2024)
+        assert result is True
+        handle._db.is_year_checked.assert_called_once_with(2024)
+
+    def test_get_unresolved_error_count_by_year(self, handle):
+        """get_unresolved_error_count_by_year が db を呼び出す"""
+        handle._db.get_unresolved_error_count_by_year.return_value = 5
+        result = handle.get_unresolved_error_count_by_year(2024)
+        assert result == 5
+        handle._db.get_unresolved_error_count_by_year.assert_called_once_with(2024)
+
+    def test_get_error_by_id(self, handle):
+        """get_error_by_id が db を呼び出す"""
+        mock_error = amazhist.database.ErrorLog(
+            id=1, url="url1", error_type="e", context="c", retry_count=0, resolved=False
+        )
+        handle._db.get_error_by_id.return_value = mock_error
+        result = handle.get_error_by_id(1)
+        assert result is mock_error
+        handle._db.get_error_by_id.assert_called_once_with(1)
+
+    def test_get_thumbnail_asin_by_error_id(self, handle):
+        """get_thumbnail_asin_by_error_id が db を呼び出す"""
+        handle._db.get_thumbnail_asin_by_error_id.return_value = "B0123456789"
+        result = handle.get_thumbnail_asin_by_error_id(123)
+        assert result == "B0123456789"
+        handle._db.get_thumbnail_asin_by_error_id.assert_called_once_with(123)
+
+
+class TestSetStatusTTY:
+    """set_status の TTY 環境テスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_set_status_tty_refresh_display(self, mock_config, tmp_path):
+        """TTY 環境で set_status が _refresh_display を呼ぶ"""
+        import rich.console
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            # TTY をシミュレート
+            mock_console = unittest.mock.MagicMock(spec=rich.console.Console)
+            mock_console.is_terminal = True
+            handle._console = mock_console
+
+            with unittest.mock.patch.object(handle, "_refresh_display") as mock_refresh:
+                handle.set_status("処理中...")
+
+                mock_refresh.assert_called_once()
+
+            handle.finish()
+
+
+class TestGetFailedOrders:
+    """get_failed_orders メソッドのテスト"""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path):
+        """モック Config"""
+        return {
+            "base_dir": str(tmp_path),
+            "data": {
+                "amazon": {
+                    "cache": {
+                        "order": "cache/order.db",
+                        "thumb": "thumb",
+                    },
+                },
+                "selenium": "selenium",
+                "debug": "debug",
+            },
+            "output": {
+                "excel": {
+                    "table": "output/amazhist.xlsx",
+                    "font": {"name": "Arial", "size": 10},
+                },
+                "captcha": "captcha.png",
+            },
+            "login": {
+                "amazon": {
+                    "user": "test@example.com",
+                    "pass": "password",
+                },
+            },
+        }
+
+    def test_get_failed_orders(self, mock_config, tmp_path):
+        """get_failed_orders が db を呼び出す"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._db = unittest.mock.MagicMock()
+            handle._db.get_failed_orders.return_value = [{"order_no": "ORDER-001", "year": 2024, "page": 1}]
+
+            result = handle.get_failed_orders()
+
+            assert len(result) == 1
+            assert result[0]["order_no"] == "ORDER-001"
+            handle._db.get_failed_orders.assert_called_once()
+
+            handle.finish()
+
+    def test_get_failed_years(self, mock_config, tmp_path):
+        """get_failed_years が db を呼び出す"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._db = unittest.mock.MagicMock()
+            mock_error = amazhist.database.ErrorLog(
+                id=1,
+                url="url",
+                error_type="order_count_fallback",
+                context="year",
+                retry_count=0,
+                resolved=False,
+            )
+            handle._db.get_failed_years.return_value = [mock_error]
+
+            result = handle.get_failed_years()
+
+            assert len(result) == 1
+            handle._db.get_failed_years.assert_called_once()
+
+            handle.finish()
