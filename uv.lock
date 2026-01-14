@@ -184,7 +184,7 @@ requires-dist = [
     { name = "docopt-ng", specifier = ">=0.9.0" },
     { name = "imageio", specifier = ">=2.34.0" },
     { name = "jinxed", specifier = ">=1.2.1" },
-    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=f7251a5d834cf8201f59e367f94871800f000c01" },
+    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=fe7498f526904a276ee61beac1b1d177125ec2bc" },
     { name = "openpyxl", specifier = ">=3.1.2" },
     { name = "pillow", specifier = ">=10.2.0" },
     { name = "pyprind", specifier = ">=2.11.3" },
@@ -1419,7 +1419,7 @@ wheels = [
 [[package]]
 name = "my-lib"
 version = "0.2.0"
-source = { git = "https://github.com/kimata/my-py-lib?rev=f7251a5d834cf8201f59e367f94871800f000c01#f7251a5d834cf8201f59e367f94871800f000c01" }
+source = { git = "https://github.com/kimata/my-py-lib?rev=fe7498f526904a276ee61beac1b1d177125ec2bc#fe7498f526904a276ee61beac1b1d177125ec2bc" }
 dependencies = [
     { name = "coloredlogs" },
     { name = "docopt-ng" },
