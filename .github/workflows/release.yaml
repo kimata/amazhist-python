@@ -34,13 +34,13 @@ jobs:
 
         steps:
             - name: Check-out repository
-              uses: actions/checkout@v6
+              uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
 
             - name: Setup Python
-              uses: actions/setup-python@v6
+              uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6
 
             - name: Install uv
-              uses: astral-sh/setup-uv@v7
+              uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v7
 
             - name: Install Dependencies
               run: |
@@ -161,7 +161,7 @@ jobs:
                   cp config.example.yaml build/config.example.yaml
 
             - name: Upload Artifacts
-              uses: actions/upload-artifact@v6
+              uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
               with:
                   name: "${{ matrix.os }} build"
                   path: |
@@ -178,7 +178,7 @@ jobs:
 
         steps:
             - name: Create release
-              uses: softprops/action-gh-release@v2
+              uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
               with:
                   name: Release ${{ github.ref_name }}
                   draft: false
@@ -212,7 +212,7 @@ jobs:
                   echo "ARCHIVE_LABEL=${ARCHIVE_LABEL}" >> $GITHUB_ENV
 
             - name: Download artifact
-              uses: actions/download-artifact@v6
+              uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
               with:
                   name: "${{ matrix.os }} build"
                   path: ${{ env.ARCHIVE_NAME }}
@@ -228,6 +228,6 @@ jobs:
               run: mv ${{ env.ARCHIVE_NAME }}.zip ${{ env.ARCHIVE_LABEL }}.zip
 
             - name: Upload Release Asset
-              uses: softprops/action-gh-release@v2
+              uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
               with:
                   files: ${{ env.ARCHIVE_LABEL }}.zip
