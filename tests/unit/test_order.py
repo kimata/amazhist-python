@@ -13,32 +13,7 @@ import amazhist.config
 import amazhist.handle
 import amazhist.order
 
-
-class TestGetCallerName:
-    """_get_caller_name のテスト"""
-
-    def test_get_caller_name(self):
-        """呼び出し元の関数名を取得"""
-        result = amazhist.order._get_caller_name()
-
-        assert result == "test_get_caller_name"
-
-    def test_get_caller_name_from_nested(self):
-        """ネストした関数から呼び出した場合"""
-
-        def inner_function():
-            return amazhist.order._get_caller_name()
-
-        result = inner_function()
-
-        assert result == "inner_function"
-
-    def test_get_caller_name_when_frame_is_none(self):
-        """currentframe が None を返す場合"""
-        with unittest.mock.patch("inspect.currentframe", return_value=None):
-            result = amazhist.order._get_caller_name()
-
-        assert result == "unknown"
+# NOTE: _get_caller_name のテストは crawler.py に統合されたため削除
 
 
 class TestParseOrder:
@@ -83,7 +58,7 @@ class TestParseOrder:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -173,7 +148,7 @@ class TestParseOrderCount:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -364,7 +339,7 @@ class TestParseOrderDigital:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -581,7 +556,7 @@ class TestParseOrderDefault:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -734,7 +709,7 @@ class TestFetchItemList:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()

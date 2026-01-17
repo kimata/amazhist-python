@@ -161,7 +161,7 @@ class TestFetchByYearPage:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 5
 
@@ -401,7 +401,7 @@ class TestFetchByYearPageWithOrderCards:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 10
 
@@ -873,7 +873,7 @@ class TestFetchByYearPageOrderProcessing:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 10
             h._db.exists_order.return_value = False
@@ -1211,7 +1211,7 @@ class TestFetchByYear:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 5
             h._db.get_year_list.return_value = [2025, 2024, 2023]

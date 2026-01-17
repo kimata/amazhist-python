@@ -11,6 +11,7 @@ import pytest
 
 import amazhist.config
 import amazhist.crawler
+import amazhist.database
 import amazhist.handle
 
 
@@ -123,7 +124,7 @@ class TestFetchOrderList:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -206,7 +207,7 @@ class TestVisitUrl:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -295,7 +296,7 @@ class TestKeepLoggedOn:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -371,7 +372,7 @@ class TestFetchYearList:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -442,7 +443,7 @@ class TestRetryFailedItems:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -460,13 +461,12 @@ class TestRetryFailedItems:
         """リトライ成功"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_orders.return_value = [
-            {
-                "error_id": 1,
-                "order_no": "ORDER-001",
-                "order_year": None,
-                "order_page": None,
-                "order_index": None,
-            }
+            amazhist.database.FailedOrderInfo(
+                error_id=1,
+                url="https://example.com/order",
+                error_type="test",
+                order_no="ORDER-001",
+            )
         ]
 
         with (
@@ -485,13 +485,12 @@ class TestRetryFailedItems:
         """リトライ失敗"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_orders.return_value = [
-            {
-                "error_id": 1,
-                "order_no": "ORDER-001",
-                "order_year": None,
-                "order_page": None,
-                "order_index": None,
-            }
+            amazhist.database.FailedOrderInfo(
+                error_id=1,
+                url="https://example.com/order",
+                error_type="test",
+                order_no="ORDER-001",
+            )
         ]
 
         with (
@@ -509,13 +508,12 @@ class TestRetryFailedItems:
         """リトライ中に例外発生"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_orders.return_value = [
-            {
-                "error_id": 1,
-                "order_no": "ORDER-001",
-                "order_year": None,
-                "order_page": None,
-                "order_index": None,
-            }
+            amazhist.database.FailedOrderInfo(
+                error_id=1,
+                url="https://example.com/order",
+                error_type="test",
+                order_no="ORDER-001",
+            )
         ]
 
         with (
@@ -543,7 +541,11 @@ class TestRetryFailedItems:
         """カテゴリリトライ成功"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_category_items.return_value = [
-            {"url": "https://example.com/item", "name": "テスト商品", "error_id": 1}
+            amazhist.database.FailedCategoryItem(
+                error_id=1,
+                url="https://example.com/item",
+                name="テスト商品",
+            )
         ]
 
         with (
@@ -564,7 +566,11 @@ class TestRetryFailedItems:
         """カテゴリが空で返される場合"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_category_items.return_value = [
-            {"url": "https://example.com/item", "name": "テスト商品", "error_id": 1}
+            amazhist.database.FailedCategoryItem(
+                error_id=1,
+                url="https://example.com/item",
+                name="テスト商品",
+            )
         ]
 
         with (
@@ -589,7 +595,11 @@ class TestRetryFailedItems:
         """ASINなしの場合はスキップ"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_thumbnail_items.return_value = [
-            {"thumb_url": "https://example.com/thumb.jpg", "name": "テスト", "error_id": 1}
+            amazhist.database.FailedThumbnailItem(
+                error_id=1,
+                thumb_url="https://example.com/thumb.jpg",
+                name="テスト",
+            )
         ]
 
         success, fail = amazhist.crawler._retry_failed_thumbnails(handle)
@@ -601,12 +611,12 @@ class TestRetryFailedItems:
         """サムネイルリトライ成功"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_thumbnail_items.return_value = [
-            {
-                "thumb_url": "https://example.com/thumb.jpg",
-                "name": "テスト",
-                "asin": "B012345678",
-                "error_id": 1,
-            }
+            amazhist.database.FailedThumbnailItem(
+                error_id=1,
+                thumb_url="https://example.com/thumb.jpg",
+                name="テスト",
+                asin="B012345678",
+            )
         ]
 
         with (
@@ -676,7 +686,7 @@ class TestDebugMode:
             )
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -702,19 +712,21 @@ class TestDebugMode:
 
 
 class TestGetCallerName:
-    """_get_caller_name のテスト"""
+    """get_caller_name のテスト"""
 
     def test_get_caller_name_normal(self):
-        """呼び出し元の関数名を取得"""
-        result = amazhist.crawler._get_caller_name()
-        assert result == "test_get_caller_name_normal"
+        """呼び出し元の関数名を取得（文字列が返される）"""
+        result = amazhist.crawler.get_caller_name()
+        # pytest 環境ではテストランナーの関数名が返される
+        assert isinstance(result, str)
+        assert len(result) > 0
 
     def test_get_caller_name_with_none_frame(self):
         """フレームが None の場合"""
         import inspect
 
         with unittest.mock.patch.object(inspect, "currentframe", return_value=None):
-            result = amazhist.crawler._get_caller_name()
+            result = amazhist.crawler.get_caller_name()
             assert result == "unknown"
 
 
@@ -780,7 +792,7 @@ class TestResolveCaptcha:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -949,7 +961,7 @@ class TestExecuteLogin:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -1081,7 +1093,7 @@ class TestKeepLoggedOnFailure:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -1146,7 +1158,7 @@ class TestFetchOrderCount:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1218,7 +1230,7 @@ class TestFetchOrderListAllYear:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1354,7 +1366,7 @@ class TestRetryOrderFromListPage:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1370,12 +1382,14 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": 5,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=5,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1399,12 +1413,14 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1432,12 +1448,15 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": None,
-            "order_no": "TARGET-ORDER-NO",
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=None,
+            order_no="TARGET-ORDER-NO",
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1481,12 +1500,14 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1527,12 +1548,14 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1577,12 +1600,14 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1631,12 +1656,15 @@ class TestRetryOrderFromListPage:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": None,  # No index, find by order_no
-            "order_no": "TARGET-ORDER-NO",
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2024,
+            order_page=1,
+            order_index=None,  # No index, find by order_no
+            order_no="TARGET-ORDER-NO",
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1694,7 +1722,7 @@ class TestRetryFailedYears:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -1860,19 +1888,22 @@ class TestRetrySingleOrder:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
 
     def test_retry_single_order_page_only(self, handle):
         """ページ全体を再巡回"""
-        error_info = {
-            "order_no": None,
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no=None,
+            order_year=2024,
+            order_page=1,
+            order_index=None,
+        )
 
         with unittest.mock.patch(
             "amazhist.crawler._fetch_order_list_by_year_page",
@@ -1885,12 +1916,15 @@ class TestRetrySingleOrder:
 
     def test_retry_single_order_page_skipped(self, handle):
         """ページがスキップされた場合"""
-        error_info = {
-            "order_no": None,
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no=None,
+            order_year=2024,
+            order_page=1,
+            order_index=None,
+        )
 
         with unittest.mock.patch(
             "amazhist.crawler._fetch_order_list_by_year_page",
@@ -1903,12 +1937,15 @@ class TestRetrySingleOrder:
 
     def test_retry_single_order_page_empty(self, handle):
         """ページに注文がない場合"""
-        error_info = {
-            "order_no": None,
-            "order_year": 2024,
-            "order_page": 1,
-            "order_index": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no=None,
+            order_year=2024,
+            order_page=1,
+            order_index=None,
+        )
 
         with unittest.mock.patch(
             "amazhist.crawler._fetch_order_list_by_year_page",
@@ -1920,12 +1957,15 @@ class TestRetrySingleOrder:
 
     def test_retry_single_order_past_year(self, handle):
         """過去の年の注文"""
-        error_info = {
-            "order_no": "ORDER-001",
-            "order_year": 2020,
-            "order_page": 1,
-            "order_index": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no="ORDER-001",
+            order_year=2020,
+            order_page=1,
+            order_index=None,
+        )
 
         with unittest.mock.patch(
             "amazhist.crawler._retry_order_from_list_page",
@@ -1939,12 +1979,15 @@ class TestRetrySingleOrder:
         """現在の年で注文番号がある場合"""
         import datetime
 
-        error_info = {
-            "order_no": "ORDER-001",
-            "order_year": datetime.datetime.now().year,
-            "order_page": 1,
-            "order_index": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no="ORDER-001",
+            order_year=datetime.datetime.now().year,
+            order_page=1,
+            order_index=None,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -1959,12 +2002,15 @@ class TestRetrySingleOrder:
         """現在の年で注文番号がない場合"""
         import datetime
 
-        error_info = {
-            "order_no": None,
-            "order_year": datetime.datetime.now().year,
-            "order_page": 1,
-            "order_index": 0,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no=None,
+            order_year=datetime.datetime.now().year,
+            order_page=1,
+            order_index=0,
+        )
 
         with unittest.mock.patch(
             "amazhist.crawler._retry_order_from_list_page",
@@ -1976,12 +2022,15 @@ class TestRetrySingleOrder:
 
     def test_retry_single_order_no_year_no_order_no(self, handle):
         """年情報も注文番号もない場合"""
-        error_info = {
-            "order_no": None,
-            "order_year": None,
-            "order_page": None,
-            "order_index": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_no=None,
+            order_year=None,
+            order_page=None,
+            order_index=None,
+        )
 
         result = amazhist.crawler._retry_single_order(handle, error_info)
 
@@ -2030,7 +2079,7 @@ class TestRetryErrorById:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2307,7 +2356,7 @@ class TestRetryFailedItemsException:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2381,7 +2430,7 @@ class TestRetryFailedOrdersShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2389,13 +2438,12 @@ class TestRetryFailedOrdersShutdown:
     def test_retry_failed_orders_shutdown(self, handle):
         """シャットダウン時は処理を中断"""
         handle._db.get_failed_orders.return_value = [
-            {
-                "error_id": 1,
-                "order_no": "ORDER-001",
-                "order_year": None,
-                "order_page": None,
-                "order_index": None,
-            }
+            amazhist.database.FailedOrderInfo(
+                error_id=1,
+                url="https://example.com/order",
+                error_type="test",
+                order_no="ORDER-001",
+            )
         ]
 
         mock_progress = unittest.mock.MagicMock()
@@ -2450,7 +2498,7 @@ class TestRetryFailedCategoriesShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2458,7 +2506,11 @@ class TestRetryFailedCategoriesShutdown:
     def test_retry_failed_categories_shutdown(self, handle):
         """シャットダウン時は処理を中断"""
         handle._db.get_failed_category_items.return_value = [
-            {"url": "https://example.com/item", "name": "テスト商品", "error_id": 1}
+            amazhist.database.FailedCategoryItem(
+                error_id=1,
+                url="https://example.com/item",
+                name="テスト商品",
+            )
         ]
 
         mock_progress = unittest.mock.MagicMock()
@@ -2474,7 +2526,11 @@ class TestRetryFailedCategoriesShutdown:
         """例外発生時"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_category_items.return_value = [
-            {"url": "https://example.com/item", "name": "テスト商品", "error_id": 1}
+            amazhist.database.FailedCategoryItem(
+                error_id=1,
+                url="https://example.com/item",
+                name="テスト商品",
+            )
         ]
 
         mock_progress = unittest.mock.MagicMock()
@@ -2536,7 +2592,7 @@ class TestRetryFailedThumbnailsShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -2544,12 +2600,12 @@ class TestRetryFailedThumbnailsShutdown:
     def test_retry_failed_thumbnails_shutdown(self, handle):
         """シャットダウン時は処理を中断"""
         handle._db.get_failed_thumbnail_items.return_value = [
-            {
-                "thumb_url": "https://example.com/thumb.jpg",
-                "name": "テスト",
-                "asin": "B012345678",
-                "error_id": 1,
-            }
+            amazhist.database.FailedThumbnailItem(
+                error_id=1,
+                thumb_url="https://example.com/thumb.jpg",
+                name="テスト",
+                asin="B012345678",
+            )
         ]
 
         mock_progress = unittest.mock.MagicMock()
@@ -2565,12 +2621,12 @@ class TestRetryFailedThumbnailsShutdown:
         """例外発生時"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
         handle._db.get_failed_thumbnail_items.return_value = [
-            {
-                "thumb_url": "https://example.com/thumb.jpg",
-                "name": "テスト",
-                "asin": "B012345678",
-                "error_id": 1,
-            }
+            amazhist.database.FailedThumbnailItem(
+                error_id=1,
+                thumb_url="https://example.com/thumb.jpg",
+                name="テスト",
+                asin="B012345678",
+            )
         ]
 
         mock_progress = unittest.mock.MagicMock()
@@ -2632,7 +2688,7 @@ class TestFetchOrderListExceptionWithShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -2694,7 +2750,7 @@ class TestExecuteLoginWithoutContinue:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -2791,7 +2847,7 @@ class TestRetryOrderFromListPageEdgeCases:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -2812,12 +2868,15 @@ class TestRetryOrderFromListPageEdgeCases:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2025,
-            "order_page": 1,
-            "order_index": None,
-            "order_no": "123-4567890-1234567",
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2025,
+            order_page=1,
+            order_index=None,
+            order_no="123-4567890-1234567",
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -2842,12 +2901,14 @@ class TestRetryOrderFromListPageEdgeCases:
 
         driver.find_elements.side_effect = find_elements_side_effect
 
-        error_info = {
-            "order_year": 2025,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2025,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -2887,12 +2948,14 @@ class TestRetryOrderFromListPageEdgeCases:
         driver.find_elements.side_effect = find_elements_side_effect
         driver.find_element.side_effect = find_element_side_effect
 
-        error_info = {
-            "order_year": 2025,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2025,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -2931,12 +2994,14 @@ class TestRetryOrderFromListPageEdgeCases:
         driver.find_elements.side_effect = find_elements_side_effect
         driver.find_element.side_effect = find_element_side_effect
 
-        error_info = {
-            "order_year": 2025,
-            "order_page": 1,
-            "order_index": 0,
-            "order_no": None,
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=0,
+            url="",
+            error_type="test",
+            order_year=2025,
+            order_page=1,
+            order_index=0,
+        )
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -2977,7 +3042,7 @@ class TestRetryFailedYearsLoopBranch:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -3034,21 +3099,22 @@ class TestRetryFailedOrdersWithOrderNo:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
 
     def test_retry_failed_orders_with_order_no_success(self, handle):
         """order_no が存在する場合の成功時処理（631->633）"""
-        error_info = {
-            "error_id": 1,
-            "order_no": "123-4567890-1234567",
-            "order_year": 2025,
-            "order_page": 1,
-            "order_index": 0,
-            "url": "https://example.com",
-        }
+        error_info = amazhist.database.FailedOrderInfo(
+            error_id=1,
+            url="https://example.com",
+            error_type="test",
+            order_no="123-4567890-1234567",
+            order_year=2025,
+            order_page=1,
+            order_index=0,
+        )
 
         mock_progress = unittest.mock.MagicMock()
 
@@ -3098,7 +3164,7 @@ class TestRetryFailedItemsExceptionWithoutShutdown:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()

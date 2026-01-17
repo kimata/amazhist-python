@@ -22,6 +22,7 @@ import openpyxl.styles
 import openpyxl.utils
 
 import amazhist.config
+import amazhist.const
 import amazhist.crawler
 import amazhist.handle
 
@@ -137,7 +138,7 @@ def generate_table_excel(handle: amazhist.handle.Handle, excel_file, is_need_thu
     # 4. テーブル設定 (generate_list_sheet内)
     # 5. ファイル保存
     # 6. ファイルクローズ
-    handle.set_progress_bar(_STATUS_ALL, 6)
+    handle.set_progress_bar(_STATUS_ALL, amazhist.const.PROGRESS_STEPS_EXCEL)
 
     logging.info("Start to Generate excel file")
 

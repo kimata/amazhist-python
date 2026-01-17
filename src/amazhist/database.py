@@ -9,7 +9,7 @@ import logging
 import pathlib
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import amazhist.item
@@ -32,6 +32,41 @@ class ErrorLog:
     order_page: int | None = None
     order_index: int | None = None
     created_at: datetime.datetime | None = None
+
+
+@dataclass(frozen=True)
+class FailedOrderInfo:
+    """エラーが発生した注文の情報"""
+
+    error_id: int
+    url: str
+    error_type: str
+    order_no: str | None = None
+    order_year: int | None = None
+    order_page: int | None = None
+    order_index: int | None = None
+
+
+@dataclass(frozen=True)
+class FailedCategoryItem:
+    """カテゴリ取得に失敗したアイテム情報"""
+
+    error_id: int
+    url: str
+    order_no: str | None = None
+    name: str | None = None
+    asin: str | None = None
+
+
+@dataclass(frozen=True)
+class FailedThumbnailItem:
+    """サムネイル取得に失敗したアイテム情報"""
+
+    error_id: int
+    thumb_url: str
+    name: str | None = None
+    asin: str | None = None
+    item_url: str | None = None
 
 
 class Database:
@@ -66,16 +101,13 @@ class Database:
         return self._conn
 
     # --- 商品 ---
-    def upsert_item(self, item: amazhist.item.Item | dict[str, Any]) -> None:
+    def upsert_item(self, item: amazhist.item.Item) -> None:
         """商品を挿入または更新
 
         Args:
-            item: 商品情報（Item dataclass または dict）
+            item: 商品情報
         """
-        # Item dataclass の場合は dict に変換
-        import amazhist.item
-
-        item_dict = item.to_dict() if isinstance(item, amazhist.item.Item) else item
+        item_dict = item.to_dict()
 
         conn = self._get_conn()
         conn.execute(
@@ -181,9 +213,7 @@ class Database:
             return None
 
     # --- 年ステータス ---
-    def set_year_status(
-        self, year: str | int, order_count: int | None = None, checked: bool | None = None
-    ) -> None:
+    def set_year_status(self, year: int, order_count: int | None = None, checked: bool | None = None) -> None:
         """年ステータスを設定"""
         conn = self._get_conn()
         year_str = str(year)
@@ -208,21 +238,21 @@ class Database:
         )
         conn.commit()
 
-    def get_year_order_count(self, year: str | int) -> int:
+    def get_year_order_count(self, year: int) -> int:
         """年の注文数を取得"""
         conn = self._get_conn()
         cursor = conn.execute("SELECT order_count FROM year_status WHERE year = ?", (str(year),))
         row = cursor.fetchone()
         return row["order_count"] if row else 0
 
-    def is_year_checked(self, year: str | int) -> bool:
+    def is_year_checked(self, year: int) -> bool:
         """年が処理済みか確認"""
         conn = self._get_conn()
         cursor = conn.execute("SELECT checked FROM year_status WHERE year = ?", (str(year),))
         row = cursor.fetchone()
         return bool(row["checked"]) if row else False
 
-    def reset_year_status(self, year: str | int) -> None:
+    def reset_year_status(self, year: int) -> None:
         """年のステータスをリセット（再収集を可能にする）
 
         年ステータスとページステータスを両方リセットします。
@@ -254,7 +284,7 @@ class Database:
         return result[0] if result and result[0] else 0
 
     # --- ページステータス ---
-    def set_page_checked(self, year: str | int, page: int, checked: bool = True) -> None:
+    def set_page_checked(self, year: int, page: int, checked: bool = True) -> None:
         """ページの処理完了フラグを設定"""
         conn = self._get_conn()
         conn.execute(
@@ -263,7 +293,7 @@ class Database:
         )
         conn.commit()
 
-    def is_page_checked(self, year: str | int, page: int) -> bool:
+    def is_page_checked(self, year: int, page: int) -> bool:
         """ページが処理済みか確認"""
         conn = self._get_conn()
         cursor = conn.execute(
@@ -273,7 +303,7 @@ class Database:
         row = cursor.fetchone()
         return bool(row["checked"]) if row else False
 
-    def clear_page_status(self, year: str | int) -> None:
+    def clear_page_status(self, year: int) -> None:
         """指定年のページステータスをクリア"""
         conn = self._get_conn()
         conn.execute("DELETE FROM page_status WHERE year = ?", (str(year),))
@@ -457,14 +487,14 @@ class Database:
         )
         return [row[0] for row in cursor.fetchall()]
 
-    def get_failed_orders(self) -> list[dict[str, Any]]:
+    def get_failed_orders(self) -> list[FailedOrderInfo]:
         """エラーが発生した注文情報を取得
 
         未解決のエラーで context が "order" のものから詳細情報を取得します。
         年/ページ/インデックス情報を含みます。
 
         Returns:
-            注文エラー情報のリスト（order_no, order_year, order_page, order_index, error_id を含む）
+            注文エラー情報のリスト
         """
         conn = self._get_conn()
         cursor = conn.execute(
@@ -476,26 +506,26 @@ class Database:
             """
         )
         return [
-            {
-                "error_id": row[0],
-                "order_no": row[1],
-                "order_year": row[2],
-                "order_page": row[3],
-                "order_index": row[4],
-                "url": row[5],
-                "error_type": row[6],
-            }
+            FailedOrderInfo(
+                error_id=row[0],
+                order_no=row[1],
+                order_year=row[2],
+                order_page=row[3],
+                order_index=row[4],
+                url=row[5],
+                error_type=row[6],
+            )
             for row in cursor.fetchall()
         ]
 
-    def get_failed_category_items(self) -> list[dict[str, Any]]:
+    def get_failed_category_items(self) -> list[FailedCategoryItem]:
         """カテゴリ取得に失敗したアイテムを取得
 
         未解決のエラーで context が "category" のものから URL を取得し、
         対応するアイテム情報を返します。
 
         Returns:
-            アイテム情報のリスト（url, error_id を含む）
+            アイテム情報のリスト
         """
         conn = self._get_conn()
         cursor = conn.execute(
@@ -507,13 +537,13 @@ class Database:
             """
         )
         return [
-            {
-                "error_id": row[0],
-                "url": row[1],
-                "order_no": row[2],
-                "name": row[3],
-                "asin": row[4],
-            }
+            FailedCategoryItem(
+                error_id=row[0],
+                url=row[1],
+                order_no=row[2],
+                name=row[3],
+                asin=row[4],
+            )
             for row in cursor.fetchall()
         ]
 
@@ -535,14 +565,14 @@ class Database:
         conn.commit()
         return cursor.rowcount
 
-    def get_failed_thumbnail_items(self) -> list[dict[str, Any]]:
+    def get_failed_thumbnail_items(self) -> list[FailedThumbnailItem]:
         """サムネイル取得に失敗したアイテムを取得
 
         未解決のエラーで context が "thumbnail" のものから URL を取得し、
         対応するアイテム情報を返します。
 
         Returns:
-            アイテム情報のリスト（error_id, url, asin, item_name を含む）
+            アイテム情報のリスト
         """
         conn = self._get_conn()
         cursor = conn.execute(
@@ -554,13 +584,13 @@ class Database:
             """
         )
         return [
-            {
-                "error_id": row[0],
-                "thumb_url": row[1],
-                "name": row[2],
-                "asin": row[3],
-                "item_url": row[4],
-            }
+            FailedThumbnailItem(
+                error_id=row[0],
+                thumb_url=row[1],
+                name=row[2],
+                asin=row[3],
+                item_url=row[4],
+            )
             for row in cursor.fetchall()
         ]
 

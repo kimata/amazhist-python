@@ -691,7 +691,7 @@ class TestHandleSelenium:
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            handle.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            handle.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
 
             driver, wait = handle.get_selenium_driver()
 

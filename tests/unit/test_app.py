@@ -58,7 +58,7 @@ class TestExecuteFetch:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -303,7 +303,7 @@ class TestExecuteFetchExceptions:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -349,7 +349,7 @@ class TestExecuteFetchExceptions:
 
     def test_execute_fetch_generic_exception_no_selenium(self, handle):
         """has_selenium_driver が False の場合はダンプをスキップ"""
-        handle.has_selenium_driver = unittest.mock.MagicMock(return_value=False)  # type: ignore[method-assign]
+        handle.has_selenium_driver = unittest.mock.MagicMock(return_value=False)
 
         with (
             unittest.mock.patch(
@@ -406,7 +406,7 @@ class TestExecuteRetryExceptions:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             yield h
             h.finish()
 
@@ -472,7 +472,7 @@ class TestExecuteRetryExceptions:
 
     def test_execute_retry_generic_exception_no_selenium(self, handle):
         """has_selenium_driver が False の場合はダンプをスキップ"""
-        handle.has_selenium_driver = unittest.mock.MagicMock(return_value=False)  # type: ignore[method-assign]
+        handle.has_selenium_driver = unittest.mock.MagicMock(return_value=False)
 
         with (
             unittest.mock.patch(

@@ -23,8 +23,8 @@ Options:
 
 import logging
 import pathlib
-import random
 import sys
+from typing import Any
 
 import my_lib.selenium_util
 import rich.console
@@ -32,6 +32,7 @@ import rich.table
 import selenium.common.exceptions
 
 import amazhist.config
+import amazhist.const
 import amazhist.crawler
 import amazhist.handle
 import amazhist.history
@@ -42,6 +43,27 @@ VERSION = "0.1.0"
 SCHEMA_CONFIG = "schema/config.schema"
 
 _MAX_SESSION_RETRY_COUNT = 1
+
+
+def _handle_selenium_exception(handle: amazhist.handle.Handle, e: Exception) -> int | None:
+    """Selenium 関連の例外を処理
+
+    Args:
+        handle: アプリケーションハンドル
+        e: 発生した例外
+
+    Returns:
+        終了コード（例外を処理した場合）、None（処理しなかった場合）
+    """
+    if isinstance(e, selenium.common.exceptions.InvalidSessionIdException):
+        logging.exception("セッションエラーが発生しました（リトライ不可）")
+        handle.set_status("❌ セッションエラー", is_error=True)
+        return 1
+    if isinstance(e, my_lib.selenium_util.SeleniumError):
+        logging.exception("Selenium の起動に失敗しました")
+        handle.set_status(f"❌ {e}", is_error=True)
+        return 1
+    return None
 
 
 def execute_fetch(handle: amazhist.handle.Handle) -> None:
@@ -58,7 +80,8 @@ def execute_fetch(handle: amazhist.handle.Handle) -> None:
         # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
         if not amazhist.crawler.is_shutdown_requested() and handle.has_selenium_driver():
             driver, _wait = handle.get_selenium_driver()
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
+            dump_id = amazhist.const.generate_debug_dump_id()
+            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
         raise
 
 
@@ -77,12 +100,13 @@ def execute_retry(handle: amazhist.handle.Handle) -> None:
         # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
         if not amazhist.crawler.is_shutdown_requested() and handle.has_selenium_driver():
             driver, _wait = handle.get_selenium_driver()
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
+            dump_id = amazhist.const.generate_debug_dump_id()
+            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
         raise
 
 
 def execute_retry_single(
-    config,
+    config: dict[str, Any],
     error_id: int,
     clear_profile_on_browser_error: bool = False,
 ) -> int:
@@ -118,14 +142,13 @@ def execute_retry_single(
             )
             if not success:
                 exit_code = 1
-        except selenium.common.exceptions.InvalidSessionIdException:
-            logging.exception("セッションエラーが発生しました（リトライ不可）")
-            handle.set_status("❌ セッションエラー", is_error=True)
-            return 1
-        except my_lib.selenium_util.SeleniumError as e:
-            logging.exception("Selenium の起動に失敗しました")
-            handle.set_status(f"❌ {e}", is_error=True)
-            return 1
+        except (
+            selenium.common.exceptions.InvalidSessionIdException,
+            my_lib.selenium_util.SeleniumError,
+        ) as e:
+            result = _handle_selenium_exception(handle, e)
+            if result is not None:
+                return result
         except Exception:
             # シャットダウン要求時は正常終了扱い（tracebackを出さない）
             if not amazhist.crawler.is_shutdown_requested():
@@ -144,7 +167,7 @@ def execute_retry_single(
 
 
 def execute_retry_mode(
-    config,
+    config: dict[str, Any],
     clear_profile_on_browser_error: bool = False,
 ) -> int:
     """エラーが発生したアイテムを再取得
@@ -169,14 +192,13 @@ def execute_retry_mode(
                 on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
                 before_retry=handle.quit_selenium,
             )
-        except selenium.common.exceptions.InvalidSessionIdException:
-            logging.exception("セッションエラーが発生しました（リトライ不可）")
-            handle.set_status("❌ セッションエラー", is_error=True)
-            return 1
-        except my_lib.selenium_util.SeleniumError as e:
-            logging.exception("Selenium の起動に失敗しました")
-            handle.set_status(f"❌ {e}", is_error=True)
-            return 1
+        except (
+            selenium.common.exceptions.InvalidSessionIdException,
+            my_lib.selenium_util.SeleniumError,
+        ) as e:
+            result = _handle_selenium_exception(handle, e)
+            if result is not None:
+                return result
         except Exception:
             # シャットダウン要求時は正常終了扱い（tracebackを出さない）
             if not amazhist.crawler.is_shutdown_requested():
@@ -195,7 +217,7 @@ def execute_retry_mode(
 
 
 def execute(
-    config,
+    config: dict[str, Any],
     is_export_mode: bool = False,
     ignore_cache: bool = False,
     target_year: int | None = None,
@@ -236,19 +258,18 @@ def execute(
                     on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
                     before_retry=handle.quit_selenium,
                 )
-            except selenium.common.exceptions.InvalidSessionIdException:
-                logging.exception("セッションエラーが発生しました（リトライ不可）")
-                handle.set_status("❌ セッションエラー", is_error=True)
-                return 1
-            except my_lib.selenium_util.SeleniumError as e:
-                logging.exception("Selenium の起動に失敗しました")
-                handle.set_status(f"❌ {e}", is_error=True)
-                return 1
+            except (
+                selenium.common.exceptions.InvalidSessionIdException,
+                my_lib.selenium_util.SeleniumError,
+            ) as e:
+                result = _handle_selenium_exception(handle, e)
+                if result is not None:
+                    return result
             except Exception:
                 # シャットダウン要求時は正常終了扱い（tracebackを出さない）
                 if not amazhist.crawler.is_shutdown_requested():
                     driver, _ = handle.get_selenium_driver()
-                    logging.exception("Failed to fetch data: %s", driver.current_url)
+                    logging.exception(f"データの収集中にエラーが発生しました: {driver.current_url}")
                     handle.set_status("❌ データの収集中にエラーが発生しました", is_error=True)
                     exit_code = 1
             finally:
@@ -258,7 +279,7 @@ def execute(
             amazhist.history.generate_table_excel(handle, handle.config.excel_file_path, is_need_thumb)
         except Exception:
             handle.set_status("❌ エクセルファイルの生成中にエラーが発生しました", is_error=True)
-            logging.exception("Failed to generate Excel file.")
+            logging.exception("Excelファイルの生成中にエラーが発生しました")
             exit_code = 1
     finally:
         handle.finish()
@@ -270,7 +291,7 @@ def execute(
     return exit_code
 
 
-def show_error_log(config, show_all=False):
+def show_error_log(config: dict[str, Any], show_all: bool = False) -> None:
     """エラーログを表示
 
     Args:
@@ -365,7 +386,7 @@ def show_error_log(config, show_all=False):
         handle.finish()
 
 
-def show_error_detail(config, error_id: int):
+def show_error_detail(config: dict[str, Any], error_id: int) -> None:
     """特定IDのエラー詳細を表示
 
     Args:

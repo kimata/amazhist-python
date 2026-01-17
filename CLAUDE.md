@@ -279,6 +279,84 @@ items.append("value")  # type: ignore[union-attr]
 
 **例外：** テストコードでは、モックやフィクスチャの都合上 `# type: ignore` の使用を許容する。
 
+### Protocol の活用
+
+コールバック関数を引数として受け取る場合は、`typing.Protocol` を使用して型を定義する：
+
+```python
+from typing import Protocol
+
+class VisitUrlFunc(Protocol):
+    def __call__(self, handle: Handle, url: str, caller_name: str) -> None: ...
+
+def fetch_data(visit_url: VisitUrlFunc) -> None:
+    ...
+```
+
+Protocol は `types.py` に定義されている。新しいコールバック型が必要な場合は同ファイルに追加する。
+
+### dict の返却を避ける
+
+関数から構造化されたデータを返す場合、`dict[str, Any]` ではなく dataclass を使用する：
+
+```python
+# 推奨
+@dataclass(frozen=True)
+class FetchResult:
+    success: bool
+    data: str | None
+    error_message: str | None
+
+def fetch() -> FetchResult:
+    ...
+
+# 非推奨
+def fetch() -> dict[str, Any]:
+    return {"success": True, "data": "...", "error_message": None}
+```
+
+frozen dataclass を使用することで、イミュータブルなデータ構造を保証し、属性アクセスによる型安全性を確保できる。
+
+### マジックナンバーの定数化
+
+コード中の数値リテラルは、意図を明確にするために `const.py` で定数として定義する：
+
+```python
+# 推奨
+handle.set_progress_bar(label, amazhist.const.PROGRESS_STEPS_EXCEL)
+
+# 非推奨
+handle.set_progress_bar(label, 6)
+```
+
+### 型ヒントの網羅
+
+すべての関数引数に型ヒントを記述する。外部から受け取る設定辞書は `dict[str, Any]` を使用：
+
+```python
+# 推奨
+def execute(config: dict[str, Any], ...) -> int:
+    ...
+
+# 非推奨
+def execute(config, ...) -> int:
+    ...
+```
+
+### 戻り値型の明示
+
+すべての関数に戻り値型アノテーションを記述する（`None` を返す場合も `-> None` を明記）：
+
+```python
+# 推奨
+def process_data(data: str) -> None:
+    ...
+
+# 非推奨
+def process_data(data: str):
+    ...
+```
+
 ### グレースフルシャットダウン
 
 `crawler.py` では Ctrl+C によるグレースフルシャットダウンを実装：
@@ -329,6 +407,61 @@ RETRY_THUMBNAIL = 3         # サムネイル
 RETRY_CATEGORY = 2          # カテゴリ
 ```
 
+### 共通処理の関数化
+
+3箇所以上で重複するコードパターンは、ヘルパー関数として抽出する：
+
+```python
+# 推奨: 共通処理を関数化
+def _setup_graceful_shutdown(handle: Handle) -> None:
+    my_lib.graceful_shutdown.set_live_display(handle)
+    my_lib.graceful_shutdown.setup_signal_handler()
+    my_lib.graceful_shutdown.reset_shutdown_flag()
+
+# 非推奨: 同じコードを複数箇所にコピー
+```
+
+### デバッグダンプID
+
+ページダンプ時のランダムIDは `amazhist.const.generate_debug_dump_id()` を使用する：
+
+```python
+# 推奨
+dump_id = amazhist.const.generate_debug_dump_id()
+my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+
+# 非推奨（直接記述）
+dump_id = int(random.random() * amazhist.const.DEBUG_DUMP_ID_MAX)  # noqa: S311
+```
+
+### 型チェック
+
+型チェックには `isinstance()` を使用する（PEP 8 推奨）：
+
+```python
+# 推奨
+if isinstance(year, str):
+    ...
+
+# 非推奨
+if type(year) is str:
+    ...
+```
+
+### 型の統一
+
+Union 型（`str | int` など）は、実際に複数の型が必要な場合にのみ使用する。呼び出し元が常に同じ型を渡す場合は、その型に統一する：
+
+```python
+# 推奨: 呼び出し元が常に int を渡す場合
+def set_year_status(self, year: int, ...) -> None:
+    year_str = str(year)  # 内部で変換
+
+# 非推奨: 不要な Union 型
+def set_year_status(self, year: str | int, ...) -> None:
+    year_str = str(year)
+```
+
 ### Rich UI パターン
 
 ```python
@@ -340,6 +473,115 @@ handle.set_status("エラー発生", is_error=True)
 handle.set_progress_bar("[収集] 2024年", total=10)
 progress = handle.get_progress_bar("[収集] 2024年")
 progress.update(advance=1)
+```
+
+### リファクタリング時の判断基準
+
+以下の場合はリファクタリングを見送る：
+
+- 影響範囲が複数ファイル・テストコードに跨る場合
+- 外部ライブラリとのインターフェース変更が必要な場合
+- 安全弁として機能している後方互換性コードの場合
+- コード量削減が5行未満の場合
+
+### スキーマファイルのパス指定
+
+スキーマファイルのパスは各モジュールで `pathlib.Path(__file__)` ベースで解決する。
+ファイル数が増えてきた場合は `const.py` への集約を検討するが、現状では分散管理を許容する：
+
+```python
+# 許容: 各モジュールで個別に定義
+_SQLITE_SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
+```
+
+### ディレクトリ作成パターン
+
+複数ディレクトリを作成する場合、現在の明示的な記述を維持する（ループ化は可読性向上に寄与しない）：
+
+```python
+# 許容: 明示的な記述
+self.config.dir_a.mkdir(parents=True, exist_ok=True)
+self.config.dir_b.mkdir(parents=True, exist_ok=True)
+self.config.dir_c.mkdir(parents=True, exist_ok=True)
+```
+
+### DB 互換性コード
+
+古いスキーマとの互換性を維持するコードは、ユーザー影響がなくなるまで保持する。
+削除は major バージョンアップ時に検討する：
+
+```python
+# 許容: 古いカラムがない場合のフォールバック
+row_keys = row.keys()
+order_year = row["order_year"] if "order_year" in row_keys else None
+```
+
+### 例外の使い分け
+
+汎用 `Exception` ではなく、`exceptions.py` で定義されたカスタム例外を使用する：
+
+- `CaptchaError`: 画像認証失敗
+- `LoginError`: ログイン失敗
+- `ThumbnailError`: サムネイル画像エラー（基底クラス）
+- `ThumbnailEmptyError`: サムネイル画像データが空
+- `ThumbnailSizeError`: サムネイル画像のサイズが0
+- `ThumbnailCorruptError`: サムネイル画像が破損
+
+```python
+# 推奨
+raise amazhist.exceptions.LoginError("ログインに失敗しました．")
+
+# 非推奨
+raise Exception("ログインに失敗しました．")
+```
+
+### 文字列フォーマット
+
+f-string に統一する（`.format()` や `%` フォーマットは使用しない）：
+
+```python
+# 推奨
+logging.info(f"{year}年: {count:4,} 件")
+
+# 非推奨
+logging.info("{}年: {:4,} 件".format(year, count))
+logging.info("%s年: %4d 件" % (year, count))
+```
+
+### メッセージ言語
+
+ログメッセージ、エラーメッセージは日本語に統一する。
+
+```python
+# 推奨
+logging.exception(f"データの収集中にエラーが発生しました: {url}")
+
+# 非推奨
+logging.exception("Failed to fetch data: %s", url)
+```
+
+### 関数の引数が多い場合の検討
+
+関数の引数が5個以上になる場合は、関連する引数を dataclass にまとめることを検討する。
+ただし、影響範囲が複数ファイル・テストコードに跨る場合は見送る。
+
+### 3要素以上のタプル戻り値の検討
+
+関数の戻り値が3要素以上のタプルになる場合は、dataclass を使用して意味を明確にすることを検討する。
+ただし、影響範囲が複数ファイル・テストコードに跨る場合は見送る。
+
+### URL テンプレート定数
+
+URL テンプレート定数は `.format()` を使用する（f-string ではなく）：
+
+```python
+# 推奨: 定数として定義し .format() で展開
+HIST_URL_BY_YEAR = "https://example.com/orders?year={year}&start={start}"
+url = HIST_URL_BY_YEAR.format(year=2024, start=0)
+
+# 非推奨: f-string は定数として定義できない
+def gen_hist_url(year: int, start: int) -> str:
+    return f"https://example.com/orders?year={year}&start={start}"
 ```
 
 ## ライセンス

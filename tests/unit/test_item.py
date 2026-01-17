@@ -58,7 +58,7 @@ class TestFetchItemCategory:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -165,7 +165,7 @@ class TestSaveThumbnail:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -256,7 +256,7 @@ class TestParseItem:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -464,7 +464,7 @@ class TestSaveThumbnailErrors:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -575,7 +575,7 @@ class TestParseItemErrors:
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_driver = unittest.mock.MagicMock()
             mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
+            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -774,183 +774,3 @@ class TestParseItemErrors:
         assert result.price == 0  # 価格なしの場合は 0
         # エラーが記録されていることを確認
         handle._db.record_or_update_error.assert_called_once()
-
-
-class TestParseItemGiftcard:
-    """_parse_item_giftcard のテスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
-    def test_parse_item_giftcard(self, handle):
-        """ギフトカードのパース"""
-        driver, _ = handle.get_selenium_driver()
-
-        # 価格要素をシミュレート
-        mock_price_elem = unittest.mock.MagicMock()
-        mock_price_elem.text = "¥5,000"
-        driver.find_element.return_value = mock_price_elem
-
-        result = amazhist.item._parse_item_giftcard(handle, "//div")
-
-        assert result["count"] == 1
-        assert result["price"] == 5000
-        assert result["seller"] == "アマゾンジャパン合同会社"
-        assert result["condition"] == "新品"
-        assert result["kind"] == "Gift card"
-
-    def test_parse_item_giftcard_invalid_price(self, handle):
-        """ギフトカードの価格パース失敗時は0"""
-        driver, _ = handle.get_selenium_driver()
-
-        # 価格要素をシミュレート（不正な値）
-        mock_price_elem = unittest.mock.MagicMock()
-        mock_price_elem.text = "無効な価格"
-        driver.find_element.return_value = mock_price_elem
-
-        result = amazhist.item._parse_item_giftcard(handle, "//div")
-
-        assert result["price"] == 0
-
-
-class TestParseItemDefault:
-    """_parse_item_default のテスト"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))  # type: ignore[method-assign]
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
-    def test_parse_item_default(self, handle):
-        """デフォルトパースのテスト"""
-        driver, _ = handle.get_selenium_driver()
-
-        # 価格要素をシミュレート
-        mock_price_elem = unittest.mock.MagicMock()
-        mock_price_elem.text = "¥1,234"
-        driver.find_element.return_value = mock_price_elem
-
-        with unittest.mock.patch("my_lib.selenium_util.get_text") as mock_get_text:
-            # 数量: 2, 販売者: テスト販売者, コンディション: 中古品
-            def get_text_side_effect(driver, xpath, default):
-                if "item-view-qty" in xpath:
-                    return "2"
-                elif "販売:" in xpath:
-                    return " テスト販売者 から"
-                elif "コンディション" in xpath:
-                    return "中古品"
-                return default
-
-            mock_get_text.side_effect = get_text_side_effect
-
-            result = amazhist.item._parse_item_default(handle, "//div")
-
-        assert result["count"] == 2
-        assert result["price"] == 2468  # 1234 * 2
-        assert result["seller"] == "テスト販売者"
-        assert result["condition"] == "中古品"
-        assert result["kind"] == "Normal"
-
-    def test_parse_item_default_with_defaults(self, handle):
-        """デフォルト値のテスト"""
-        driver, _ = handle.get_selenium_driver()
-
-        # 価格要素をシミュレート
-        mock_price_elem = unittest.mock.MagicMock()
-        mock_price_elem.text = "¥500"
-        driver.find_element.return_value = mock_price_elem
-
-        with unittest.mock.patch("my_lib.selenium_util.get_text") as mock_get_text:
-            # デフォルト値を使用
-            def get_text_side_effect(driver, xpath, default):
-                return default
-
-            mock_get_text.side_effect = get_text_side_effect
-
-            result = amazhist.item._parse_item_default(handle, "//div")
-
-        assert result["count"] == 1
-        assert result["price"] == 500
-        assert result["seller"] == "アマゾンジャパン合同会社"
-        assert result["condition"] == "新品"
-        assert result["kind"] == "Normal"

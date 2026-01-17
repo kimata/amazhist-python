@@ -10,6 +10,7 @@ import pathlib
 import pytest
 
 import amazhist.database
+import amazhist.item
 
 # スキーマファイルのパス
 SCHEMA_PATH = pathlib.Path(__file__).parent.parent.parent / "schema" / "sqlite.schema"
@@ -78,51 +79,57 @@ class TestDatabaseItems:
 
     def test_upsert_item(self, db):
         """アイテムの挿入"""
-        item = {
-            "no": "503-1234567-8901234",
-            "date": datetime.datetime(2025, 1, 15),
-            "name": "テスト商品",
-            "url": "https://www.amazon.co.jp/dp/B0123456789",
-            "asin": "B0123456789",
-            "count": 1,
-            "price": 1500,
-            "seller": "アマゾンジャパン合同会社",
-            "condition": "新品",
-            "category": ["本", "コンピュータ・IT"],
-        }
+        item = amazhist.item.Item(
+            no="503-1234567-8901234",
+            date=datetime.datetime(2025, 1, 15),
+            name="テスト商品",
+            url="https://www.amazon.co.jp/dp/B0123456789",
+            asin="B0123456789",
+            count=1,
+            price=1500,
+            seller="アマゾンジャパン合同会社",
+            condition="新品",
+            category=("本", "コンピュータ・IT"),
+        )
 
         db.upsert_item(item)
 
         items = db.get_item_list()
         assert len(items) == 1
-        assert items[0]["name"] == "テスト商品"
+        assert items[0].name == "テスト商品"
 
     def test_upsert_item_update(self, db):
         """アイテムの更新"""
-        item = {
-            "no": "503-1234567-8901234",
-            "date": datetime.datetime(2025, 1, 15),
-            "name": "テスト商品",
-            "asin": "B0123456789",
-            "price": 1500,
-        }
+        item = amazhist.item.Item(
+            no="503-1234567-8901234",
+            date=datetime.datetime(2025, 1, 15),
+            name="テスト商品",
+            asin="B0123456789",
+            price=1500,
+        )
 
         db.upsert_item(item)
 
         # 同じ no と asin で更新
-        item["price"] = 2000
-        db.upsert_item(item)
+        item_updated = amazhist.item.Item(
+            no="503-1234567-8901234",
+            date=datetime.datetime(2025, 1, 15),
+            name="テスト商品",
+            asin="B0123456789",
+            price=2000,
+        )
+        db.upsert_item(item_updated)
 
         items = db.get_item_list()
         assert len(items) == 1
-        assert items[0]["price"] == 2000
+        assert items[0].price == 2000
 
     def test_get_item_list_sorted(self, db):
         """アイテムリストが日付順にソートされる"""
         items = [
-            {"no": "001", "asin": "A1", "date": datetime.datetime(2025, 1, 20), "name": "商品3"},
-            {"no": "002", "asin": "A2", "date": datetime.datetime(2025, 1, 10), "name": "商品1"},
-            {"no": "003", "asin": "A3", "date": datetime.datetime(2025, 1, 15), "name": "商品2"},
+            amazhist.item.Item(no="001", asin="A1", date=datetime.datetime(2025, 1, 20), name="商品3"),
+            amazhist.item.Item(no="002", asin="A2", date=datetime.datetime(2025, 1, 10), name="商品1"),
+            amazhist.item.Item(no="003", asin="A3", date=datetime.datetime(2025, 1, 15), name="商品2"),
         ]
 
         for item in items:
@@ -130,18 +137,18 @@ class TestDatabaseItems:
 
         result = db.get_item_list()
 
-        assert result[0]["name"] == "商品1"  # 1/10
-        assert result[1]["name"] == "商品2"  # 1/15
-        assert result[2]["name"] == "商品3"  # 1/20
+        assert result[0].name == "商品1"  # 1/10
+        assert result[1].name == "商品2"  # 1/15
+        assert result[2].name == "商品3"  # 1/20
 
     def test_exists_order(self, db):
         """注文の存在確認"""
-        item = {
-            "no": "503-1234567-8901234",
-            "asin": "B0123456789",
-            "date": datetime.datetime(2025, 1, 15),
-            "name": "テスト商品",
-        }
+        item = amazhist.item.Item(
+            no="503-1234567-8901234",
+            asin="B0123456789",
+            date=datetime.datetime(2025, 1, 15),
+            name="テスト商品",
+        )
 
         db.upsert_item(item)
 
@@ -152,36 +159,40 @@ class TestDatabaseItems:
         """商品数の取得"""
         assert db.get_item_count() == 0
 
-        db.upsert_item({"no": "001", "asin": "A1", "date": datetime.datetime(2025, 1, 10), "name": "商品1"})
+        db.upsert_item(
+            amazhist.item.Item(no="001", asin="A1", date=datetime.datetime(2025, 1, 10), name="商品1")
+        )
         assert db.get_item_count() == 1
 
-        db.upsert_item({"no": "002", "asin": "A2", "date": datetime.datetime(2025, 1, 11), "name": "商品2"})
+        db.upsert_item(
+            amazhist.item.Item(no="002", asin="A2", date=datetime.datetime(2025, 1, 11), name="商品2")
+        )
         assert db.get_item_count() == 2
 
     def test_get_last_item_by_filter(self, db):
         """time_filter で最後の商品を取得"""
         items = [
-            {
-                "no": "001",
-                "asin": "A1",
-                "date": datetime.datetime(2025, 1, 10),
-                "name": "商品1",
-                "order_time_filter": 2025,
-            },
-            {
-                "no": "002",
-                "asin": "A2",
-                "date": datetime.datetime(2025, 1, 20),
-                "name": "商品2",
-                "order_time_filter": 2025,
-            },
-            {
-                "no": "003",
-                "asin": "A3",
-                "date": datetime.datetime(2024, 12, 15),
-                "name": "商品3",
-                "order_time_filter": 2024,
-            },
+            amazhist.item.Item(
+                no="001",
+                asin="A1",
+                date=datetime.datetime(2025, 1, 10),
+                name="商品1",
+                order_time_filter=2025,
+            ),
+            amazhist.item.Item(
+                no="002",
+                asin="A2",
+                date=datetime.datetime(2025, 1, 20),
+                name="商品2",
+                order_time_filter=2025,
+            ),
+            amazhist.item.Item(
+                no="003",
+                asin="A3",
+                date=datetime.datetime(2024, 12, 15),
+                name="商品3",
+                order_time_filter=2024,
+            ),
         ]
         for item in items:
             db.upsert_item(item)
@@ -504,13 +515,13 @@ class TestDatabaseErrorLog:
         """カテゴリ取得に失敗したアイテムを取得"""
         # アイテムを追加
         db.upsert_item(
-            {
-                "no": "ORDER-001",
-                "asin": "ASIN001",
-                "date": datetime.datetime(2025, 1, 10),
-                "name": "テスト商品",
-                "url": "https://amazon.co.jp/dp/ASIN001",
-            }
+            amazhist.item.Item(
+                no="ORDER-001",
+                asin="ASIN001",
+                date=datetime.datetime(2025, 1, 10),
+                name="テスト商品",
+                url="https://amazon.co.jp/dp/ASIN001",
+            )
         )
 
         # カテゴリエラーを記録
@@ -522,20 +533,20 @@ class TestDatabaseErrorLog:
 
         failed_items = db.get_failed_category_items()
         assert len(failed_items) == 1
-        assert failed_items[0]["url"] == "https://amazon.co.jp/dp/ASIN001"
-        assert failed_items[0]["asin"] == "ASIN001"
+        assert failed_items[0].url == "https://amazon.co.jp/dp/ASIN001"
+        assert failed_items[0].asin == "ASIN001"
 
     def test_update_item_category(self, db):
         """アイテムのカテゴリを更新"""
         db.upsert_item(
-            {
-                "no": "ORDER-001",
-                "asin": "ASIN001",
-                "date": datetime.datetime(2025, 1, 10),
-                "name": "テスト商品",
-                "url": "https://amazon.co.jp/dp/ASIN001",
-                "category": [],
-            }
+            amazhist.item.Item(
+                no="ORDER-001",
+                asin="ASIN001",
+                date=datetime.datetime(2025, 1, 10),
+                name="テスト商品",
+                url="https://amazon.co.jp/dp/ASIN001",
+                category=(),
+            )
         )
 
         count = db.update_item_category(
@@ -552,13 +563,13 @@ class TestDatabaseErrorLog:
     def test_get_failed_thumbnail_items(self, db):
         """サムネイル取得に失敗したアイテムを取得"""
         db.upsert_item(
-            {
-                "no": "ORDER-001",
-                "asin": "ASIN001",
-                "date": datetime.datetime(2025, 1, 10),
-                "name": "テスト商品",
-                "url": "https://amazon.co.jp/dp/ASIN001",
-            }
+            amazhist.item.Item(
+                no="ORDER-001",
+                asin="ASIN001",
+                date=datetime.datetime(2025, 1, 10),
+                name="テスト商品",
+                url="https://amazon.co.jp/dp/ASIN001",
+            )
         )
 
         db.record_error(
@@ -570,8 +581,8 @@ class TestDatabaseErrorLog:
 
         failed_items = db.get_failed_thumbnail_items()
         assert len(failed_items) == 1
-        assert failed_items[0]["thumb_url"] == "https://images.amazon.com/ASIN001.jpg"
-        assert failed_items[0]["name"] == "テスト商品"
+        assert failed_items[0].thumb_url == "https://images.amazon.com/ASIN001.jpg"
+        assert failed_items[0].name == "テスト商品"
 
     def test_mark_errors_resolved_by_order_no(self, db):
         """注文番号でエラーを一括解決済みにする"""
@@ -601,32 +612,32 @@ class TestDatabaseYearStatusExtended:
         """指定年の商品数を取得 (lines 141-147)"""
         # 2025年の商品を追加
         db.upsert_item(
-            {
-                "no": "001",
-                "asin": "A1",
-                "date": datetime.datetime(2025, 1, 10),
-                "name": "商品1",
-                "order_time_filter": 2025,
-            }
+            amazhist.item.Item(
+                no="001",
+                asin="A1",
+                date=datetime.datetime(2025, 1, 10),
+                name="商品1",
+                order_time_filter=2025,
+            )
         )
         db.upsert_item(
-            {
-                "no": "002",
-                "asin": "A2",
-                "date": datetime.datetime(2025, 2, 15),
-                "name": "商品2",
-                "order_time_filter": 2025,
-            }
+            amazhist.item.Item(
+                no="002",
+                asin="A2",
+                date=datetime.datetime(2025, 2, 15),
+                name="商品2",
+                order_time_filter=2025,
+            )
         )
         # 2024年の商品を追加
         db.upsert_item(
-            {
-                "no": "003",
-                "asin": "A3",
-                "date": datetime.datetime(2024, 12, 1),
-                "name": "商品3",
-                "order_time_filter": 2024,
-            }
+            amazhist.item.Item(
+                no="003",
+                asin="A3",
+                date=datetime.datetime(2024, 12, 1),
+                name="商品3",
+                order_time_filter=2024,
+            )
         )
 
         # 2025年の商品数
@@ -814,29 +825,29 @@ class TestDatabaseErrorLogExtended:
         assert len(failed_orders) == 2
 
         # 最新順なので ORDER-002 が先
-        assert failed_orders[0]["order_no"] == "ORDER-002"
-        assert failed_orders[0]["order_year"] == 2025
-        assert failed_orders[0]["order_page"] == 2
-        assert failed_orders[0]["order_index"] == 1
-        assert failed_orders[0]["error_type"] == "parse_error"
+        assert failed_orders[0].order_no == "ORDER-002"
+        assert failed_orders[0].order_year == 2025
+        assert failed_orders[0].order_page == 2
+        assert failed_orders[0].order_index == 1
+        assert failed_orders[0].error_type == "parse_error"
 
-        assert failed_orders[1]["order_no"] == "ORDER-001"
-        assert failed_orders[1]["order_year"] == 2025
-        assert failed_orders[1]["order_page"] == 1
-        assert failed_orders[1]["order_index"] == 0
-        assert failed_orders[1]["error_type"] == "timeout"
+        assert failed_orders[1].order_no == "ORDER-001"
+        assert failed_orders[1].order_year == 2025
+        assert failed_orders[1].order_page == 1
+        assert failed_orders[1].order_index == 0
+        assert failed_orders[1].error_type == "timeout"
 
     def test_get_thumbnail_asin_by_error_id(self, db):
         """エラーIDからサムネイルの ASIN を取得 (lines 588-599)"""
         # アイテムを追加
         db.upsert_item(
-            {
-                "no": "ORDER-001",
-                "asin": "ASIN001",
-                "date": datetime.datetime(2025, 1, 10),
-                "name": "テスト商品",
-                "url": "https://amazon.co.jp/dp/ASIN001",
-            }
+            amazhist.item.Item(
+                no="ORDER-001",
+                asin="ASIN001",
+                date=datetime.datetime(2025, 1, 10),
+                name="テスト商品",
+                url="https://amazon.co.jp/dp/ASIN001",
+            )
         )
 
         # サムネイルエラーを記録

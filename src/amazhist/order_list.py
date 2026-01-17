@@ -18,6 +18,7 @@ import amazhist.const
 import amazhist.handle
 import amazhist.order
 import amazhist.parser
+import amazhist.types
 
 # プログレスバーのラベル
 STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
@@ -60,12 +61,12 @@ def fetch_by_year_page(
     handle: amazhist.handle.Handle,
     year: int,
     page: int,
-    visit_url_func,
-    keep_logged_on_func,
-    get_caller_name_func,
-    gen_hist_url_func,
-    gen_order_url_func,
-    is_shutdown_requested_func,
+    visit_url_func: amazhist.types.VisitUrlFunc,
+    keep_logged_on_func: amazhist.types.KeepLoggedOnFunc,
+    get_caller_name_func: amazhist.types.GetCallerNameFunc,
+    gen_hist_url_func: amazhist.types.GenHistUrlFunc,
+    gen_order_url_func: amazhist.types.GenOrderUrlFunc,
+    is_shutdown_requested_func: amazhist.types.IsShutdownRequestedFunc,
     retry: int = 0,
     can_early_exit: bool = False,
     consecutive_cache_hits: int = 0,
@@ -275,11 +276,8 @@ def fetch_by_year_page(
                 # 新規取得したので連続キャッシュヒットをリセット
                 consecutive_cache_hits = 0
             else:
-                logging.info(
-                    "注文処理済み: {date} - {no} [キャッシュ]".format(
-                        date=order.date.strftime("%Y-%m-%d"), no=order.no
-                    )
-                )
+                order_date = order.date.strftime("%Y-%m-%d")
+                logging.info(f"注文処理済み: {order_date} - {order.no} [キャッシュ]")
                 # キャッシュヒットをカウント
                 consecutive_cache_hits += 1
 
@@ -354,12 +352,12 @@ def _skip_by_year_page(handle: amazhist.handle.Handle, year: int, page: int) -> 
 def fetch_by_year(
     handle: amazhist.handle.Handle,
     year: int,
-    visit_url_func,
-    keep_logged_on_func,
-    get_caller_name_func,
-    gen_hist_url_func,
-    gen_order_url_func,
-    is_shutdown_requested_func,
+    visit_url_func: amazhist.types.VisitUrlFunc,
+    keep_logged_on_func: amazhist.types.KeepLoggedOnFunc,
+    get_caller_name_func: amazhist.types.GetCallerNameFunc,
+    gen_hist_url_func: amazhist.types.GenHistUrlFunc,
+    gen_order_url_func: amazhist.types.GenOrderUrlFunc,
+    is_shutdown_requested_func: amazhist.types.IsShutdownRequestedFunc,
     start_page: int = 1,
 ) -> None:
     """指定年の注文リストを取得

@@ -10,7 +10,6 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
-import random
 import re
 import time
 from dataclasses import dataclass
@@ -219,7 +218,8 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
         price = amazhist.parser.parse_price(price_text)
         if price is None:
             logging.warning(f"価格のパースに失敗しました: {price_text}")
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
+            dump_id = amazhist.const.generate_debug_dump_id()
+            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
             handle.record_or_update_error(
                 url=url if url else order.url,
                 error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -231,7 +231,8 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
             price = 0
     else:
         logging.warning(f"価格が見つかりませんでした: {name}")
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
+        dump_id = amazhist.const.generate_debug_dump_id()
+        my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
         handle.record_or_update_error(
             url=url if url else order.url,
             error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -267,79 +268,3 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
         order_time_filter=order.time_filter,
         order_page=order.page,
     )
-
-
-def _parse_item_giftcard(handle: amazhist.handle.Handle, item_xpath: str) -> dict:
-    """ギフトカードの商品情報をパース（旧形式）
-
-    Args:
-        handle: アプリケーションハンドル
-        item_xpath: 商品要素のXPath
-
-    Returns:
-        商品情報の辞書
-    """
-    driver, _wait = handle.get_selenium_driver()
-
-    count = 1
-
-    price_text = driver.find_element(
-        By.XPATH,
-        item_xpath + "//div[contains(@class, 'gift-card-instance')]/div[contains(@class, 'a-column')][1]",
-    ).text
-    price = amazhist.parser.parse_price(price_text) or 0
-
-    seller = "アマゾンジャパン合同会社"
-    condition = "新品"
-
-    return {
-        "count": count,
-        "price": price,
-        "seller": seller,
-        "condition": condition,
-        "kind": "Gift card",
-    }
-
-
-def _parse_item_default(handle: amazhist.handle.Handle, item_xpath: str) -> dict:
-    """デフォルトの商品情報をパース（旧形式）
-
-    Args:
-        handle: アプリケーションハンドル
-        item_xpath: 商品要素のXPath
-
-    Returns:
-        商品情報の辞書
-    """
-    driver, _wait = handle.get_selenium_driver()
-
-    count = int(
-        my_lib.selenium_util.get_text(
-            driver, item_xpath + '/..//span[contains(@class, "item-view-qty")]', "1"
-        )
-    )
-
-    price_text = driver.find_element(By.XPATH, item_xpath + "//span[contains(@class, 'a-color-price')]").text
-    price = amazhist.parser.parse_price(price_text) or 0
-    price *= count
-
-    seller = my_lib.selenium_util.get_text(
-        driver,
-        item_xpath + "//span[contains(@class, 'a-size-small') and contains(text(), '販売:')]",
-        " アマゾンジャパン合同会社",
-    ).split(" ", 2)[1]
-
-    xpath_condition = (
-        item_xpath
-        + "//span[contains(@class, 'a-color-secondary') and contains(text(), 'コンディション：')]"
-        + "/following-sibling::span[1]"
-    )
-    condition = my_lib.selenium_util.get_text(driver, xpath_condition, "新品")
-
-    return {
-        "count": count,
-        "price": price,
-        "seller": seller,
-        "condition": condition,
-        "kind": "Normal",
-    }

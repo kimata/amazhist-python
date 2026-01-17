@@ -5,7 +5,7 @@ import datetime
 import logging
 import pathlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import my_lib.browser_manager
 import my_lib.cui_progress
@@ -292,7 +292,7 @@ class Handle:
         """エラーが発生した注文番号を取得"""
         return self.db.get_failed_order_numbers()
 
-    def get_failed_orders(self) -> list[dict[str, Any]]:
+    def get_failed_orders(self) -> list[amazhist.database.FailedOrderInfo]:
         """エラーが発生した注文情報を取得（年/ページ/インデックス情報を含む）"""
         return self.db.get_failed_orders()
 
@@ -300,7 +300,7 @@ class Handle:
         """年単位のエラー（order_count_fallback）を取得"""
         return self.db.get_failed_years()
 
-    def get_failed_category_items(self) -> list[dict[str, Any]]:
+    def get_failed_category_items(self) -> list[amazhist.database.FailedCategoryItem]:
         """カテゴリ取得に失敗したアイテムを取得"""
         return self.db.get_failed_category_items()
 
@@ -308,7 +308,7 @@ class Handle:
         """アイテムのカテゴリを更新"""
         return self.db.update_item_category(url, category)
 
-    def get_failed_thumbnail_items(self) -> list[dict[str, Any]]:
+    def get_failed_thumbnail_items(self) -> list[amazhist.database.FailedThumbnailItem]:
         """サムネイル取得に失敗したアイテムを取得"""
         return self.db.get_failed_thumbnail_items()
 

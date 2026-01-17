@@ -15,12 +15,9 @@ Options:
 from __future__ import annotations
 
 import datetime
-import inspect
 import logging
-import random
 import re
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 
 import my_lib.selenium_util
@@ -33,6 +30,7 @@ import amazhist.crawler
 import amazhist.handle
 import amazhist.item
 import amazhist.parser
+import amazhist.types
 
 
 @dataclass(frozen=True)
@@ -44,14 +42,6 @@ class Order:
     url: str
     time_filter: int | None = None  # _retry_failed_orders で None
     page: int | None = None  # _retry_failed_orders で None
-
-
-def _get_caller_name() -> str:
-    """呼び出し元の関数名を取得"""
-    frame = inspect.currentframe()
-    if frame is None or frame.f_back is None:
-        return "unknown"
-    return frame.f_back.f_code.co_name
 
 
 def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
@@ -73,7 +63,7 @@ def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
 
     item_xpath = "//tr[td[b[contains(text(), '注文商品')]]]/following-sibling::tr[1]"
 
-    if len(driver.find_elements(By.XPATH, item_xpath + "/td[1]//a")) != 0:
+    if my_lib.selenium_util.xpath_exists(driver, item_xpath + "/td[1]//a"):
         link = driver.find_element(By.XPATH, item_xpath + "/td[1]//a")
         name = link.text
         url = link.get_attribute("href") or ""
@@ -171,7 +161,7 @@ def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
     date_str = order.date.strftime("%Y-%m-%d")
     logging.info(f"注文をパースしています: {date_str} - {order.no}")
 
-    if len(driver.find_elements(By.XPATH, "//b[contains(text(), 'デジタル注文')]")) != 0:
+    if my_lib.selenium_util.xpath_exists(driver, "//b[contains(text(), 'デジタル注文')]"):
         is_unempty = _parse_order_digital(handle, order)
     else:
         is_unempty = _parse_order_default(handle, order)
@@ -182,9 +172,9 @@ def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
 def fetch_item_list(
     handle: amazhist.handle.Handle,
     order: Order,
-    visit_url_func: Callable,
-    keep_logged_on_func: Callable,
-    get_caller_name_func: Callable,
+    visit_url_func: amazhist.types.VisitUrlFunc,
+    keep_logged_on_func: amazhist.types.KeepLoggedOnFunc,
+    get_caller_name_func: amazhist.types.GetCallerNameFunc,
 ) -> bool:
     """注文詳細ページから商品情報を取得
 
@@ -219,7 +209,8 @@ def fetch_item_list(
 
     if not parse_order(handle, order):
         logging.warning(f"注文のパースに失敗しました: {order.no}")
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), handle.config.debug_dir_path)  # noqa: S311
+        dump_id = amazhist.const.generate_debug_dump_id()
+        my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
         handle.record_or_update_error(
             url=order.url,
             error_type="parse_error",
@@ -272,11 +263,13 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
 
     driver, _wait = handle.get_selenium_driver()
 
-    caller_name = _get_caller_name()
+    caller_name = amazhist.crawler.get_caller_name(depth=2)
 
     # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
     # あり得ないページ数を指定する．
-    amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 10000), caller_name)
+    amazhist.crawler.visit_url(
+        handle, amazhist.crawler.gen_hist_url(year, amazhist.const.MAX_PAGE_FOR_ORDER_COUNT), caller_name
+    )
 
     if my_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
         order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
@@ -330,7 +323,6 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
 
 ######################################################################
 if __name__ == "__main__":
-    import random
     import traceback
 
     import my_lib.config
@@ -363,6 +355,6 @@ if __name__ == "__main__":
         logging.error(traceback.format_exc())
         my_lib.selenium_util.dump_page(
             driver,
-            int(random.random() * 100),  # noqa: S311
+            amazhist.const.generate_debug_dump_id(),
             handle.config.debug_dir_path,
         )

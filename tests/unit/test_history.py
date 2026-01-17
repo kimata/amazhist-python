@@ -53,7 +53,7 @@ class TestSheetDef:
             url="https://www.amazon.co.jp/dp/B0123456789",
         )
 
-        assert cols["id"]["link_func"](item) == "https://www.amazon.co.jp/dp/B0123456789"
+        assert cols["id"]["link_func"](item) == "https://www.amazon.co.jp/dp/B0123456789"  # type: ignore[misc]
 
     def test_link_func_no(self):
         """注文番号のリンク関数"""
@@ -68,7 +68,7 @@ class TestSheetDef:
             no="503-1234567-8901234",
         )
 
-        result = cols["no"]["link_func"](item)
+        result = cols["no"]["link_func"](item)  # type: ignore[misc]
         assert "503-1234567-8901234" in result
 
     def test_shop_name_value(self):
