@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "docopt-ng>=0.9.0",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@f67a064d6eed3de8e7294fdd9590c28c41b0379f",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@1d54e8ebb3542df37dfb50055d9b5bf684e80f65",
     "coloredlogs>=15.0.1",
     "docopt>=0.6.2",
     "pyyaml>=6.0.1",
@@ -84,6 +84,9 @@ reportArgumentType = false
 reportOperatorIssue = false
 reportIndexIssue = false
 reportGeneralTypeIssues = false
+
+[tool.ty]
+[tool.ty.rules]
 
 [build-system]
 requires = ["hatchling"]
