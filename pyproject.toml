@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "docopt-ng>=0.9.0",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@f67a064d6eed3de8e7294fdd9590c28c41b0379f",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@6c4bb827adf8daf1a0df080acbb26ac2764292a8",
     "coloredlogs>=15.0.1",
     "docopt>=0.6.2",
     "pyyaml>=6.0.1",
@@ -88,11 +88,6 @@ reportGeneralTypeIssues = false
 [tool.ty]
 # tomlkit 等の型定義が不完全なライブラリ向け
 [tool.ty.rules]
-not-subscriptable = "ignore"
-unsupported-operator = "ignore"
-invalid-assignment = "ignore"
-invalid-argument-type = "ignore"
-not-iterable = "ignore"
 
 [build-system]
 requires = ["hatchling"]
