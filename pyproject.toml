@@ -1,6 +1,6 @@
 [project]
 name = "amazhist-python"
-version = "0.2.0"
+dynamic = ["version"]
 description = "Amazon.co.jp の購入履歴情報を収集するスクリプトです．"
 authors = [
     { name = "KIMATA Tetsuya", email = "kimata@green-rabbit.net" }
@@ -14,14 +14,14 @@ dependencies = [
     "my-lib @ git+https://github.com/kimata/my-py-lib@b577dfdf6e8df235fd0e58809379a171219772b8",
     "coloredlogs>=15.0.1",
     "docopt>=0.6.2",
-    "pyyaml>=6.0.1",
-    "selenium>=4.18.1",
+    "pyyaml>=6.0.3",
+    "selenium>=4.39.0",
     "pyprind>=2.11.3",
-    "rich>=13.9.0",
-    "openpyxl>=3.1.2",
-    "pillow>=10.2.0",
-    "imageio>=2.34.0",
-    "jinxed>=1.2.1",
+    "rich>=14.2.0",
+    "openpyxl>=3.1.5",
+    "pillow>=12.1.0",
+    "imageio>=2.37.2",
+    "jinxed>=1.3.0",
     "undetected-chromedriver>=3.5.5",
 ]
 
