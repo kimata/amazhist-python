@@ -29,7 +29,7 @@ test-typecheck:
           paths:
               - ${UV_CACHE_DIR}
 
-test-walk-through:
+test-pytest:
     stage: test
 
     needs: []
@@ -56,7 +56,7 @@ test-smoke:
     stage: test
 
     needs:
-        - job: test-walk-through
+        - job: test-pytest
           artifacts: false
 
     script:
