@@ -606,3 +606,8 @@ Apache License Version 2.0
 - 関連するテストも修正すること
 - 関連するドキュメントも更新すること
 - mypy, pyright, ty がパスすることを確認すること
+
+### タグ作成時の注意
+
+- タグを打つ前に `CHANGELOG.md` を更新すること
+- 変更内容を適切なカテゴリ（Added, Changed, Fixed, Removed など）に分類して記載すること
