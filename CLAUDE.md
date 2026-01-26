@@ -590,6 +590,13 @@ Apache License Version 2.0
 
 ## 開発ワークフロー規約
 
+### リポジトリ構成
+
+- **プライマリリポジトリ**: GitLab (`gitlab.green-rabbit.net`)
+- **ミラーリポジトリ**: GitHub (`github.com/kimata/amazhist-python`)
+
+GitLab にプッシュすると、自動的に GitHub にミラーリングされます。GitHub への直接プッシュは不要です。
+
 ### コミット時の注意
 
 - 今回のセッションで作成し、プロジェクトが機能するのに必要なファイル以外は git add しないこと
@@ -607,7 +614,22 @@ Apache License Version 2.0
 - 関連するドキュメントも更新すること
 - mypy, pyright, ty がパスすることを確認すること
 
-### タグ作成時の注意
+### リリース（タグ作成）時
 
-- タグを打つ前に `CHANGELOG.md` を更新すること
-- 変更内容を適切なカテゴリ（Added, Changed, Fixed, Removed など）に分類して記載すること
+リリースタグを作成する際は、以下の手順に従うこと：
+
+1. **CHANGELOG.md を更新する**
+    - 新しいバージョンのセクションを追加
+    - 含まれる変更を以下のカテゴリで記載：
+        - `Added`: 新機能
+        - `Changed`: 既存機能の変更
+        - `Fixed`: バグ修正
+        - `Removed`: 削除された機能
+        - `Security`: セキュリティ関連の修正
+    - [Keep a Changelog](https://keepachangelog.com/) 形式を参考にする
+
+2. **タグを作成する**
+    ```bash
+    git tag -a v1.x.x -m "バージョン説明"
+    git push origin v1.x.x
+    ```
