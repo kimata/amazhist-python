@@ -53,6 +53,7 @@ class Handle:
             profile_name="Amazhist",
             data_dir=self.config.selenium_data_dir_path,
             clear_profile_on_error=self.clear_profile_on_browser_error,
+            stealth_mode=False,
         )
 
         if self.ignore_cache:
