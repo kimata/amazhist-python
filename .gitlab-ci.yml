@@ -28,6 +28,7 @@ test-typecheck:
                   - uv.lock
           paths:
               - ${UV_CACHE_DIR}
+              - .mypy_cache/
 
 test-pytest:
     stage: test
