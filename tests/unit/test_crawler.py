@@ -992,7 +992,7 @@ class TestExecuteLogin:
         driver.find_element.side_effect = find_element_side_effect
 
         def find_elements_side_effect(by, xpath):
-            if 'ap_email" and @type!="hidden"' in xpath:
+            if '@id="ap_email"' in xpath:
                 return [mock_email]
             elif "continue" in xpath:
                 return [mock_continue]
@@ -2778,7 +2778,7 @@ class TestExecuteLoginWithoutContinue:
         driver.find_element.side_effect = find_element_side_effect
 
         def find_elements_side_effect(by, xpath):
-            if 'ap_email" and @type!="hidden"' in xpath:
+            if '@id="ap_email"' in xpath:
                 return [mock_email]  # メールアドレス欄はある
             elif "continue" in xpath:
                 return []  # 続行ボタンはない

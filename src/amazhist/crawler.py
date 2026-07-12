@@ -115,9 +115,14 @@ def _gen_submit_button_xpath(button_id: str) -> str:
     """サインインページの送信ボタンの XPath を生成
 
     新しいサインインページでは id が input ではなく span ラッパー側に付いているため、
-    両方の形式にマッチする XPath を生成する。
+    両方の形式にマッチする XPath を生成する。どちらにもマッチしない場合に備えて、
+    サインインフォーム（name="signIn"）内の submit ボタンへのフォールバックも含める。
     """
-    return f'//input[@id="{button_id}"] | //span[@id="{button_id}"]//input[@type="submit"]'
+    return (
+        f'//input[@id="{button_id}"]'
+        f' | //span[@id="{button_id}"]//input[@type="submit"]'
+        f' | //form[@name="signIn"]//input[@type="submit"]'
+    )
 
 
 def _execute_login(handle: amazhist.handle.Handle) -> None:
@@ -125,9 +130,11 @@ def _execute_login(handle: amazhist.handle.Handle) -> None:
 
     time.sleep(1)
 
-    if my_lib.selenium_util.xpath_exists(driver, '//input[@id="ap_email" and @type!="hidden"]'):
-        driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
-        driver.find_element(By.XPATH, '//input[@id="ap_email"]').send_keys(handle.get_login_user())
+    # NOTE: 新しいサインインページではメール入力欄の id が ap_email_login になっている
+    email_xpath = '//input[(@id="ap_email" or @id="ap_email_login") and @type!="hidden"]'
+    if my_lib.selenium_util.xpath_exists(driver, email_xpath):
+        driver.find_element(By.XPATH, email_xpath).clear()
+        driver.find_element(By.XPATH, email_xpath).send_keys(handle.get_login_user())
 
         continue_xpath = _gen_submit_button_xpath("continue")
         if my_lib.selenium_util.xpath_exists(driver, continue_xpath):
