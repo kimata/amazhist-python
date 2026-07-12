@@ -19,6 +19,7 @@ import logging
 import re
 import time
 import traceback
+from typing import Any
 
 import my_lib.graceful_shutdown
 import my_lib.selenium_util
@@ -140,17 +141,25 @@ def _execute_login(handle: amazhist.handle.Handle) -> None:
         _resolve_captcha(handle)
 
 
+def _is_signin_page(driver: Any) -> bool:
+    """サインインページに居るかを URL で判定
+
+    ページタイトルは言語設定により変化する（例: "Amazon Sign-In"）ため、URL パスで判定する。
+    """
+    return amazhist.const.SIGNIN_URL_PATH in driver.current_url
+
+
 def _keep_logged_on(handle: amazhist.handle.Handle) -> None:
     driver, _wait = handle.get_selenium_driver()
 
-    if not re.match("Amazonサインイン", driver.title):
+    if not _is_signin_page(driver):
         return
 
     logging.info("ログインを試みます")
 
     def _try_login():
         _execute_login(handle)
-        if re.match("Amazonサインイン", driver.title):
+        if _is_signin_page(driver):
             dump_id = amazhist.const.generate_debug_dump_id()
             my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
             raise amazhist.exceptions.LoginError("ログイン失敗")

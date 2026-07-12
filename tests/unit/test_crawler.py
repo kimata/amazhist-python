@@ -303,7 +303,7 @@ class TestKeepLoggedOn:
     def test_keep_logged_on_not_login_page(self, handle):
         """ログインページでない場合は何もしない"""
         driver, _ = handle.get_selenium_driver()
-        driver.title = "Amazon.co.jp 購入履歴"
+        driver.current_url = "https://www.amazon.co.jp/your-orders/orders"
 
         amazhist.crawler._keep_logged_on(handle)
 
@@ -313,14 +313,14 @@ class TestKeepLoggedOn:
     def test_keep_logged_on_login_page(self, handle):
         """ログインページの場合"""
         driver, _ = handle.get_selenium_driver()
-        driver.title = "Amazonサインイン"
+        driver.current_url = "https://www.amazon.co.jp/ap/signin?openid.mode=checkid_setup"
 
         # ログイン成功をシミュレート
-        def change_title(*args, **kwargs):
-            driver.title = "Amazon.co.jp"
+        def change_url(*args, **kwargs):
+            driver.current_url = "https://www.amazon.co.jp/your-orders/orders"
 
         mock_submit = unittest.mock.MagicMock()
-        mock_submit.click.side_effect = change_title
+        mock_submit.click.side_effect = change_url
         driver.find_element.return_value = mock_submit
 
         # CAPTCHA入力フォームがないことをシミュレート
@@ -1100,9 +1100,9 @@ class TestKeepLoggedOnFailure:
     def test_keep_logged_on_login_failure(self, handle):
         """ログイン失敗時は例外を発生"""
         driver, _ = handle.get_selenium_driver()
-        driver.title = "Amazonサインイン"
+        driver.current_url = "https://www.amazon.co.jp/ap/signin?openid.mode=checkid_setup"
 
-        # ログインしてもタイトルが変わらない
+        # ログインしても URL が変わらない
         driver.find_elements.return_value = []
 
         mock_submit = unittest.mock.MagicMock()

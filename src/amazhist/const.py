@@ -4,6 +4,7 @@ ORDER_COUNT_PER_PAGE = 10
 HIST_URL = "https://www.amazon.co.jp/your-orders/orders"
 HIST_URL_BY_YEAR = "https://www.amazon.co.jp/your-orders/orders?timeFilter=year-{year}&startIndex={start}"
 HIST_URL_BY_ORDER_NO = "https://www.amazon.co.jp/your-orders/order-details?orderID={no}"
+SIGNIN_URL_PATH = "/ap/signin"
 
 # リトライ設定
 RETRY_URL_ACCESS = 3
