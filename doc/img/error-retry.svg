@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 720" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic UI','Noto Sans CJK JP',sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 z" fill="#5c6470"/>
+    </marker>
+    <marker id="ahg" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 z" fill="#2e7d32"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="940" height="720" fill="#ffffff"/>
+
+  <!-- 左: 記録 -->
+  <text x="230" y="34" text-anchor="middle" font-size="14" font-weight="bold" fill="#1a1d21">収集中: エラーの記録</text>
+
+  <rect x="60" y="52" width="340" height="64" rx="10" fill="#fbeeee" stroke="#c9302c" stroke-width="1.5"/>
+  <text x="230" y="76" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1a1d21">パース失敗・タイムアウト・取得失敗など</text>
+  <text x="230" y="96" text-anchor="middle" font-size="11" fill="#5c6470">該当箇所で warning ログ + 必要ならページダンプ</text>
+  <path d="M230,116 L230,142" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <rect x="60" y="142" width="340" height="88" rx="8" fill="#ffffff" stroke="#c9302c" stroke-width="1.5"/>
+  <text x="230" y="164" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1a1d21">handle.record_or_update_error()</text>
+  <text x="230" y="184" text-anchor="middle" font-size="11.5" fill="#1a1d21">同一 URL + context の未解決エラーあり</text>
+  <text x="230" y="200" text-anchor="middle" font-size="11.5" fill="#1a1d21">→ retry_count++ ／ なければ新規 INSERT</text>
+  <text x="230" y="220" text-anchor="middle" font-size="11" fill="#5c6470">年・ページ・ページ内位置も保存（再取得時の特定用）</text>
+  <path d="M230,230 L230,256" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <rect x="60" y="256" width="340" height="112" rx="8" fill="#f1f3f5" stroke="#5c6470"/>
+  <text x="230" y="278" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1a1d21">context（エラーの発生箇所）</text>
+  <text x="90" y="302" font-size="11.5" fill="#1a1d21">order　　　 注文の取得・パース失敗</text>
+  <text x="90" y="320" font-size="11.5" fill="#1a1d21">category　 カテゴリ（パンくず）取得失敗</text>
+  <text x="90" y="338" font-size="11.5" fill="#1a1d21">thumbnail　サムネイル画像の取得・検証失敗</text>
+  <text x="90" y="356" font-size="11" fill="#1a1d21">year　　　　注文件数のフォールバック計数</text>
+
+  <path d="M230,368 L230,382" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+  <rect x="60" y="382" width="340" height="52" rx="8" fill="#ffffff" stroke="#5c6470"/>
+  <text x="230" y="404" text-anchor="middle" font-size="12" fill="#1a1d21">uv run amazhist -E で一覧・詳細を確認</text>
+  <text x="230" y="422" text-anchor="middle" font-size="11" fill="#5c6470">-a: 解決済みも表示 / -i ID: 1 件の詳細表示</text>
+
+  <!-- 右: リトライ -->
+  <text x="680" y="34" text-anchor="middle" font-size="14" font-weight="bold" fill="#1a1d21">-r 実行時: crawler.retry_failed_items()</text>
+
+  <rect x="460" y="52" width="440" height="96" rx="10" fill="#ffffff" stroke="#b06000" stroke-width="1.5"/>
+  <text x="476" y="76" font-size="12.5" font-weight="bold" fill="#1a1d21">① 年単位の再巡回 — _retry_failed_years()</text>
+  <text x="476" y="98" font-size="11.5" fill="#1a1d21">order_count_fallback エラーの年を対象に year_status /</text>
+  <text x="476" y="116" font-size="11.5" fill="#1a1d21">page_status をリセット（reset_year_status）して年ごと再収集</text>
+  <text x="476" y="136" font-size="11" fill="#5c6470">成功した年のエラーを解決済みに更新</text>
+  <path d="M680,148 L680,168" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <rect x="460" y="168" width="440" height="196" rx="10" fill="#ffffff" stroke="#b06000" stroke-width="1.5"/>
+  <text x="476" y="192" font-size="12.5" font-weight="bold" fill="#1a1d21">② 注文の再取得 — _retry_failed_orders() → _retry_single_order()</text>
+  <text x="476" y="216" font-size="11.5" font-weight="bold" fill="#1a1d21">エラー情報に応じて 3 通りの戦略:</text>
+  <text x="476" y="238" font-size="11.5" fill="#1a1d21">・注文番号もページ内位置もない → 該当ページ全体を再巡回</text>
+  <text x="476" y="260" font-size="11.5" fill="#1a1d21">・過去の年 → 注文一覧ページに戻り、位置または注文番号で特定して</text>
+  <text x="476" y="278" font-size="11.5" fill="#1a1d21">　詳細リンクを再取得（_retry_order_from_list_page）</text>
+  <text x="476" y="300" font-size="11.5" fill="#1a1d21">・現在の年 + 注文番号あり → 注文番号から詳細 URL を構築して直接取得</text>
+  <text x="476" y="322" font-size="11" fill="#5c6470">（新規注文でページ位置がずれる可能性があるため、現在年は一覧を辿らない）</text>
+  <text x="476" y="348" font-size="11" fill="#5c6470">成功時は同一注文番号のエラーをまとめて解決済みに更新</text>
+  <path d="M680,364 L680,384" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <rect x="460" y="384" width="440" height="84" rx="10" fill="#ffffff" stroke="#b06000" stroke-width="1.5"/>
+  <text x="476" y="408" font-size="12.5" font-weight="bold" fill="#1a1d21">③ カテゴリの再取得 — _retry_failed_categories()</text>
+  <text x="476" y="430" font-size="11.5" fill="#1a1d21">商品ページからパンくずを再取得（fetch_item_category）し、</text>
+  <text x="476" y="448" font-size="11.5" fill="#1a1d21">items テーブルの category を URL 一致で更新（update_item_category）</text>
+  <path d="M680,468 L680,488" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <rect x="460" y="488" width="440" height="84" rx="10" fill="#ffffff" stroke="#b06000" stroke-width="1.5"/>
+  <text x="476" y="512" font-size="12.5" font-weight="bold" fill="#1a1d21">④ サムネイルの再取得 — _retry_failed_thumbnails()</text>
+  <text x="476" y="534" font-size="11.5" fill="#1a1d21">items テーブルと商品名で突き合わせて ASIN を特定し、</text>
+  <text x="476" y="552" font-size="11.5" fill="#1a1d21">_save_thumbnail() で画像を保存し直す（ASIN 不明はスキップ）</text>
+  <path d="M680,572 L680,592" stroke="#2e7d32" stroke-width="1.8" fill="none" marker-end="url(#ahg)"/>
+
+  <rect x="460" y="592" width="440" height="56" rx="10" fill="#edf6ee" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="680" y="614" text-anchor="middle" font-size="12.5" font-weight="bold" fill="#1a1d21">成功項目を mark_error_resolved で解決済みに更新</text>
+  <text x="680" y="634" text-anchor="middle" font-size="11" fill="#5c6470">段階ごとの成功 / 失敗件数をログに出力</text>
+
+  <!-- 下部ノート -->
+  <rect x="60" y="668" width="840" height="0" fill="none"/>
+  <text x="60" y="672" font-size="11.5" fill="#5c6470">※ -r -i ID で特定のエラー 1 件だけを再取得できる（retry_error_by_id — context に応じて上記 ①〜④ のいずれかの処理を単発実行）。</text>
+  <text x="60" y="692" font-size="11.5" fill="#5c6470">※ 各段階はループごとに is_shutdown_requested() を確認し、Ctrl+C で中断可能。</text>
+</svg>

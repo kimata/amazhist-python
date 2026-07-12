@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 660" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic UI','Noto Sans CJK JP',sans-serif">
+  <rect x="0" y="0" width="940" height="660" fill="#ffffff"/>
+  <text x="470" y="34" text-anchor="middle" font-size="14" font-weight="bold" fill="#1a1d21">SQLite スキーマ（schema/sqlite.schema）— キャッシュ DB: data/amazon/cache.dat（config の data.amazon.cache.order）</text>
+
+  <!-- items -->
+  <rect x="30" y="60" width="300" height="360" rx="10" fill="#ffffff" stroke="#2e7d32" stroke-width="1.5"/>
+  <rect x="30" y="60" width="300" height="36" rx="10" fill="#edf6ee" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="180" y="84" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a1d21">items — 商品（1 行 = 1 商品）</text>
+  <text x="46" y="118" font-size="11.5" fill="#1a1d21">id　INTEGER PK AUTOINCREMENT</text>
+  <text x="46" y="138" font-size="11.5" fill="#1a1d21">order_no　注文番号（NOT NULL）</text>
+  <text x="46" y="158" font-size="11.5" fill="#1a1d21">date　注文日（ISO 8601 文字列）</text>
+  <text x="46" y="178" font-size="11.5" fill="#1a1d21">name　商品名（NOT NULL）</text>
+  <text x="46" y="198" font-size="11.5" fill="#1a1d21">url / asin　販売ページ URL・ASIN（NULL 可）</text>
+  <text x="46" y="218" font-size="11.5" fill="#1a1d21">count / price　数量・価格</text>
+  <text x="46" y="238" font-size="11.5" fill="#1a1d21">category　カテゴリ（JSON 文字列）</text>
+  <text x="46" y="258" font-size="11.5" fill="#1a1d21">seller / condition / kind　販売者・状態・種別</text>
+  <text x="46" y="278" font-size="11.5" fill="#1a1d21">order_time_filter / order_page　取得元の年・ページ</text>
+  <text x="46" y="298" font-size="11.5" fill="#1a1d21">created_at　作成日時</text>
+  <text x="46" y="326" font-size="11.5" font-weight="bold" fill="#2e7d32">UNIQUE(order_no, asin) → UPSERT の置換キー</text>
+  <text x="46" y="346" font-size="11" fill="#5c6470">※ asin が NULL の行は upsert 時の先行 DELETE と</text>
+  <text x="46" y="362" font-size="11" fill="#5c6470">　 起動時掃除で重複を防止（database.py）</text>
+  <text x="46" y="390" font-size="11" fill="#5c6470">INDEX: date / order_no / asin</text>
+  <text x="46" y="408" font-size="11" fill="#5c6470">kind: "Normal"（通常）/ "Digital"（デジタル注文）</text>
+
+  <!-- error_log -->
+  <rect x="360" y="60" width="300" height="360" rx="10" fill="#ffffff" stroke="#c9302c" stroke-width="1.5"/>
+  <rect x="360" y="60" width="300" height="36" rx="10" fill="#fbeeee" stroke="#c9302c" stroke-width="1.5"/>
+  <text x="510" y="84" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a1d21">error_log — エラー管理</text>
+  <text x="376" y="118" font-size="11.5" fill="#1a1d21">id　INTEGER PK AUTOINCREMENT</text>
+  <text x="376" y="138" font-size="11.5" fill="#1a1d21">url　エラー発生 URL（NOT NULL）</text>
+  <text x="376" y="158" font-size="11.5" fill="#1a1d21">error_type　timeout / parse_error / fetch_error /</text>
+  <text x="376" y="174" font-size="11.5" fill="#1a1d21">　price_error / no_order_no / order_count_fallback 等</text>
+  <text x="376" y="194" font-size="11.5" fill="#1a1d21">context　order / category / thumbnail / year</text>
+  <text x="376" y="214" font-size="11.5" fill="#1a1d21">error_message　エラーメッセージ</text>
+  <text x="376" y="234" font-size="11.5" fill="#1a1d21">order_no / item_name　対象の注文・商品</text>
+  <text x="376" y="254" font-size="11.5" fill="#1a1d21">order_year / order_page / order_index</text>
+  <text x="376" y="270" font-size="11.5" fill="#5c6470">　（一覧ページ上の位置 — 再取得時の特定に使用）</text>
+  <text x="376" y="290" font-size="11.5" fill="#1a1d21">retry_count　同一エラーの再発回数</text>
+  <text x="376" y="310" font-size="11.5" fill="#1a1d21">resolved　解決済みフラグ（0 / 1）</text>
+  <text x="376" y="330" font-size="11.5" fill="#1a1d21">created_at　記録日時</text>
+  <text x="376" y="358" font-size="11.5" font-weight="bold" fill="#c9302c">同一 url + context の未解決エラーは新規追加せず</text>
+  <text x="376" y="374" font-size="11.5" font-weight="bold" fill="#c9302c">retry_count をインクリメント</text>
+  <text x="376" y="398" font-size="11" fill="#5c6470">INDEX: resolved / context</text>
+
+  <!-- year_status -->
+  <rect x="690" y="60" width="220" height="130" rx="10" fill="#ffffff" stroke="#1a5fa8" stroke-width="1.5"/>
+  <rect x="690" y="60" width="220" height="36" rx="10" fill="#ecf3fa" stroke="#1a5fa8" stroke-width="1.5"/>
+  <text x="800" y="84" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a1d21">year_status — 年の進捗</text>
+  <text x="706" y="118" font-size="11.5" fill="#1a1d21">year　TEXT PK</text>
+  <text x="706" y="138" font-size="11.5" fill="#1a1d21">order_count　その年の注文件数</text>
+  <text x="706" y="158" font-size="11.5" fill="#1a1d21">checked　全ページ処理完了フラグ</text>
+  <text x="706" y="178" font-size="11" fill="#5c6470">→ 完了済みの年を次回スキップ</text>
+
+  <!-- page_status -->
+  <rect x="690" y="210" width="220" height="120" rx="10" fill="#ffffff" stroke="#1a5fa8" stroke-width="1.5"/>
+  <rect x="690" y="210" width="220" height="36" rx="10" fill="#ecf3fa" stroke="#1a5fa8" stroke-width="1.5"/>
+  <text x="800" y="234" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a1d21">page_status — ページの進捗</text>
+  <text x="706" y="268" font-size="11.5" fill="#1a1d21">(year, page)　複合 PK</text>
+  <text x="706" y="288" font-size="11.5" fill="#1a1d21">checked　処理完了フラグ</text>
+  <text x="706" y="308" font-size="11" fill="#5c6470">→ 中断後の再開時に処理済み</text>
+  <text x="706" y="322" font-size="11" fill="#5c6470">　 ページを読み飛ばす</text>
+
+  <!-- metadata -->
+  <rect x="690" y="350" width="220" height="120" rx="10" fill="#ffffff" stroke="#6a4ba3" stroke-width="1.5"/>
+  <rect x="690" y="350" width="220" height="36" rx="10" fill="#f2eefa" stroke="#6a4ba3" stroke-width="1.5"/>
+  <text x="800" y="374" text-anchor="middle" font-size="13.5" font-weight="bold" fill="#1a1d21">metadata — キー値ペア</text>
+  <text x="706" y="408" font-size="11.5" fill="#1a1d21">key　TEXT PK / value　TEXT</text>
+  <text x="706" y="430" font-size="11.5" fill="#1a1d21">year_list　年リスト（JSON）</text>
+  <text x="706" y="450" font-size="11.5" fill="#1a1d21">last_modified　最終更新日時</text>
+
+  <!-- 下部ノート -->
+  <rect x="30" y="490" width="880" height="150" rx="10" fill="#f1f3f5" stroke="#5c6470" stroke-width="1"/>
+  <text x="46" y="516" font-size="13" font-weight="bold" fill="#1a1d21">キャッシュ無効化のルール（handle.py / crawler.py）</text>
+  <text x="46" y="540" font-size="12" fill="#1a1d21">・Handle 生成時、「今年」「キャッシュ最終更新年」「-y 指定年」の page_status を削除 → 再実行時にこれらの年は必ず巡回し直す</text>
+  <text x="46" y="562" font-size="12" fill="#1a1d21">・-f（強制再収集）時は get_order_stat / get_page_checked / get_year_checked が常に False を返し、全キャッシュを無視</text>
+  <text x="46" y="584" font-size="12" fill="#1a1d21">・注文件数は「キャッシュ最終更新年」以降の年のみ再取得し、過去の年は year_status の値を再利用</text>
+  <text x="46" y="606" font-size="12" fill="#1a1d21">・-r で再取得に成功したエラーは resolved = 1 に更新（注文は order_no 単位で一括解決）</text>
+  <text x="46" y="628" font-size="12" fill="#1a1d21">・日付・time_filter は文字列として保存され、読み出し時に database.py が datetime / int へ変換（旧スキーマ互換のフォールバック付き）</text>
+</svg>

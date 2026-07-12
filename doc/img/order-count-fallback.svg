@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 560" font-family="'Hiragino Kaku Gothic ProN','Yu Gothic UI','Noto Sans CJK JP',sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 z" fill="#5c6470"/>
+    </marker>
+    <marker id="ahg" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 z" fill="#2e7d32"/>
+    </marker>
+    <marker id="ahr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 z" fill="#c9302c"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="940" height="560" fill="#ffffff"/>
+
+  <text x="470" y="34" text-anchor="middle" font-size="14" font-weight="bold" fill="#1a1d21">order.parse_order_count(year) — 年間注文件数の 3 段階フォールバック</text>
+
+  <!-- 段階1 -->
+  <rect x="40" y="60" width="560" height="90" rx="10" fill="#ffffff" stroke="#1a5fa8" stroke-width="1.5"/>
+  <text x="56" y="86" font-size="13" font-weight="bold" fill="#1a5fa8">段階 1: あり得ないページ番号で件数表示を取得</text>
+  <text x="56" y="110" font-size="11.5" fill="#1a1d21">startIndex を極端に大きくした URL（MAX_PAGE_FOR_ORDER_COUNT = 10000 ページ目）を開く</text>
+  <text x="56" y="130" font-size="11.5" fill="#1a1d21">→ 注文が多い年でも総件数（span.num-orders）が表示されるため、それを parse_number で読む</text>
+
+  <path d="M640,105 L720,105" stroke="#2e7d32" stroke-width="1.8" fill="none" marker-end="url(#ahg)"/>
+  <text x="678" y="96" text-anchor="middle" font-size="11" fill="#2e7d32" font-weight="bold">要素あり</text>
+  <path d="M320,150 L320,180" stroke="#c9302c" stroke-width="1.8" fill="none" marker-end="url(#ahr)"/>
+  <text x="336" y="170" font-size="11" fill="#c9302c" font-weight="bold">要素なし（注文が少ない年）</text>
+
+  <!-- 段階2 -->
+  <rect x="40" y="180" width="560" height="90" rx="10" fill="#ffffff" stroke="#1a5fa8" stroke-width="1.5"/>
+  <text x="56" y="206" font-size="13" font-weight="bold" fill="#1a5fa8">段階 2: 先頭ページの件数テキストを取得</text>
+  <text x="56" y="230" font-size="11.5" fill="#1a1d21">1 ページ目を開き、_extract_order_count_from_page() で</text>
+  <text x="56" y="250" font-size="11.5" fill="#1a1d21">「◯件」形式のテキスト（span.num-orders）から件数を抽出</text>
+
+  <path d="M640,225 C690,225 700,150 720,125" stroke="#2e7d32" stroke-width="1.8" fill="none" marker-end="url(#ahg)"/>
+  <text x="672" y="212" text-anchor="middle" font-size="11" fill="#2e7d32" font-weight="bold">取得成功</text>
+  <path d="M320,270 L320,300" stroke="#c9302c" stroke-width="1.8" fill="none" marker-end="url(#ahr)"/>
+  <text x="336" y="290" font-size="11" fill="#c9302c" font-weight="bold">テキストなし</text>
+
+  <!-- 段階3 -->
+  <rect x="40" y="300" width="560" height="150" rx="10" fill="#fdf4e5" stroke="#b06000" stroke-width="1.5"/>
+  <text x="56" y="326" font-size="13" font-weight="bold" fill="#b06000">段階 3（フォールバック）: 注文カードを実際に数える</text>
+  <text x="56" y="350" font-size="11.5" fill="#1a1d21">1 ページ目の注文カード数をカウント。ちょうど 10 件（ORDER_COUNT_PER_PAGE）なら</text>
+  <text x="56" y="370" font-size="11.5" fill="#1a1d21">次ページ以降も 0 件になるまで巡回して合算</text>
+  <text x="56" y="398" font-size="11.5" font-weight="bold" fill="#b06000">数え漏れの可能性があるため order_count_fallback エラーとして記録</text>
+  <text x="56" y="418" font-size="11.5" fill="#1a1d21">→ 後から -r 実行時に「年単位の再巡回」の対象になる</text>
+  <text x="56" y="438" font-size="11" fill="#5c6470">※ 注文カードも見つからない場合は 0 件として警告ログのみ</text>
+
+  <path d="M600,375 L720,375 L780,180" stroke="#5c6470" stroke-width="0" fill="none"/>
+  <path d="M600,390 C680,390 700,250 725,150" stroke="#5c6470" stroke-width="1.6" fill="none" marker-end="url(#ah)"/>
+
+  <!-- 結果 -->
+  <rect x="700" y="72" width="200" height="66" rx="10" fill="#edf6ee" stroke="#2e7d32" stroke-width="1.5"/>
+  <text x="800" y="99" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1d21">注文件数を確定</text>
+  <text x="800" y="120" text-anchor="middle" font-size="11" fill="#5c6470">year_status に保存</text>
+
+  <!-- 用途 -->
+  <rect x="40" y="480" width="860" height="60" rx="10" fill="#f1f3f5" stroke="#5c6470" stroke-width="1"/>
+  <text x="56" y="504" font-size="12" font-weight="bold" fill="#1a1d21">件数の用途</text>
+  <text x="56" y="526" font-size="11.5" fill="#1a1d21">総ページ数の計算（ceil(件数 ÷ 10)）・プログレスバーの総量・「注文カードが見つからない」異常の検知（期待残数との比較）に使われる</text>
+</svg>

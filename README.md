@@ -177,6 +177,10 @@ uv run python src/app.py -r
 rm -rf data/chrome
 ```
 
+## 🏗️ アーキテクチャ
+
+内部構造（モジュール構成・収集パイプライン・データベース・エラー管理）の詳細は [doc/architecture.md](doc/architecture.md) を参照してください。
+
 ## 📚 参考
 
 Amazon 公式では購入履歴の CSV を提供するサービスがあります。購入日・商品・価格等の基本情報だけで十分な場合はこちらが便利です。
