@@ -170,6 +170,22 @@ class TestParseOrderCount:
 
         assert result == 42
 
+    def test_parse_order_count_with_comma(self, handle):
+        """注文件数がカンマ区切りの場合（1,234件 → 1234）"""
+        driver, _ = handle.get_selenium_driver()
+
+        count_elem = unittest.mock.MagicMock()
+        count_elem.text = "1,234件の注文"
+        driver.find_element.return_value = count_elem
+
+        with (
+            unittest.mock.patch("amazhist.crawler.visit_url"),
+            unittest.mock.patch("my_lib.selenium_util.xpath_exists", return_value=True),
+        ):
+            result = amazhist.order.parse_order_count(handle, 2024)
+
+        assert result == 1234
+
     def test_parse_order_count_without_count_element(self, handle):
         """注文件数要素がない場合（注文数が少ない）"""
         driver, _ = handle.get_selenium_driver()
@@ -841,6 +857,18 @@ class TestExtractOrderCountFromPage:
         result = amazhist.order._extract_order_count_from_page(mock_driver)
 
         assert result == 25
+
+    def test_extract_order_count_with_comma(self):
+        """カンマ区切りの件数（1,234件 → 1234）"""
+        mock_driver = unittest.mock.MagicMock()
+
+        elem = unittest.mock.MagicMock()
+        elem.text = "1,234件"
+        mock_driver.find_elements.return_value = [elem]
+
+        result = amazhist.order._extract_order_count_from_page(mock_driver)
+
+        assert result == 1234
 
     def test_extract_order_count_no_match(self):
         """マッチする要素がない場合"""

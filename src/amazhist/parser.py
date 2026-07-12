@@ -36,6 +36,24 @@ def parse_date_digital(date_text: str) -> datetime.datetime:
     return datetime.datetime.strptime(date_text, "%Y/%m/%d")
 
 
+def parse_number(text: str) -> int | None:
+    """テキストから数値を抽出（カンマ区切り対応）
+
+    カンマ区切りの完全な形（例: "1,234"）を優先し、
+    なければ連続する数字全体（例: "1500"）を抽出します。
+
+    Args:
+        text: 数値を含むテキスト（例: "1,234件", "42件の注文"）
+
+    Returns:
+        数値（整数）。抽出できない場合は None
+    """
+    match = re.search(r"(\d{1,3}(?:,\d{3})+|\d+)", text)
+    if match:
+        return int(match.group(1).replace(",", ""))
+    return None
+
+
 def parse_price(text: str) -> int | None:
     """価格テキストから数値を抽出
 
@@ -45,7 +63,4 @@ def parse_price(text: str) -> int | None:
     Returns:
         価格（整数）。パースできない場合は None
     """
-    match = re.match(r".*?(\d{1,3}(?:,\d{3})*)", text)
-    if match:
-        return int(match.group(1).replace(",", ""))
-    return None
+    return parse_number(text)

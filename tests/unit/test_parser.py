@@ -57,6 +57,30 @@ class TestParseDateDigital:
             amazhist.parser.parse_date_digital("2025-01-15")  # 形式が違う
 
 
+class TestParseNumber:
+    """parse_number のテスト"""
+
+    def test_parse_number_with_comma(self):
+        """カンマ区切り"""
+        assert amazhist.parser.parse_number("1,234件") == 1234
+
+    def test_parse_number_without_comma(self):
+        """カンマなし（4桁以上でも桁落ちしない）"""
+        assert amazhist.parser.parse_number("1500件") == 1500
+
+    def test_parse_number_with_text(self):
+        """テキスト中の数値"""
+        assert amazhist.parser.parse_number("42件の注文") == 42
+
+    def test_parse_number_large_with_comma(self):
+        """大きな数値（カンマ複数）"""
+        assert amazhist.parser.parse_number("1,234,567") == 1234567
+
+    def test_parse_number_no_digits(self):
+        """数値なし"""
+        assert amazhist.parser.parse_number("なし") is None
+
+
 class TestParsePrice:
     """parse_price のテスト"""
 
@@ -77,6 +101,12 @@ class TestParsePrice:
         result = amazhist.parser.parse_price("￥500")
 
         assert result == 500
+
+    def test_parse_price_no_comma_four_digits(self):
+        """カンマなし4桁以上（桁落ちしないこと）"""
+        assert amazhist.parser.parse_price("￥1500") == 1500
+        assert amazhist.parser.parse_price("1500円") == 1500
+        assert amazhist.parser.parse_price("￥12345") == 12345
 
     def test_parse_price_large_number(self):
         """大きな金額"""

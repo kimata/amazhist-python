@@ -124,6 +124,58 @@ class TestDatabaseItems:
         assert len(items) == 1
         assert items[0].price == 2000
 
+    def test_upsert_item_null_asin_no_duplicate(self, db):
+        """ASIN が NULL のアイテムを再挿入しても重複しない"""
+        item = amazhist.item.Item(
+            no="503-1234567-8901234",
+            date=datetime.datetime(2025, 1, 15),
+            name="販売終了商品",
+            url=None,
+            asin=None,
+            price=500,
+        )
+
+        db.upsert_item(item)
+        db.upsert_item(item)
+
+        items = db.get_item_list()
+        assert len(items) == 1
+        assert items[0].name == "販売終了商品"
+
+    def test_upsert_item_null_asin_different_names(self, db):
+        """ASIN が NULL でも商品名が異なれば別行として保持される"""
+        for name in ["商品A", "商品B"]:
+            db.upsert_item(
+                amazhist.item.Item(
+                    no="503-1234567-8901234",
+                    date=datetime.datetime(2025, 1, 15),
+                    name=name,
+                    asin=None,
+                )
+            )
+
+        assert len(db.get_item_list()) == 2
+
+    def test_cleanup_duplicate_null_asin_on_open(self, tmp_path):
+        """過去バージョンで蓄積した ASIN NULL の重複行が起動時に掃除される"""
+        db_path = tmp_path / "legacy.db"
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        conn = db._get_conn()
+        for price in [100, 200, 300]:
+            conn.execute(
+                "INSERT INTO items (order_no, date, name, asin, price) VALUES (?, ?, ?, NULL, ?)",
+                ("001-0000000-0000000", "2025-01-15T00:00:00", "重複商品", price),
+            )
+        conn.commit()
+        db.close()
+
+        db = amazhist.database.open_database(db_path, SCHEMA_PATH)
+        items = db.get_item_list()
+        db.close()
+
+        assert len(items) == 1
+        assert items[0].price == 300  # 最新（最大 id）の行が残る
+
     def test_get_item_list_sorted(self, db):
         """アイテムリストが日付順にソートされる"""
         items = [

@@ -86,7 +86,28 @@ class Database:
         self._conn.row_factory = sqlite3.Row
 
         my_lib.sqlite_util.exec_schema_from_file(self._conn, self._schema_path)
+        self._cleanup_duplicate_null_asin_items()
         self._conn.commit()
+
+    def _cleanup_duplicate_null_asin_items(self) -> None:
+        """ASIN が NULL の重複商品行を削除（最新の行を残す）
+
+        UNIQUE(order_no, asin) は SQLite の仕様上 NULL 同士を別値として扱うため、
+        過去バージョンでは asin が NULL の商品が再収集のたびに重複していた。
+        """
+        if self._conn is None:
+            return
+        cursor = self._conn.execute(
+            """
+            DELETE FROM items
+            WHERE asin IS NULL
+              AND id NOT IN (
+                  SELECT MAX(id) FROM items WHERE asin IS NULL GROUP BY order_no, name
+              )
+            """
+        )
+        if cursor.rowcount > 0:
+            logging.info(f"ASIN 未設定の重複商品行を {cursor.rowcount} 件削除しました")
 
     def close(self) -> None:
         """データベース接続を閉じる"""
@@ -110,6 +131,13 @@ class Database:
         item_dict = item.to_dict()
 
         conn = self._get_conn()
+        # NOTE: UNIQUE(order_no, asin) は asin が NULL の場合に効かない（SQLite は NULL 同士を
+        # 別値として扱う）ため、INSERT OR REPLACE が置換にならず重複する。事前に削除して防ぐ。
+        if item_dict.get("asin") is None:
+            conn.execute(
+                "DELETE FROM items WHERE order_no = ? AND asin IS NULL AND name = ?",
+                (item_dict["no"], item_dict["name"]),
+            )
         conn.execute(
             """
             INSERT OR REPLACE INTO items (

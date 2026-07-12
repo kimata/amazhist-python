@@ -241,10 +241,9 @@ def _extract_order_count_from_page(driver) -> int | None:
 
     elems = driver.find_elements(By.XPATH, ORDER_COUNT_TEXT_XPATH)
     for elem in elems:
-        text = elem.text
-        match = re.search(r"(\d+)", text)
-        if match:
-            return int(match.group(1))
+        count = amazhist.parser.parse_number(elem.text)
+        if count is not None:
+            return count
     return None
 
 
@@ -274,8 +273,8 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
     if my_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
         order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
 
-        match = re.match(r"(\d+)", order_count_text)
-        return int(match.group(1)) if match else 0
+        count = amazhist.parser.parse_number(order_count_text)
+        return count if count is not None else 0
     else:
         time.sleep(1)
 
