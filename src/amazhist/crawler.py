@@ -111,6 +111,15 @@ def _resolve_captcha(handle: amazhist.handle.Handle) -> None:
         raise amazhist.exceptions.CaptchaError("画像認証を解決できませんでした．") from None
 
 
+def _gen_submit_button_xpath(button_id: str) -> str:
+    """サインインページの送信ボタンの XPath を生成
+
+    新しいサインインページでは id が input ではなく span ラッパー側に付いているため、
+    両方の形式にマッチする XPath を生成する。
+    """
+    return f'//input[@id="{button_id}"] | //span[@id="{button_id}"]//input[@type="submit"]'
+
+
 def _execute_login(handle: amazhist.handle.Handle) -> None:
     driver, _wait = handle.get_selenium_driver()
 
@@ -120,8 +129,9 @@ def _execute_login(handle: amazhist.handle.Handle) -> None:
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').clear()
         driver.find_element(By.XPATH, '//input[@id="ap_email"]').send_keys(handle.get_login_user())
 
-        if my_lib.selenium_util.xpath_exists(driver, '//input[@id="continue"]'):
-            driver.find_element(By.XPATH, '//input[@id="continue"]').click()
+        continue_xpath = _gen_submit_button_xpath("continue")
+        if my_lib.selenium_util.xpath_exists(driver, continue_xpath):
+            driver.find_element(By.XPATH, continue_xpath).click()
             _wait_for_loading(handle)
 
     if my_lib.selenium_util.xpath_exists(driver, '//input[@id="ap_password"]'):
@@ -133,7 +143,7 @@ def _execute_login(handle: amazhist.handle.Handle) -> None:
     ).get_attribute("checked"):
         driver.find_element(By.XPATH, '//input[@name="rememberMe"]').click()
 
-    driver.find_element(By.XPATH, '//input[@id="signInSubmit"]').click()
+    driver.find_element(By.XPATH, _gen_submit_button_xpath("signInSubmit")).click()
 
     _wait_for_loading(handle)
 
