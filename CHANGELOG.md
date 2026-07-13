@@ -1,15 +1,15 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+このプロジェクトの注目すべき変更点をすべてこのファイルに記載します。
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+このファイルのフォーマットは [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に基づいており、
+このプロジェクトは [Semantic Versioning](https://semver.org/spec/v2.0.0.html) に準拠しています。
 
 ## [Unreleased]
 
 ## [0.2.1] - 2026-01-24
 
-### Added
+### ✨ Added
 
 - 年を指定して再取得する `-y` オプションを追加
 - 今年の巡回で5件連続キャッシュヒット時に早期終了する機能を追加
@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 詳細リンクがない注文をエラーログに記録
 - CHANGELOG.md を追加
 
-### Changed
+### 🔄 Changed
 
 - 例外クラスを exceptions.py に分離
 - my_lib.browser_manager を使用するよう Handle を変更
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - グレースフルシャットダウン処理を my_lib に移行
 - エントリポイントを `[project.scripts]` パターンに統一
 
-### Fixed
+### 🐛 Fixed
 
 - 注文件数が表示されない年の件数取得を修正
 - 詳細リンクがない注文でエラーが発生する問題を修正
@@ -38,24 +38,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 注文処理でエラーが発生してもプログレスバーを更新するように修正
 - Selenium 起動エラー時に不要なドライバー作成とダンプを行わないよう修正
 
-### Documentation
+### 📝 Documentation
 
 - README.md にトラブルシューティングセクションを追加
 - README.md に `-y` オプションの説明を追加
 - README.md にエラー管理と再取得オプションの詳細説明を追加
 
-### Tests
+### 🧪 Tests
 
 - ユニットテストを大幅に拡充（カバレッジ 99% 達成）
 
-### CI
+### 🔧 CI
 
 - 型チェッカー ty を CI に追加
 - GitHub Actions のアクションバージョンを更新
 
 ## [0.2.0] - 2025-12-31
 
-### Added
+### ✨ Added
 
 - デバッグモード (`-D`) とプロファイル削除 (`-R`) オプションを追加
 - プログレスバーに推定残り時間を表示
@@ -65,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl+C による graceful shutdown を実装
 - Selenium をモックした統合テストを追加
 
-### Changed
+### 🔄 Changed
 
 - pickle から SQLite へのデータベース移行を実装
 - enlighten から Rich に移行
@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker Compose 設定をモダン化
 - README.md を全面改善
 
-### Fixed
+### 🐛 Fixed
 
 - Amazon の注文詳細ページ構造変更に対応
 - サムネイル画像取得時のタイムアウトエラーをハンドリング
@@ -85,53 +85,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - visit_url に TimeoutException のリトライ処理を追加
 - pyright エラーを修正
 
-### Removed
+### 🗑️ Removed
 
 - archive 機能を削除
 - lib/local_lib を削除
 
 ## [0.1.9] - 2024-03-29
 
-### Fixed
+### 🐛 Fixed
 
 - typo 修正
 
 ## [0.1.8] - 2024-03-29
 
-### Added
+### ✨ Added
 
 - Mac OS 用の実行ファイル生成を追加
 
-### Changed
+### 🔄 Changed
 
 - ビルドに必要なツールを自動的にダウンロードするように変更
 
 ## [0.1.7] - 2024-03-28
 
-### Fixed
+### 🐛 Fixed
 
 - ドキュメントの日本語を整理
 
 ## [0.1.6] - 2024-03-28
 
-### Added
+### ✨ Added
 
 - データ収集の様子をドキュメントに追記
 - Windows で実行する方法についてドキュメントに追記
 
 ## [0.1.5] - 2024-03-28
 
-### Fixed
+### 🐛 Fixed
 
 - 終了メッセージを表示するように修正
 
-### Added
+### ✨ Added
 
 - 設定ファイルで生成する Excel ファイルのフォントを指定できるように追加
 
 ## [0.1.4] - 2024-03-28
 
-### Fixed
+### 🐛 Fixed
 
 - Windows で Enlighten が意図通り動くように必要なパッケージを明示的に追加
 - Windows でエラーが出ないように修正
@@ -139,30 +139,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.3] - 2024-03-28
 
-### Fixed
+### 🐛 Fixed
 
 - 圧縮時にディレクトリを含めないように修正
 
 ## [0.1.2] - 2024-03-27
 
-### Added
+### ✨ Added
 
 - Windows 用の実行ファイルに署名するように追加
 
 ## [0.1.1] - 2024-03-27
 
-### Added
+### ✨ Added
 
 - 実行ファイルを生成するための GitHub Action を追加
 
-### Changed
+### 🔄 Changed
 
 - ディレクトリ構成を大幅見直し
 - Nuitka でビルドするためのコマンドを作成
 
 ## [0.1.0] - 2024-03-26
 
-### Added
+### ✨ Added
 
 - 初回リリース
 - Amazon.co.jp の購入履歴を自動収集
