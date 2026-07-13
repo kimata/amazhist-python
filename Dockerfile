@@ -1,48 +1,74 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90
 
 # NOTE:
 # python:3.11.4-bookworm とかを使った場合，Selenium を同時に複数動かせないので，
 # Ubuntu イメージを使う
 
-ENV TZ=Asia/Tokyo
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install --assume-yes \
+RUN --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install --no-install-recommends --assume-yes \
     curl \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    tini \
+    build-essential \
+    git \
+    language-pack-ja \
+    tzdata \
+    fonts-noto-cjk
 
-RUN curl -O  https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-
-RUN apt-get update && apt-get install --assume-yes \
-    language-pack-ja fonts-ipaexfont-gothic \
-    python3 python3-pip \
-    ./google-chrome-stable_current_amd64.deb \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /opt/amazhist
+ENV TZ=Asia/Tokyo \
+    LANG=ja_JP.UTF-8 \
+    LANGUAGE=ja_JP:ja \
+    LC_ALL=ja_JP.UTF-8
 
 RUN locale-gen en_US.UTF-8
 RUN locale-gen ja_JP.UTF-8
 
-# NOTE: apt にあるものはバージョンが古いので直接入れる
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
+# NOTE: Chromeは頻繁に更新されるため、キャッシュバスターを使用して最新版を取得する
+ARG CHROME_CACHE_BUSTER
+RUN curl -O https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 
-COPY . .
+RUN --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install --no-install-recommends --assume-yes \
+    ./google-chrome-stable_current_amd64.deb
 
-RUN poetry config virtualenvs.create false \
- && poetry install \
- && rm -rf ~/.cache
-
-RUN useradd -m ubuntu
-
-RUN mkdir -p data
-RUN chown -R ubuntu:ubuntu .
+COPY font /usr/share/fonts/
+RUN fc-cache --force --verbose
 
 USER ubuntu
 
-ENV TERM=xterm-256color
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PATH="/home/ubuntu/.local/bin:$PATH"
+ENV UV_LINK_MODE=copy
 
-CMD ["./app/amazhist.py"]
+# ubuntu ユーザーで uv をインストール
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+WORKDIR /opt/amazhist
+
+RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    --mount=type=bind,source=.python-version,target=.python-version \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=README.md,target=README.md \
+    --mount=type=cache,target=/home/ubuntu/.cache/uv,uid=1000,gid=1000 \
+    uv sync --locked --no-install-project --no-editable --no-group dev
+
+ARG IMAGE_BUILD_DATE
+ENV IMAGE_BUILD_DATE=${IMAGE_BUILD_DATE}
+
+COPY --chown=ubuntu:ubuntu . .
+
+# NOTE: プロジェクト自身は editable でインストールする
+# （--no-editable にすると schema/ 等を __file__ 基準で解決するコードが壊れる）
+RUN --mount=type=cache,target=/home/ubuntu/.cache/uv,uid=1000,gid=1000 \
+    uv sync --locked --no-group dev
+
+# NOTE: プロジェクトはビルド時にインストール済みのため、実行時の再同期を抑止する
+ENV UV_NO_SYNC=1
+
+RUN mkdir -p data
+
+ENTRYPOINT ["/usr/bin/tini", "--", "uv", "run", "--no-group", "dev"]
+
+CMD ["amazhist"]
