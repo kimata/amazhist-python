@@ -14,7 +14,8 @@ RUN --mount=type=cache,target=/var/lib/apt,sharing=locked \
     git \
     language-pack-ja \
     tzdata \
-    fonts-noto-cjk
+    fonts-noto-cjk \
+    xvfb
 
 ENV TZ=Asia/Tokyo \
     LANG=ja_JP.UTF-8 \
@@ -71,4 +72,4 @@ RUN mkdir -p data
 
 ENTRYPOINT ["/usr/bin/tini", "--", "uv", "run", "--no-group", "dev"]
 
-CMD ["amazhist"]
+CMD ["xvfb-run", "-a", "--server-args=-screen 0 1920x1080x24", "amazhist"]
