@@ -21,10 +21,10 @@ import time
 import traceback
 from typing import Any
 
+import my_lib.browser
+import my_lib.browser.helpers
 import my_lib.graceful_shutdown
-import my_lib.selenium_util
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.common.by import By
+from my_lib.browser import Xpath
 
 import amazhist.config
 import amazhist.const
@@ -35,6 +35,7 @@ import amazhist.item
 import amazhist.order
 import amazhist.order_list
 import amazhist.parser
+import amazhist.webutil
 
 _STATUS_ORDER_COUNT = "[収集] 年数"
 
@@ -74,13 +75,13 @@ def _wait_for_loading(handle: amazhist.handle.Handle, sec: float = 2) -> None:
 
 
 def _resolve_captcha(handle: amazhist.handle.Handle) -> None:
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     logging.info("画像認証の解決を試みます")
 
     def _try_solve():
         captcha_img_path = handle.config.captcha_file_path
-        captcha_png_data = driver.find_element(By.XPATH, '//img[@alt="captcha"]').screenshot_as_png
+        captcha_png_data = amazhist.webutil.find(page, '//img[@alt="captcha"]').screenshot()
 
         logging.info(f"画像を保存しました: {captcha_img_path}")
 
@@ -89,18 +90,18 @@ def _resolve_captcha(handle: amazhist.handle.Handle) -> None:
 
         captcha_text = input(f"「{captcha_img_path}」に書かれているテキストを入力してください: ")
 
-        driver.find_element(By.XPATH, '//input[@name="cvf_captcha_input"]').send_keys(captcha_text.strip())
-        driver.find_element(By.XPATH, '//input[@type="submit"]').click()
+        amazhist.webutil.find(page, '//input[@name="cvf_captcha_input"]').type(captcha_text.strip())
+        amazhist.webutil.find(page, '//input[@type="submit"]').click()
 
         _wait_for_loading(handle)
 
-        if my_lib.selenium_util.xpath_exists(driver, '//input[@name="cvf_captcha_input"]'):
+        if page.exists(Xpath('//input[@name="cvf_captcha_input"]')):
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
             raise amazhist.exceptions.CaptchaError("CAPTCHA未解決")
 
     try:
-        my_lib.selenium_util.with_retry(
+        amazhist.webutil.with_retry(
             _try_solve,
             max_retries=amazhist.const.RETRY_CAPTCHA,
             exceptions=(amazhist.exceptions.CaptchaError,),
@@ -126,63 +127,65 @@ def _gen_submit_button_xpath(button_id: str) -> str:
 
 
 def _execute_login(handle: amazhist.handle.Handle) -> None:
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     time.sleep(1)
 
     # NOTE: 新しいサインインページではメール入力欄の id が ap_email_login になっている
     email_xpath = '//input[(@id="ap_email" or @id="ap_email_login") and @type!="hidden"]'
-    if my_lib.selenium_util.xpath_exists(driver, email_xpath):
-        driver.find_element(By.XPATH, email_xpath).clear()
-        driver.find_element(By.XPATH, email_xpath).send_keys(handle.get_login_user())
+    if page.exists(Xpath(email_xpath)):
+        email_elem = amazhist.webutil.find(page, email_xpath)
+        email_elem.clear()
+        email_elem.type(handle.get_login_user())
 
         continue_xpath = _gen_submit_button_xpath("continue")
-        if my_lib.selenium_util.xpath_exists(driver, continue_xpath):
-            driver.find_element(By.XPATH, continue_xpath).click()
+        if page.exists(Xpath(continue_xpath)):
+            amazhist.webutil.find(page, continue_xpath).click()
             _wait_for_loading(handle)
 
-    if my_lib.selenium_util.xpath_exists(driver, '//input[@id="ap_password"]'):
-        driver.find_element(By.XPATH, '//input[@id="ap_password"]').clear()
-        driver.find_element(By.XPATH, '//input[@id="ap_password"]').send_keys(handle.get_login_pass())
+    if page.exists(Xpath('//input[@id="ap_password"]')):
+        password_elem = amazhist.webutil.find(page, '//input[@id="ap_password"]')
+        password_elem.clear()
+        password_elem.type(handle.get_login_pass())
 
-    if my_lib.selenium_util.xpath_exists(driver, '//input[@id="rememberMe"]') and not driver.find_element(
-        By.XPATH, '//input[@name="rememberMe"]'
-    ).get_attribute("checked"):
-        driver.find_element(By.XPATH, '//input[@name="rememberMe"]').click()
+    if page.exists(Xpath('//input[@id="rememberMe"]')) and not amazhist.webutil.find(
+        page, '//input[@name="rememberMe"]'
+    ).evaluate("(el) => el.checked"):
+        amazhist.webutil.find(page, '//input[@name="rememberMe"]').click()
 
-    driver.find_element(By.XPATH, _gen_submit_button_xpath("signInSubmit")).click()
+    amazhist.webutil.find(page, _gen_submit_button_xpath("signInSubmit")).click()
 
     _wait_for_loading(handle)
 
-    if my_lib.selenium_util.xpath_exists(driver, '//input[@name="cvf_captcha_input"]'):
+    if page.exists(Xpath('//input[@name="cvf_captcha_input"]')):
         _resolve_captcha(handle)
 
 
-def _is_signin_page(driver: Any) -> bool:
+def _is_signin_page(page: Any) -> bool:
     """サインインページに居るかを URL で判定
 
     ページタイトルは言語設定により変化する（例: "Amazon Sign-In"）ため、URL パスで判定する。
     """
-    return amazhist.const.SIGNIN_URL_PATH in driver.current_url
+    return amazhist.const.SIGNIN_URL_PATH in page.url
 
 
 def _keep_logged_on(handle: amazhist.handle.Handle) -> None:
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
-    if not _is_signin_page(driver):
+    if not _is_signin_page(page):
         return
 
     logging.info("ログインを試みます")
 
     def _try_login():
         _execute_login(handle)
-        if _is_signin_page(driver):
+        if _is_signin_page(page):
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
             raise amazhist.exceptions.LoginError("ログイン失敗")
 
     try:
-        my_lib.selenium_util.with_retry(
+        amazhist.webutil.with_retry(
             _try_login,
             max_retries=amazhist.const.RETRY_LOGIN,
             exceptions=(amazhist.exceptions.LoginError,),
@@ -209,19 +212,19 @@ def gen_order_url(no: str) -> str:
 def visit_url(handle: amazhist.handle.Handle, url: str, caller_name: str) -> None:
     """URLにアクセス
 
-    TimeoutException が発生した場合はリトライします。
+    ページ遷移に失敗した場合はリトライします。
     """
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     def _load_page():
-        driver.get(url)
+        page.goto(url)
         _wait_for_loading(handle)
 
-    my_lib.selenium_util.with_retry(
+    amazhist.webutil.with_retry(
         _load_page,
         max_retries=amazhist.const.RETRY_URL_ACCESS,
         delay=amazhist.const.RETRY_DELAY_TIMEOUT,
-        exceptions=(TimeoutException,),
+        exceptions=(my_lib.browser.NavigationError,),
         on_retry=lambda attempt, e: logging.warning(
             f"タイムアウト。リトライします ({attempt}/{amazhist.const.RETRY_URL_ACCESS})"
         ),
@@ -248,23 +251,22 @@ def _fetch_order_list_by_year_page(
 
 def _fetch_year_list(handle: amazhist.handle.Handle) -> list[int]:
     """年リストを取得"""
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     visit_url(handle, amazhist.const.HIST_URL, get_caller_name())
 
     _keep_logged_on(handle)
 
-    driver.find_element(
-        By.XPATH, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
+    amazhist.webutil.find(
+        page, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
     ).click()
 
     _wait_for_loading(handle)
 
     year_str_list = [
         elem.text
-        for elem in driver.find_elements(
-            By.XPATH,
-            "//div[contains(@class, 'a-popover-wrapper')]//li",
+        for elem in page.find_all(
+            Xpath("//div[contains(@class, 'a-popover-wrapper')]//li"),
         )
     ]
 
@@ -326,8 +328,8 @@ def _fetch_order_count(handle: amazhist.handle.Handle) -> None:
 
 
 def _fetch_order_list_all_year(handle: amazhist.handle.Handle) -> None:
-    # Selenium ドライバーが起動していることを確認
-    handle.get_selenium_driver()
+    # ブラウザが起動していることを確認
+    handle.get_page()
 
     year_list = _fetch_year_list(handle)
     _fetch_order_count(handle)
@@ -380,7 +382,7 @@ def fetch_order_list(handle: amazhist.handle.Handle) -> None:
         handle: アプリケーションハンドル
     """
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     _setup_graceful_shutdown(handle)
 
@@ -391,7 +393,7 @@ def fetch_order_list(handle: amazhist.handle.Handle) -> None:
     except Exception:
         if not is_shutdown_requested():
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         raise
 
     if is_shutdown_requested():
@@ -413,7 +415,7 @@ def _retry_order_from_list_page(
         成功した場合 True
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
-    driver, _wait = handle.get_selenium_driver()
+    browser_page = handle.get_page()
 
     year = error_info.order_year
     page = error_info.order_page
@@ -433,7 +435,7 @@ def _retry_order_from_list_page(
     order_xpath: str | None = None
 
     if order_no is None and index is not None:
-        order_elems = driver.find_elements(By.XPATH, ORDER_XPATH)
+        order_elems = browser_page.find_all(Xpath(ORDER_XPATH))
         if index >= len(order_elems):
             logging.warning(
                 f"注文が見つかりませんでした（インデックス超過）: {year}年 {page}ページ {index + 1}番目"
@@ -443,9 +445,8 @@ def _retry_order_from_list_page(
         order_xpath = ORDER_XPATH + f"[{index + 1}]"
 
         # 注文番号を取得
-        order_no_elems = driver.find_elements(
-            By.XPATH,
-            order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
+        order_no_elems = browser_page.find_all(
+            Xpath(order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']"),
         )
         if not order_no_elems:
             logging.warning(f"注文番号が取得できませんでした: {year}年 {page}ページ {index + 1}番目")
@@ -454,12 +455,11 @@ def _retry_order_from_list_page(
         order_no = order_no_elems[0].text
     else:
         # 注文番号から注文を特定
-        order_elems = driver.find_elements(By.XPATH, ORDER_XPATH)
+        order_elems = browser_page.find_all(Xpath(ORDER_XPATH))
         for i in range(len(order_elems)):
             xpath = ORDER_XPATH + f"[{i + 1}]"
-            no_elems = driver.find_elements(
-                By.XPATH,
-                xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
+            no_elems = browser_page.find_all(
+                Xpath(xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']"),
             )
             if no_elems and no_elems[0].text == order_no:
                 order_xpath = xpath
@@ -470,12 +470,12 @@ def _retry_order_from_list_page(
         return False
 
     # 日付を取得
-    date_text = driver.find_element(
-        By.XPATH,
+    date_text = amazhist.webutil.text(
+        browser_page,
         order_xpath
         + "//li[contains(@class, 'order-header__header-list-item')]"
         + "//span[contains(@class, 'a-color-secondary') and contains(@class, 'aok-break-word')]",
-    ).text
+    )
     date = amazhist.parser.parse_date(date_text)
 
     # 詳細リンクを取得
@@ -484,11 +484,11 @@ def _retry_order_from_list_page(
         + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
         + "//a[contains(@href, 'order-details')]"
     )
-    order_details_elems = driver.find_elements(By.XPATH, order_details_xpath)
+    order_details_elems = browser_page.find_all(Xpath(order_details_xpath))
 
     url: str
     if order_details_elems:
-        url_attr = order_details_elems[0].get_attribute("href")
+        url_attr = order_details_elems[0].attr("href")
         if url_attr:
             logging.info(f"詳細リンクを取得しました: {order_no}")
             url = url_attr
@@ -809,9 +809,9 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
         handle.set_status(f"✅ エラーID {error_id} は既に解決済みです")
         return True
 
-    # エラーが有効な場合のみ Selenium を起動
+    # エラーが有効な場合のみブラウザを起動
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     _setup_graceful_shutdown(handle)
 
@@ -874,14 +874,14 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
         handle.set_status("❌ 再取得中にエラーが発生しました", is_error=True)
         if not is_shutdown_requested():
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         return False
 
 
 def retry_failed_items(handle: amazhist.handle.Handle) -> None:
     """エラーが発生したアイテムを再取得"""
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     _setup_graceful_shutdown(handle)
 
@@ -913,7 +913,7 @@ def retry_failed_items(handle: amazhist.handle.Handle) -> None:
     except Exception:
         if not is_shutdown_requested():
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         raise
 
     if is_shutdown_requested():
@@ -950,7 +950,7 @@ if __name__ == "__main__":
 
             _fetch_order_list_by_year(handle, year, start_page)
     except Exception:
-        driver, _wait = handle.get_selenium_driver()
+        page = handle.get_page()
         logging.error(traceback.format_exc())
         dump_id = amazhist.const.generate_debug_dump_id()
-        my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+        my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)

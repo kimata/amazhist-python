@@ -650,8 +650,8 @@ class TestHandleErrorLog:
         assert result == 2
 
 
-class TestHandleSelenium:
-    """Handle の Selenium テスト"""
+class TestHandleBrowser:
+    """Handle のブラウザテスト"""
 
     @pytest.fixture
     def mock_config(self, tmp_path):
@@ -683,20 +683,57 @@ class TestHandleSelenium:
             },
         }
 
-    def test_get_selenium_driver_initialized(self, mock_config, tmp_path):
-        """Selenium 初期化済みの場合"""
+    def test_get_page_initialized(self, mock_config, tmp_path):
+        """ブラウザ初期化済みの場合、get_page がそのページを返す"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            handle.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            mock_page = unittest.mock.MagicMock()
+            handle.get_page = unittest.mock.MagicMock(return_value=mock_page)
 
-            driver, wait = handle.get_selenium_driver()
+            page = handle.get_page()
 
-            assert driver is mock_driver
-            assert wait is mock_wait
+            assert page is mock_page
+
+            handle.finish()
+
+    def test_browser_manager_property(self, mock_config, tmp_path):
+        """browser_manager プロパティが BrowserManager を返す"""
+        import my_lib.browser
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            assert isinstance(handle.browser_manager, my_lib.browser.BrowserManager)
+
+            handle.finish()
+
+    def test_browser_manager_property_not_initialized(self, mock_config, tmp_path):
+        """browser_manager 未初期化時に例外"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._browser_manager = None
+
+            with pytest.raises(RuntimeError, match="BrowserManager is not initialized"):
+                _ = handle.browser_manager
+
+            handle.finish()
+
+    def test_get_page_not_initialized(self, mock_config, tmp_path):
+        """BrowserManager 未初期化時に get_page が例外"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            handle._browser_manager = None
+
+            with pytest.raises(RuntimeError, match="BrowserManager is not initialized"):
+                handle.get_page()
 
             handle.finish()
 
@@ -951,8 +988,13 @@ class TestPauseResumeLive:
             handle.finish()
 
 
-class TestGetSeleniumDriverCreation:
-    """get_selenium_driver の新規作成とエラーハンドリングのテスト"""
+class TestBrowserLifecycle:
+    """ブラウザの遅延起動・セッションリトライ・プロファイル削除のテスト
+
+    「遅延起動」「起動失敗時のプロファイル削除」は、新しい
+    my_lib.browser.BrowserManager では get_page（遅延起動）と
+    run_with_session_retry（SessionError 時のクリーン再起動）に分離された。
+    """
 
     @pytest.fixture
     def mock_config(self, tmp_path):
@@ -984,72 +1026,134 @@ class TestGetSeleniumDriverCreation:
             },
         }
 
-    def test_get_selenium_driver_create_new(self, mock_config, tmp_path):
-        """Selenium ドライバーを新規作成"""
+    def test_get_page_create_new(self, mock_config, tmp_path):
+        """get_page が遅延起動してページを返す"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        mock_driver = unittest.mock.MagicMock()
+        mock_page = unittest.mock.MagicMock()
+        mock_browser = unittest.mock.MagicMock()
+        mock_browser.pages.return_value = []
+        mock_browser.new_page.return_value = mock_page
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("my_lib.selenium_util.create_driver", return_value=mock_driver),
-            unittest.mock.patch("my_lib.selenium_util.clear_cache"),
-            unittest.mock.patch("selenium.webdriver.support.wait.WebDriverWait"),
+            unittest.mock.patch("my_lib.browser.factory.launch", return_value=mock_browser),
         ):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            assert not handle.has_selenium_driver()
+            assert not handle.has_browser()
 
-            driver, wait = handle.get_selenium_driver()
+            page = handle.get_page()
 
-            assert driver is mock_driver
-            assert handle.has_selenium_driver()
+            assert page is mock_page
+            assert handle.has_browser()
 
             handle.finish()
 
-    def test_get_selenium_driver_error_without_clear_profile(self, mock_config, tmp_path):
-        """Selenium 起動失敗時にエラーを投げる（プロファイル削除なし）"""
-        import my_lib.selenium_util
-
+    def test_get_page_reuses_existing_page(self, mock_config, tmp_path):
+        """既にタブがある場合は先頭タブを返す"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        existing_page = unittest.mock.MagicMock()
+        mock_browser = unittest.mock.MagicMock()
+        mock_browser.pages.return_value = [existing_page]
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("my_lib.selenium_util.create_driver", side_effect=Exception("起動失敗")),
-            unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete_profile,
+            unittest.mock.patch("my_lib.browser.factory.launch", return_value=mock_browser),
         ):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
 
-            with pytest.raises(my_lib.selenium_util.SeleniumError, match="Selenium の起動に失敗しました"):
-                handle.get_selenium_driver()
+            page = handle.get_page()
 
-            # clear_profile_on_browser_error=False なのでプロファイル削除されない
-            mock_delete_profile.assert_not_called()
+            assert page is existing_page
+            mock_browser.new_page.assert_not_called()
 
             handle.finish()
 
-    def test_get_selenium_driver_error_with_clear_profile(self, mock_config, tmp_path):
-        """Selenium 起動失敗時にプロファイルを削除"""
-        import my_lib.selenium_util
+    def test_session_retry_clears_profile_on_error(self, mock_config, tmp_path):
+        """SessionError 時にプロファイルを削除して再起動する"""
+        import my_lib.browser
 
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("my_lib.selenium_util.create_driver", side_effect=Exception("起動失敗")),
             unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete_profile,
         ):
             handle = amazhist.handle.Handle(
                 config=amazhist.config.Config.load(mock_config), clear_profile_on_browser_error=True
             )
 
-            with pytest.raises(my_lib.selenium_util.SeleniumError, match="Selenium の起動に失敗しました"):
-                handle.get_selenium_driver()
+            def failing():
+                raise my_lib.browser.SessionError("セッションが切断されました")
 
-            # clear_profile_on_browser_error=True なのでプロファイル削除される
-            # BrowserManager はリトライ時にもプロファイル削除するため、複数回呼ばれる
+            with pytest.raises(my_lib.browser.SessionError):
+                handle.browser_manager.run_with_session_retry(
+                    failing, max_retries=1, clear_profile_on_error=True
+                )
+
+            # リトライ時にプロファイルが削除される
             assert mock_delete_profile.call_count >= 1
             mock_delete_profile.assert_called_with("Amazhist", handle.config.selenium_data_dir_path)
 
+            handle.finish()
+
+    def test_session_retry_no_clear_profile(self, mock_config, tmp_path):
+        """clear_profile_on_error=False ではプロファイルを削除しない"""
+        import my_lib.browser
+
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with (
+            unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
+            unittest.mock.patch("my_lib.chrome_util.delete_profile") as mock_delete_profile,
+        ):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+
+            def failing():
+                raise my_lib.browser.SessionError("セッションが切断されました")
+
+            with pytest.raises(my_lib.browser.SessionError):
+                handle.browser_manager.run_with_session_retry(
+                    failing, max_retries=1, clear_profile_on_error=False
+                )
+
+            mock_delete_profile.assert_not_called()
+
+            handle.finish()
+
+    def test_quit_selenium_when_browser_active(self, mock_config, tmp_path):
+        """ブラウザ起動中は quit_selenium で終了する"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            mock_manager = unittest.mock.MagicMock()
+            mock_manager.has_browser.return_value = True
+            handle._browser_manager = mock_manager
+
+            handle.quit_selenium()
+
+            mock_manager.quit.assert_called_once()
+
+            handle._browser_manager = None
+            handle.finish()
+
+    def test_quit_selenium_when_no_browser(self, mock_config, tmp_path):
+        """ブラウザ未起動時は quit を呼ばない"""
+        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+            handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+            mock_manager = unittest.mock.MagicMock()
+            mock_manager.has_browser.return_value = False
+            handle._browser_manager = mock_manager
+
+            handle.quit_selenium()
+
+            mock_manager.quit.assert_not_called()
+
+            handle._browser_manager = None
             handle.finish()
 
 

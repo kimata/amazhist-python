@@ -2,73 +2,77 @@
 # ruff: noqa: S101
 """
 order.py のテスト
+
+ブラウザ層は my_lib.browser の Page 抽象を使用する。
+Page / Element のモックは conftest の build_page / build_element ヘルパー
+（make_page / make_element フィクスチャ）で組み立てる。
 """
 
 import datetime
 import unittest.mock
 
+import my_lib.browser
 import pytest
 
 import amazhist.config
+import amazhist.const
 import amazhist.handle
 import amazhist.order
 
 # NOTE: _get_caller_name のテストは crawler.py に統合されたため削除
 
 
+@pytest.fixture
+def mock_config(tmp_path):
+    """モック Config"""
+    return {
+        "base_dir": str(tmp_path),
+        "data": {
+            "amazon": {
+                "cache": {
+                    "order": "cache/order.db",
+                    "thumb": "thumb",
+                },
+            },
+            "selenium": "selenium",
+            "debug": "debug",
+        },
+        "output": {
+            "excel": {
+                "table": "output/amazhist.xlsx",
+                "font": {"name": "Arial", "size": 10},
+            },
+            "captcha": "captcha.png",
+        },
+        "login": {
+            "amazon": {
+                "user": "test@example.com",
+                "pass": "password",
+            },
+        },
+    }
+
+
+@pytest.fixture
+def handle(mock_config, tmp_path, browser_mocks):
+    """ブラウザモックを取り付けた Handle インスタンス"""
+    (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+
+    with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+        h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
+        browser_mocks(h)
+        h._db = unittest.mock.MagicMock()
+        yield h
+        h.finish()
+
+
 class TestParseOrder:
     """parse_order のテスト"""
 
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
     def test_parse_order_digital(self, handle):
         """デジタル注文のパース"""
-        driver, _ = handle.get_selenium_driver()
-
-        # デジタル注文ページをシミュレート
-        driver.find_elements.return_value = [unittest.mock.MagicMock()]
+        # デジタル注文要素が存在する
+        handle._test_page.exists.return_value = True
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -86,10 +90,8 @@ class TestParseOrder:
 
     def test_parse_order_default(self, handle):
         """通常注文のパース"""
-        driver, _ = handle.get_selenium_driver()
-
-        # 通常注文ページをシミュレート（デジタル注文要素なし）
-        driver.find_elements.return_value = []
+        # デジタル注文要素なし
+        handle._test_page.exists.return_value = False
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -109,95 +111,44 @@ class TestParseOrder:
 class TestParseOrderCount:
     """parse_order_count のテスト"""
 
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
-    def test_parse_order_count_with_count_element(self, handle):
+    def test_parse_order_count_with_count_element(self, handle, make_element):
         """注文件数要素がある場合"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # 注文件数表示をシミュレート
-        count_elem = unittest.mock.MagicMock()
-        count_elem.text = "42件の注文"
-        driver.find_element.return_value = count_elem
+        # 注文件数表示をシミュレート（num-orders 要素あり）
+        page.exists.return_value = True
+        page.find.return_value = make_element(text="42件の注文")
 
-        with (
-            unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", return_value=True),
-        ):
+        with unittest.mock.patch("amazhist.crawler.visit_url"):
             result = amazhist.order.parse_order_count(handle, 2024)
 
         assert result == 42
 
-    def test_parse_order_count_with_comma(self, handle):
+    def test_parse_order_count_with_comma(self, handle, make_element):
         """注文件数がカンマ区切りの場合（1,234件 → 1234）"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        count_elem = unittest.mock.MagicMock()
-        count_elem.text = "1,234件の注文"
-        driver.find_element.return_value = count_elem
+        page.exists.return_value = True
+        page.find.return_value = make_element(text="1,234件の注文")
 
-        with (
-            unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", return_value=True),
-        ):
+        with unittest.mock.patch("amazhist.crawler.visit_url"):
             result = amazhist.order.parse_order_count(handle, 2024)
 
         assert result == 1234
 
     def test_parse_order_count_without_count_element(self, handle):
         """注文件数要素がない場合（注文数が少ない）"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
         # 注文カード要素をシミュレート
         order_cards = [unittest.mock.MagicMock() for _ in range(5)]
-        # _extract_order_count_from_page で空リスト、注文カードで5件
-        driver.find_elements.side_effect = [[], order_cards]
+        # num-orders 要素なし → False、ORDER_XPATH あり → True
+        page.exists.side_effect = [False, True]
+        # _extract_order_count_from_page で空リスト、ORDER_XPATH で5件
+        page.find_all.side_effect = [[], order_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", side_effect=[False, True]),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -206,30 +157,28 @@ class TestParseOrderCount:
 
     def test_parse_order_count_no_orders(self, handle):
         """注文がない場合"""
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        page = handle._test_page
+        page.exists.return_value = False
+        page.find_all.return_value = []
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", return_value=False),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
 
         assert result == 0
 
-    def test_parse_order_count_with_page_text(self, handle):
-        """ページ内テキストから注文件数を取得（line 295）"""
-        driver, _ = handle.get_selenium_driver()
+    def test_parse_order_count_with_page_text(self, handle, make_element):
+        """ページ内テキストから注文件数を取得"""
+        page = handle._test_page
 
         # 「○件の注文」テキストがあるケース
-        count_elem = unittest.mock.MagicMock()
-        count_elem.text = "15件"
-        driver.find_elements.return_value = [count_elem]
+        page.exists.side_effect = [False, True]
+        page.find_all.return_value = [make_element(text="15件")]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", side_effect=[False, True]),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -237,25 +186,23 @@ class TestParseOrderCount:
         assert result == 15
 
     def test_parse_order_count_pagination(self, handle):
-        """複数ページにわたる注文のカウント（lines 303-312）"""
-        driver, _ = handle.get_selenium_driver()
-
-        import amazhist.const
+        """複数ページにわたる注文のカウント"""
+        page = handle._test_page
 
         # 1ページ目: ORDER_COUNT_PER_PAGE 件、2ページ目: 5件、3ページ目: 0件
         page1_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page2_cards = [unittest.mock.MagicMock() for _ in range(5)]
         page3_cards = []
 
-        # find_elements の呼び出し:
+        # find_all の呼び出し:
         # 1. _extract_order_count_from_page で空リスト（num-orders要素なし）
         # 2. ORDER_XPATH でページ1のカード（10件）
         # 3. ORDER_XPATH でページ2のカード（5件）
-        driver.find_elements.side_effect = [[], page1_cards, page2_cards, page3_cards]
+        page.exists.side_effect = [False, True]
+        page.find_all.side_effect = [[], page1_cards, page2_cards, page3_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", side_effect=[False, True]),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -264,20 +211,18 @@ class TestParseOrderCount:
         assert result == 15
 
     def test_parse_order_count_pagination_full_pages(self, handle):
-        """ページがちょうど終わる場合（line 307でbreak）"""
-        driver, _ = handle.get_selenium_driver()
-
-        import amazhist.const
+        """ページがちょうど終わる場合"""
+        page = handle._test_page
 
         # 1ページ目: ORDER_COUNT_PER_PAGE件、2ページ目: 0件（空）
         page1_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page2_cards = []
 
-        driver.find_elements.side_effect = [[], page1_cards, page2_cards]
+        page.exists.side_effect = [False, True]
+        page.find_all.side_effect = [[], page1_cards, page2_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", side_effect=[False, True]),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -285,26 +230,19 @@ class TestParseOrderCount:
         assert result == amazhist.const.ORDER_COUNT_PER_PAGE
 
     def test_parse_order_count_pagination_multiple_full_pages(self, handle):
-        """複数の満杯ページがある場合（line 312: page += 1）"""
-        driver, _ = handle.get_selenium_driver()
+        """複数の満杯ページがある場合"""
+        page = handle._test_page
 
-        import amazhist.const
-
-        # 1ページ目と2ページ目がORDER_COUNT_PER_PAGE、3ページ目は少ないか空
+        # 1ページ目と2ページ目がORDER_COUNT_PER_PAGE、3ページ目は少ない
         page1_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page2_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page3_cards = [unittest.mock.MagicMock() for _ in range(3)]  # 3件
 
-        # find_elements の呼び出し:
-        # 1. _extract_order_count_from_page で空リスト（num-orders要素なし）
-        # 2. ORDER_XPATH でページ1のカード（ORDER_COUNT_PER_PAGE件）
-        # 3. ORDER_XPATH でページ2のカード（ORDER_COUNT_PER_PAGE件）
-        # 4. ORDER_XPATH でページ3のカード（3件）
-        driver.find_elements.side_effect = [[], page1_cards, page2_cards, page3_cards]
+        page.exists.side_effect = [False, True]
+        page.find_all.side_effect = [[], page1_cards, page2_cards, page3_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("my_lib.selenium_util.xpath_exists", side_effect=[False, True]),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -314,86 +252,41 @@ class TestParseOrderCount:
 
 
 class TestParseOrderDigital:
-    """_parse_order_digital のテスト（lines 67-119）"""
+    """_parse_order_digital のテスト"""
 
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+    @staticmethod
+    def _digital_finder(make_element, *, link=None, name=None):
+        """デジタル注文ページの find（単一要素）side_effect を組み立てる。"""
+        date_elem = make_element(text="デジタル注文: 2024年1月15日")
+        no_elem = make_element(text="注文番号: D01-1234567-8901234")
+        price_elem = make_element(text="￥1,000")
 
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
-    def test_parse_order_digital_with_link(self, handle):
-        """デジタル注文パース（リンクあり、lines 67-119）"""
-        driver, _ = handle.get_selenium_driver()
-
-        # デジタル注文の日付
-        date_elem = unittest.mock.MagicMock()
-        date_elem.text = "デジタル注文: 2024年1月15日"
-
-        # 注文番号
-        no_elem = unittest.mock.MagicMock()
-        no_elem.text = "注文番号: D01-1234567-8901234"
-
-        # 商品リンク
-        link_elem = unittest.mock.MagicMock()
-        link_elem.text = "Kindle本タイトル"
-        link_elem.get_attribute.return_value = "https://www.amazon.co.jp/dp/B00EXAMPLE/ref=xxx"
-
-        # 価格
-        price_elem = unittest.mock.MagicMock()
-        price_elem.text = "￥1,000"
-
-        def find_element_side_effect(by, xpath):
-            if "デジタル注文" in xpath and "b[contains(text()" in xpath:
+        def find_by_value(value):
+            if "デジタル注文" in value:
                 return date_elem
-            elif "注文番号" in xpath:
+            if "注文番号" in value:
                 return no_elem
-            elif "//a" in xpath and "td[1]" in xpath:
-                return link_elem
-            elif "/td[2]" in xpath:
+            if "/td[1]//a" in value:
+                return link
+            if "/td[1]//b" in value:
+                return name
+            if "/td[2]" in value:
                 return price_elem
-            return unittest.mock.MagicMock()
+            return None
 
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.return_value = [link_elem]  # リンクが存在
+        return find_by_value
+
+    def test_parse_order_digital_with_link(self, handle, make_element, by_value):
+        """デジタル注文パース（リンクあり）"""
+        page = handle._test_page
+
+        link_elem = make_element(
+            text="Kindle本タイトル",
+            href="https://www.amazon.co.jp/dp/B00EXAMPLE/ref=xxx",
+        )
+
+        page.exists.return_value = True  # 商品リンクが存在
+        page.find.side_effect = by_value(self._digital_finder(make_element, link=link_elem))
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -417,39 +310,14 @@ class TestParseOrderDigital:
         assert result is True
         handle._db.upsert_item.assert_called_once()
 
-    def test_parse_order_digital_without_link(self, handle):
+    def test_parse_order_digital_without_link(self, handle, make_element, by_value):
         """デジタル注文パース（リンクなし、販売ページが存在しない場合）"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # デジタル注文の日付
-        date_elem = unittest.mock.MagicMock()
-        date_elem.text = "デジタル注文: 2024年1月15日"
+        name_elem = make_element(text="販売終了商品")
 
-        # 注文番号
-        no_elem = unittest.mock.MagicMock()
-        no_elem.text = "注文番号: D01-1234567-8901234"
-
-        # 商品名（リンクなし）
-        name_elem = unittest.mock.MagicMock()
-        name_elem.text = "販売終了商品"
-
-        # 価格
-        price_elem = unittest.mock.MagicMock()
-        price_elem.text = "￥500"
-
-        def find_element_side_effect(by, xpath):
-            if "デジタル注文" in xpath and "b[contains(text()" in xpath:
-                return date_elem
-            elif "注文番号" in xpath:
-                return no_elem
-            elif "//b" in xpath and "td[1]" in xpath:
-                return name_elem
-            elif "/td[2]" in xpath:
-                return price_elem
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.return_value = []  # リンクが存在しない
+        page.exists.return_value = False  # 商品リンクが存在しない
+        page.find.side_effect = by_value(self._digital_finder(make_element, name=name_elem))
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -470,36 +338,17 @@ class TestParseOrderDigital:
         assert result is True
         handle._db.upsert_item.assert_called_once()
 
-    def test_parse_order_digital_asin_extraction(self, handle):
+    def test_parse_order_digital_asin_extraction(self, handle, make_element, by_value):
         """デジタル注文でASINが正しく抽出されるか"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        date_elem = unittest.mock.MagicMock()
-        date_elem.text = "デジタル注文: 2024年1月15日"
+        link_elem = make_element(
+            text="テスト商品",
+            href="https://www.amazon.co.jp/dp/B00TESTASIN/ref=xxx",
+        )
 
-        no_elem = unittest.mock.MagicMock()
-        no_elem.text = "注文番号: D01-1234567-8901234"
-
-        link_elem = unittest.mock.MagicMock()
-        link_elem.text = "テスト商品"
-        link_elem.get_attribute.return_value = "https://www.amazon.co.jp/dp/B00TESTASIN/ref=xxx"
-
-        price_elem = unittest.mock.MagicMock()
-        price_elem.text = "￥1,500"
-
-        def find_element_side_effect(by, xpath):
-            if "デジタル注文" in xpath and "b[contains(text()" in xpath:
-                return date_elem
-            elif "注文番号" in xpath:
-                return no_elem
-            elif "//a" in xpath and "td[1]" in xpath:
-                return link_elem
-            elif "/td[2]" in xpath:
-                return price_elem
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.return_value = [link_elem]
+        page.exists.return_value = True
+        page.find.side_effect = by_value(self._digital_finder(make_element, link=link_elem))
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -531,60 +380,15 @@ class TestParseOrderDigital:
 
 
 class TestParseOrderDefault:
-    """_parse_order_default のテスト（lines 132-154）"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    """_parse_order_default のテスト"""
 
     def test_parse_order_default_with_items(self, handle):
-        """通常注文パース（商品あり、lines 132-154）"""
-        driver, _ = handle.get_selenium_driver()
-
+        """通常注文パース（商品あり）"""
         # 2つの商品要素
-        item_elem1 = unittest.mock.MagicMock()
-        item_elem2 = unittest.mock.MagicMock()
-        driver.find_elements.return_value = [item_elem1, item_elem2]
+        handle._test_page.find_all.return_value = [
+            unittest.mock.MagicMock(),
+            unittest.mock.MagicMock(),
+        ]
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -620,9 +424,7 @@ class TestParseOrderDefault:
 
     def test_parse_order_default_no_items(self, handle):
         """通常注文パース（商品なし）"""
-        driver, _ = handle.get_selenium_driver()
-
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -637,12 +439,11 @@ class TestParseOrderDefault:
         assert result is False
 
     def test_parse_order_default_shutdown_requested(self, handle):
-        """シャットダウン要求時の中断（line 139-140）"""
-        driver, _ = handle.get_selenium_driver()
-
-        item_elem1 = unittest.mock.MagicMock()
-        item_elem2 = unittest.mock.MagicMock()
-        driver.find_elements.return_value = [item_elem1, item_elem2]
+        """シャットダウン要求時の中断"""
+        handle._test_page.find_all.return_value = [
+            unittest.mock.MagicMock(),
+            unittest.mock.MagicMock(),
+        ]
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -652,7 +453,7 @@ class TestParseOrderDefault:
             page=1,
         )
 
-        # 最初の商品処理後にシャットダウン要求
+        # 最初の商品処理前にシャットダウン要求
         with unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True):
             result = amazhist.order._parse_order_default(handle, order)
 
@@ -660,10 +461,7 @@ class TestParseOrderDefault:
 
     def test_parse_order_default_item_returns_none(self, handle):
         """parse_item が None を返す場合（シャットダウン中断）"""
-        driver, _ = handle.get_selenium_driver()
-
-        item_elem = unittest.mock.MagicMock()
-        driver.find_elements.return_value = [item_elem]
+        handle._test_page.find_all.return_value = [unittest.mock.MagicMock()]
 
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
@@ -683,55 +481,10 @@ class TestParseOrderDefault:
 
 
 class TestFetchItemList:
-    """fetch_item_list のテスト（lines 201-235）"""
-
-    @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-        (tmp_path / "debug").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    """fetch_item_list のテスト"""
 
     def test_fetch_item_list_success(self, handle):
-        """正常に商品情報を取得（line 235）"""
+        """正常に商品情報を取得"""
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
             no="503-1234567-8901234",
@@ -758,9 +511,7 @@ class TestFetchItemList:
         mock_keep_logged_on.assert_called_once()
 
     def test_fetch_item_list_timeout(self, handle):
-        """タイムアウト発生時（lines 206-218）"""
-        from selenium.common.exceptions import TimeoutException
-
+        """ページ遷移失敗（NavigationError）時"""
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
             no="503-1234567-8901234",
@@ -769,7 +520,7 @@ class TestFetchItemList:
             page=1,
         )
 
-        mock_visit_url = unittest.mock.MagicMock(side_effect=TimeoutException("timeout"))
+        mock_visit_url = unittest.mock.MagicMock(side_effect=my_lib.browser.NavigationError("timeout"))
         mock_keep_logged_on = unittest.mock.MagicMock()
         mock_get_caller_name = unittest.mock.MagicMock(return_value="test_caller")
 
@@ -786,14 +537,13 @@ class TestFetchItemList:
         handle._db.record_or_update_error.assert_called_once()
         # エラータイプを確認（positional args で渡される場合があるため）
         call_args = handle._db.record_or_update_error.call_args
-        # args[1] が error_type の位置
         if call_args[1]:
             assert call_args[1]["error_type"] == "timeout"
         else:
             assert call_args[0][1] == "timeout"
 
     def test_fetch_item_list_parse_failed(self, handle):
-        """パース失敗時（lines 220-233）"""
+        """パース失敗時"""
         order = amazhist.order.Order(
             date=datetime.datetime(2024, 1, 15),
             no="503-1234567-8901234",
@@ -808,7 +558,7 @@ class TestFetchItemList:
 
         with (
             unittest.mock.patch("amazhist.order.parse_order", return_value=False),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.order.fetch_item_list(
@@ -830,63 +580,52 @@ class TestFetchItemList:
 
 
 class TestExtractOrderCountFromPage:
-    """_extract_order_count_from_page のテスト（lines 253-256）"""
+    """_extract_order_count_from_page のテスト"""
 
-    def test_extract_order_count_success(self):
-        """注文件数を抽出（lines 253-256）"""
-        mock_driver = unittest.mock.MagicMock()
+    def test_extract_order_count_success(self, make_page, make_element):
+        """注文件数を抽出"""
+        page = make_page()
+        page.find_all.return_value = [make_element(text="42件の注文")]
 
-        elem = unittest.mock.MagicMock()
-        elem.text = "42件の注文"
-        mock_driver.find_elements.return_value = [elem]
-
-        result = amazhist.order._extract_order_count_from_page(mock_driver)
+        result = amazhist.order._extract_order_count_from_page(page)
 
         assert result == 42
 
-    def test_extract_order_count_multiple_elements(self):
+    def test_extract_order_count_multiple_elements(self, make_page, make_element):
         """複数の要素がある場合、最初にマッチしたものを返す"""
-        mock_driver = unittest.mock.MagicMock()
+        page = make_page()
+        page.find_all.return_value = [
+            make_element(text="テキストなし"),
+            make_element(text="25件"),
+        ]
 
-        elem1 = unittest.mock.MagicMock()
-        elem1.text = "テキストなし"
-        elem2 = unittest.mock.MagicMock()
-        elem2.text = "25件"
-        mock_driver.find_elements.return_value = [elem1, elem2]
-
-        result = amazhist.order._extract_order_count_from_page(mock_driver)
+        result = amazhist.order._extract_order_count_from_page(page)
 
         assert result == 25
 
-    def test_extract_order_count_with_comma(self):
+    def test_extract_order_count_with_comma(self, make_page, make_element):
         """カンマ区切りの件数（1,234件 → 1234）"""
-        mock_driver = unittest.mock.MagicMock()
+        page = make_page()
+        page.find_all.return_value = [make_element(text="1,234件")]
 
-        elem = unittest.mock.MagicMock()
-        elem.text = "1,234件"
-        mock_driver.find_elements.return_value = [elem]
-
-        result = amazhist.order._extract_order_count_from_page(mock_driver)
+        result = amazhist.order._extract_order_count_from_page(page)
 
         assert result == 1234
 
-    def test_extract_order_count_no_match(self):
+    def test_extract_order_count_no_match(self, make_page, make_element):
         """マッチする要素がない場合"""
-        mock_driver = unittest.mock.MagicMock()
+        page = make_page()
+        page.find_all.return_value = [make_element(text="件数なし")]
 
-        elem = unittest.mock.MagicMock()
-        elem.text = "件数なし"
-        mock_driver.find_elements.return_value = [elem]
-
-        result = amazhist.order._extract_order_count_from_page(mock_driver)
+        result = amazhist.order._extract_order_count_from_page(page)
 
         assert result is None
 
-    def test_extract_order_count_empty(self):
+    def test_extract_order_count_empty(self, make_page):
         """要素が空の場合"""
-        mock_driver = unittest.mock.MagicMock()
-        mock_driver.find_elements.return_value = []
+        page = make_page()
+        page.find_all.return_value = []
 
-        result = amazhist.order._extract_order_count_from_page(mock_driver)
+        result = amazhist.order._extract_order_count_from_page(page)
 
         assert result is None

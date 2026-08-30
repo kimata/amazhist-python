@@ -6,6 +6,7 @@ cli.py のテスト
 
 import unittest.mock
 
+import my_lib.browser
 import pytest
 
 import amazhist.cli as app
@@ -14,6 +15,39 @@ import amazhist.crawler
 import amazhist.database
 import amazhist.handle
 
+# 各テストで共通利用するモック設定
+_MOCK_CONFIG_TEMPLATE = {
+    "data": {
+        "amazon": {
+            "cache": {
+                "order": "cache/order.db",
+                "thumb": "thumb",
+            },
+        },
+        "selenium": "selenium",
+        "debug": "debug",
+    },
+    "output": {
+        "excel": {
+            "table": "output/amazhist.xlsx",
+            "font": {"name": "Arial", "size": 10},
+        },
+        "captcha": "captcha.png",
+    },
+    "login": {
+        "amazon": {
+            "user": "test@example.com",
+            "pass": "password",
+        },
+    },
+}
+
+
+def _build_mock_config(tmp_path):
+    config = {"base_dir": str(tmp_path)}
+    config.update(_MOCK_CONFIG_TEMPLATE)
+    return config
+
 
 class TestExecuteFetch:
     """execute_fetch のテスト"""
@@ -21,44 +55,16 @@ class TestExecuteFetch:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        # 必要なディレクトリを作成
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック付き）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             yield h
             h.finish()
 
@@ -76,10 +82,10 @@ class TestExecuteFetch:
                 side_effect=Exception("フェッチエラー"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
-            pytest.raises(Exception, match="フェッチエラー"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
         ):
-            amazhist.cli.execute_fetch(handle)
+            with pytest.raises(Exception, match="フェッチエラー"):
+                amazhist.cli.execute_fetch(handle)
             mock_dump.assert_called_once()
 
 
@@ -89,32 +95,7 @@ class TestExecute:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_export_mode_only(self, mock_config, tmp_path):
         """エクスポートモードのみ"""
@@ -153,32 +134,7 @@ class TestShowErrorLog:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_show_error_log_no_errors(self, mock_config, tmp_path, capsys):
         """エラーがない場合"""
@@ -267,69 +223,42 @@ class TestExecuteFetchExceptions:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック付き）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             yield h
             h.finish()
 
-    def test_execute_fetch_invalid_session_exception(self, handle):
-        """InvalidSessionIdException 時に警告ログを出して再送出"""
-        import selenium.common.exceptions
-
+    def test_execute_fetch_session_error(self, handle):
+        """SessionError 時に警告ログを出して再送出（ダンプしない）"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler.fetch_order_list",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
-            pytest.raises(selenium.common.exceptions.InvalidSessionIdException),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
+            pytest.raises(my_lib.browser.SessionError),
         ):
             amazhist.cli.execute_fetch(handle)
+        mock_dump.assert_not_called()
 
-    def test_execute_fetch_selenium_error(self, handle):
-        """SeleniumError 時はダンプせず再送出"""
-        import my_lib.selenium_util
-
+    def test_execute_fetch_browser_error(self, handle):
+        """BrowserError 時は再送出される"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler.fetch_order_list",
-                side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
+                side_effect=my_lib.browser.BrowserError("driver failed"),
             ),
-            pytest.raises(my_lib.selenium_util.SeleniumError),
+            unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
+            pytest.raises(my_lib.browser.BrowserError),
         ):
             amazhist.cli.execute_fetch(handle)
 
@@ -341,15 +270,15 @@ class TestExecuteFetchExceptions:
                 side_effect=Exception("generic error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
-            pytest.raises(Exception, match="generic error"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
         ):
-            amazhist.cli.execute_fetch(handle)
+            with pytest.raises(Exception, match="generic error"):
+                amazhist.cli.execute_fetch(handle)
             mock_dump.assert_not_called()
 
-    def test_execute_fetch_generic_exception_no_selenium(self, handle):
-        """has_selenium_driver が False の場合はダンプをスキップ"""
-        handle.has_selenium_driver = unittest.mock.MagicMock(return_value=False)
+    def test_execute_fetch_generic_exception_no_browser(self, handle):
+        """has_browser が False の場合はダンプをスキップ"""
+        handle.has_browser = unittest.mock.MagicMock(return_value=False)
 
         with (
             unittest.mock.patch(
@@ -357,10 +286,10 @@ class TestExecuteFetchExceptions:
                 side_effect=Exception("generic error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
-            pytest.raises(Exception, match="generic error"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
         ):
-            amazhist.cli.execute_fetch(handle)
+            with pytest.raises(Exception, match="generic error"):
+                amazhist.cli.execute_fetch(handle)
             mock_dump.assert_not_called()
 
 
@@ -370,43 +299,16 @@ class TestExecuteRetryExceptions:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック付き）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             yield h
             h.finish()
 
@@ -416,29 +318,29 @@ class TestExecuteRetryExceptions:
             amazhist.cli.execute_retry(handle)
             mock_retry.assert_called_once_with(handle)
 
-    def test_execute_retry_invalid_session_exception(self, handle):
-        """InvalidSessionIdException 時に警告ログを出して再送出"""
-        import selenium.common.exceptions
-
+    def test_execute_retry_session_error(self, handle):
+        """SessionError 時に警告ログを出して再送出（ダンプしない）"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler.retry_failed_items",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
-            pytest.raises(selenium.common.exceptions.InvalidSessionIdException),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
+            pytest.raises(my_lib.browser.SessionError),
         ):
             amazhist.cli.execute_retry(handle)
+        mock_dump.assert_not_called()
 
-    def test_execute_retry_selenium_error(self, handle):
-        """SeleniumError 時はダンプせず再送出"""
-        import my_lib.selenium_util
-
+    def test_execute_retry_browser_error(self, handle):
+        """BrowserError 時は再送出される"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler.retry_failed_items",
-                side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
+                side_effect=my_lib.browser.BrowserError("driver failed"),
             ),
-            pytest.raises(my_lib.selenium_util.SeleniumError),
+            unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
+            pytest.raises(my_lib.browser.BrowserError),
         ):
             amazhist.cli.execute_retry(handle)
 
@@ -450,10 +352,10 @@ class TestExecuteRetryExceptions:
                 side_effect=Exception("retry error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
-            pytest.raises(Exception, match="retry error"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
         ):
-            amazhist.cli.execute_retry(handle)
+            with pytest.raises(Exception, match="retry error"):
+                amazhist.cli.execute_retry(handle)
             mock_dump.assert_called_once()
 
     def test_execute_retry_generic_exception_with_shutdown(self, handle):
@@ -464,15 +366,15 @@ class TestExecuteRetryExceptions:
                 side_effect=Exception("retry error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
-            pytest.raises(Exception, match="retry error"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
         ):
-            amazhist.cli.execute_retry(handle)
+            with pytest.raises(Exception, match="retry error"):
+                amazhist.cli.execute_retry(handle)
             mock_dump.assert_not_called()
 
-    def test_execute_retry_generic_exception_no_selenium(self, handle):
-        """has_selenium_driver が False の場合はダンプをスキップ"""
-        handle.has_selenium_driver = unittest.mock.MagicMock(return_value=False)
+    def test_execute_retry_generic_exception_no_browser(self, handle):
+        """has_browser が False の場合はダンプをスキップ"""
+        handle.has_browser = unittest.mock.MagicMock(return_value=False)
 
         with (
             unittest.mock.patch(
@@ -480,10 +382,10 @@ class TestExecuteRetryExceptions:
                 side_effect=Exception("retry error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
-            pytest.raises(Exception, match="retry error"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
         ):
-            amazhist.cli.execute_retry(handle)
+            with pytest.raises(Exception, match="retry error"):
+                amazhist.cli.execute_retry(handle)
             mock_dump.assert_not_called()
 
 
@@ -493,32 +395,7 @@ class TestExecuteRetrySingle:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_retry_single_success(self, mock_config, tmp_path):
         """正常にリトライ成功"""
@@ -546,8 +423,6 @@ class TestExecuteRetrySingle:
 
     def test_execute_retry_single_session_error_with_retry(self, mock_config, tmp_path):
         """セッションエラー発生時のリトライ"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         call_count = [0]
@@ -555,7 +430,7 @@ class TestExecuteRetrySingle:
         def side_effect_fn(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                raise selenium.common.exceptions.InvalidSessionIdException("session lost")
+                raise my_lib.browser.SessionError("session lost")
             return True
 
         with (
@@ -572,15 +447,13 @@ class TestExecuteRetrySingle:
 
     def test_execute_retry_single_session_error_no_retry(self, mock_config, tmp_path):
         """セッションエラーでリトライ不可の場合"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.crawler.retry_error_by_id",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
@@ -589,17 +462,15 @@ class TestExecuteRetrySingle:
             )
             assert result == 1
 
-    def test_execute_retry_single_selenium_error(self, mock_config, tmp_path):
-        """SeleniumError 時は exit_code=1"""
-        import my_lib.selenium_util
-
+    def test_execute_retry_single_browser_error(self, mock_config, tmp_path):
+        """BrowserError 時は exit_code=1"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.crawler.retry_error_by_id",
-                side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
+                side_effect=my_lib.browser.BrowserError("driver failed"),
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
@@ -645,32 +516,7 @@ class TestExecuteRetryMode:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_retry_mode_success(self, mock_config, tmp_path):
         """正常にリトライモード実行"""
@@ -687,8 +533,6 @@ class TestExecuteRetryMode:
 
     def test_execute_retry_mode_session_error_with_retry(self, mock_config, tmp_path):
         """セッションエラー発生時のリトライ"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         call_count = [0]
@@ -696,7 +540,7 @@ class TestExecuteRetryMode:
         def side_effect_fn(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                raise selenium.common.exceptions.InvalidSessionIdException("session lost")
+                raise my_lib.browser.SessionError("session lost")
             return None
 
         with (
@@ -711,32 +555,28 @@ class TestExecuteRetryMode:
 
     def test_execute_retry_mode_session_error_no_retry(self, mock_config, tmp_path):
         """セッションエラーでリトライ不可の場合"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.cli.execute_retry",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
             result = amazhist.cli.execute_retry_mode(mock_config, clear_profile_on_browser_error=False)
             assert result == 1
 
-    def test_execute_retry_mode_selenium_error(self, mock_config, tmp_path):
-        """SeleniumError 時は exit_code=1"""
-        import my_lib.selenium_util
-
+    def test_execute_retry_mode_browser_error(self, mock_config, tmp_path):
+        """BrowserError 時は exit_code=1"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.cli.execute_retry",
-                side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
+                side_effect=my_lib.browser.BrowserError("driver failed"),
             ),
             unittest.mock.patch("builtins.input", return_value=""),
         ):
@@ -782,32 +622,7 @@ class TestExecuteAdvanced:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_debug_mode_enables_ignore_cache(self, mock_config, tmp_path):
         """デバッグモードで ignore_cache が有効化される"""
@@ -824,8 +639,6 @@ class TestExecuteAdvanced:
 
     def test_execute_session_error_with_retry(self, mock_config, tmp_path):
         """セッションエラー発生時のリトライ"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         call_count = [0]
@@ -833,7 +646,7 @@ class TestExecuteAdvanced:
         def side_effect_fn(*args):
             call_count[0] += 1
             if call_count[0] == 1:
-                raise selenium.common.exceptions.InvalidSessionIdException("session lost")
+                raise my_lib.browser.SessionError("session lost")
             return None
 
         with (
@@ -849,15 +662,13 @@ class TestExecuteAdvanced:
 
     def test_execute_session_error_no_retry(self, mock_config, tmp_path):
         """セッションエラーでリトライ不可の場合"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.cli.execute_fetch",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
             unittest.mock.patch("builtins.input", return_value=""),
@@ -865,17 +676,15 @@ class TestExecuteAdvanced:
             result = app.execute(mock_config, clear_profile_on_browser_error=False)
             assert result == 1
 
-    def test_execute_selenium_error(self, mock_config, tmp_path):
-        """SeleniumError 時は exit_code=1"""
-        import my_lib.selenium_util
-
+    def test_execute_browser_error(self, mock_config, tmp_path):
+        """BrowserError 時は exit_code=1"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.cli.execute_fetch",
-                side_effect=my_lib.selenium_util.SeleniumError("driver failed"),
+                side_effect=my_lib.browser.BrowserError("driver failed"),
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
             unittest.mock.patch("builtins.input", return_value=""),
@@ -887,8 +696,8 @@ class TestExecuteAdvanced:
         """汎用例外時は exit_code=1"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        mock_driver = unittest.mock.MagicMock()
-        mock_driver.current_url = "https://example.com"
+        mock_page = unittest.mock.MagicMock()
+        mock_page.url = "https://example.com"
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
@@ -899,8 +708,8 @@ class TestExecuteAdvanced:
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
             unittest.mock.patch.object(
                 amazhist.handle.Handle,
-                "get_selenium_driver",
-                return_value=(mock_driver, unittest.mock.MagicMock()),
+                "get_page",
+                return_value=mock_page,
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
             unittest.mock.patch("builtins.input", return_value=""),
@@ -947,32 +756,7 @@ class TestShowErrorLogAdvanced:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_show_error_log_url_truncation(self, mock_config, tmp_path):
         """Amazon URL がトランケートされる"""
@@ -1072,32 +856,7 @@ class TestShowErrorDetail:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_show_error_detail_not_found(self, mock_config, tmp_path):
         """エラーが見つからない場合"""
@@ -1199,45 +958,18 @@ class TestRetrySingleExhausted:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_retry_single_exhausts_retries(self, mock_config, tmp_path):
         """リトライ回数を使い果たした場合 exit_code=1"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        # 常に InvalidSessionIdException を発生させる
+        # 常に SessionError を発生させる
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.crawler.retry_error_by_id",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
             unittest.mock.patch("my_lib.chrome_util.delete_profile"),
             unittest.mock.patch("builtins.input", return_value=""),
@@ -1254,45 +986,18 @@ class TestRetryModeExhausted:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_retry_mode_exhausts_retries(self, mock_config, tmp_path):
         """リトライ回数を使い果たした場合 exit_code=1"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        # 常に InvalidSessionIdException を発生させる
+        # 常に SessionError を発生させる
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.cli.execute_retry",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
             unittest.mock.patch("my_lib.chrome_util.delete_profile"),
             unittest.mock.patch("builtins.input", return_value=""),
@@ -1307,45 +1012,18 @@ class TestExecuteExhausted:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _build_mock_config(tmp_path)
 
     def test_execute_exhausts_retries(self, mock_config, tmp_path):
         """リトライ回数を使い果たした場合 exit_code=1"""
-        import selenium.common.exceptions
-
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        # 常に InvalidSessionIdException を発生させる
+        # 常に SessionError を発生させる
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
             unittest.mock.patch(
                 "amazhist.cli.execute_fetch",
-                side_effect=selenium.common.exceptions.InvalidSessionIdException("session lost"),
+                side_effect=my_lib.browser.SessionError("session lost"),
             ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
             unittest.mock.patch("my_lib.chrome_util.delete_profile"),

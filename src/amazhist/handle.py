@@ -7,14 +7,13 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import my_lib.browser_manager
+import my_lib.browser
 import my_lib.cui_progress
 
 import amazhist.database
 
 if TYPE_CHECKING:
-    from selenium.webdriver.remote.webdriver import WebDriver
-    from selenium.webdriver.support.wait import WebDriverWait
+    from my_lib.browser import Page
 
     import amazhist.item
 
@@ -33,9 +32,7 @@ class Handle:
     debug_mode: bool = False
     clear_profile_on_browser_error: bool = False
     _db: amazhist.database.Database | None = field(default=None, repr=False)
-    _browser_manager: my_lib.browser_manager.BrowserManager | None = field(
-        default=None, init=False, repr=False
-    )
+    _browser_manager: my_lib.browser.BrowserManager | None = field(default=None, init=False, repr=False)
 
     # プログレス管理
     _progress_manager: my_lib.cui_progress.ProgressManager = field(
@@ -49,11 +46,13 @@ class Handle:
     def __post_init__(self) -> None:
         self._prepare_directory()
         self._init_database()
-        self._browser_manager = my_lib.browser_manager.BrowserManager(
-            profile_name="Amazhist",
-            data_dir=self.config.selenium_data_dir_path,
-            clear_profile_on_error=self.clear_profile_on_browser_error,
-            stealth_mode=False,
+        self._browser_manager = my_lib.browser.BrowserManager(
+            my_lib.browser.BrowserProfile(
+                name="Amazhist",
+                data_dir=self.config.selenium_data_dir_path,
+                # NOTE: bot 検出回避のため headful（Xvfb 上での実行を想定）。
+                headless=False,
+            ),
         )
 
         if self.ignore_cache:
@@ -92,16 +91,22 @@ class Handle:
         """Live 表示を再開（input() の後に呼び出す）"""
         self._progress_manager.resume_live()
 
-    # --- Selenium 関連 ---
-    def get_selenium_driver(self) -> tuple[WebDriver, WebDriverWait]:
-        """Selenium ドライバーを取得（必要に応じて起動）"""
+    # --- ブラウザ関連 ---
+    def get_page(self) -> Page:
+        """ブラウザページを取得（必要に応じて起動）"""
         if self._browser_manager is None:
             raise RuntimeError("BrowserManager is not initialized")
-        return self._browser_manager.get_driver()
+        return self._browser_manager.get_page()
 
-    def has_selenium_driver(self) -> bool:
-        """Selenium ドライバーが起動済みか確認"""
-        return self._browser_manager is not None and self._browser_manager.has_driver()
+    @property
+    def browser_manager(self) -> my_lib.browser.BrowserManager:
+        if self._browser_manager is None:
+            raise RuntimeError("BrowserManager is not initialized")
+        return self._browser_manager
+
+    def has_browser(self) -> bool:
+        """ブラウザが起動済みか確認"""
+        return self._browser_manager is not None and self._browser_manager.has_browser()
 
     # --- ログイン情報 ---
     def get_login_user(self) -> str:
@@ -214,8 +219,8 @@ class Handle:
 
     # --- 終了処理 ---
     def quit_selenium(self) -> None:
-        """Selenium ドライバーを終了"""
-        if self._browser_manager is not None and self._browser_manager.has_driver():
+        """ブラウザを終了"""
+        if self._browser_manager is not None and self._browser_manager.has_browser():
             self.set_status("🛑 クローラを終了しています...")
             self._browser_manager.quit()
 

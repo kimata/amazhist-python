@@ -26,10 +26,10 @@ import pathlib
 import sys
 from typing import Any
 
-import my_lib.selenium_util
+import my_lib.browser
+import my_lib.browser.helpers
 import rich.console
 import rich.table
-import selenium.common.exceptions
 
 import amazhist.config
 import amazhist.const
@@ -45,8 +45,8 @@ SCHEMA_CONFIG = "schema/config.schema"
 _MAX_SESSION_RETRY_COUNT = 1
 
 
-def _handle_selenium_exception(handle: amazhist.handle.Handle, e: Exception) -> int | None:
-    """Selenium 関連の例外を処理
+def _handle_browser_exception(handle: amazhist.handle.Handle, e: Exception) -> int | None:
+    """ブラウザ関連の例外を処理
 
     Args:
         handle: アプリケーションハンドル
@@ -55,12 +55,12 @@ def _handle_selenium_exception(handle: amazhist.handle.Handle, e: Exception) -> 
     Returns:
         終了コード（例外を処理した場合）、None（処理しなかった場合）
     """
-    if isinstance(e, selenium.common.exceptions.InvalidSessionIdException):
+    if isinstance(e, my_lib.browser.SessionError):
         logging.exception("セッションエラーが発生しました（リトライ不可）")
         handle.set_status("❌ セッションエラー", is_error=True)
         return 1
-    if isinstance(e, my_lib.selenium_util.SeleniumError):
-        logging.exception("Selenium の起動に失敗しました")
+    if isinstance(e, my_lib.browser.BrowserError):
+        logging.exception("ブラウザの起動に失敗しました")
         handle.set_status(f"❌ {e}", is_error=True)
         return 1
     return None
@@ -69,19 +69,16 @@ def _handle_selenium_exception(handle: amazhist.handle.Handle, e: Exception) -> 
 def execute_fetch(handle: amazhist.handle.Handle) -> None:
     try:
         amazhist.crawler.fetch_order_list(handle)
-    except selenium.common.exceptions.InvalidSessionIdException:
-        # セッションエラーはドライバーが壊れているのでダンプを試みず re-raise
+    except my_lib.browser.SessionError:
+        # セッションエラーはブラウザが壊れているのでダンプを試みず re-raise
         logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
         raise
-    except my_lib.selenium_util.SeleniumError:
-        # Selenium 起動エラーはドライバーが存在しないのでダンプを試みず re-raise
-        raise
     except Exception:
-        # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
-        if not amazhist.crawler.is_shutdown_requested() and handle.has_selenium_driver():
-            driver, _wait = handle.get_selenium_driver()
+        # シャットダウン要求時またはブラウザが存在しない場合はダンプをスキップ
+        if not amazhist.crawler.is_shutdown_requested() and handle.has_browser():
+            page = handle.get_page()
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         raise
 
 
@@ -89,19 +86,16 @@ def execute_retry(handle: amazhist.handle.Handle) -> None:
     """エラーが発生したアイテムを再取得"""
     try:
         amazhist.crawler.retry_failed_items(handle)
-    except selenium.common.exceptions.InvalidSessionIdException:
-        # セッションエラーはドライバーが壊れているのでダンプを試みず re-raise
+    except my_lib.browser.SessionError:
+        # セッションエラーはブラウザが壊れているのでダンプを試みず re-raise
         logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
         raise
-    except my_lib.selenium_util.SeleniumError:
-        # Selenium 起動エラーはドライバーが存在しないのでダンプを試みず re-raise
-        raise
     except Exception:
-        # シャットダウン要求時またはドライバーが存在しない場合はダンプをスキップ
-        if not amazhist.crawler.is_shutdown_requested() and handle.has_selenium_driver():
-            driver, _wait = handle.get_selenium_driver()
+        # シャットダウン要求時またはブラウザが存在しない場合はダンプをスキップ
+        if not amazhist.crawler.is_shutdown_requested() and handle.has_browser():
+            page = handle.get_page()
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         raise
 
 
@@ -131,22 +125,16 @@ def execute_retry_single(
 
     try:
         try:
-            success = my_lib.selenium_util.with_session_retry(
+            success = handle.browser_manager.run_with_session_retry(
                 lambda: amazhist.crawler.retry_error_by_id(handle, error_id),
-                driver_name="Amazhist",
-                data_dir=handle.config.selenium_data_dir_path,
                 max_retries=_MAX_SESSION_RETRY_COUNT,
                 clear_profile_on_error=clear_profile_on_browser_error,
                 on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
-                before_retry=handle.quit_selenium,
             )
             if not success:
                 exit_code = 1
-        except (
-            selenium.common.exceptions.InvalidSessionIdException,
-            my_lib.selenium_util.SeleniumError,
-        ) as e:
-            result = _handle_selenium_exception(handle, e)
+        except my_lib.browser.BrowserError as e:
+            result = _handle_browser_exception(handle, e)
             if result is not None:
                 return result
         except Exception:
@@ -183,20 +171,14 @@ def execute_retry_mode(
 
     try:
         try:
-            my_lib.selenium_util.with_session_retry(
+            handle.browser_manager.run_with_session_retry(
                 lambda: execute_retry(handle),
-                driver_name="Amazhist",
-                data_dir=handle.config.selenium_data_dir_path,
                 max_retries=_MAX_SESSION_RETRY_COUNT,
                 clear_profile_on_error=clear_profile_on_browser_error,
                 on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
-                before_retry=handle.quit_selenium,
             )
-        except (
-            selenium.common.exceptions.InvalidSessionIdException,
-            my_lib.selenium_util.SeleniumError,
-        ) as e:
-            result = _handle_selenium_exception(handle, e)
+        except my_lib.browser.BrowserError as e:
+            result = _handle_browser_exception(handle, e)
             if result is not None:
                 return result
         except Exception:
@@ -249,27 +231,21 @@ def execute(
     try:
         if not is_export_mode:
             try:
-                my_lib.selenium_util.with_session_retry(
+                handle.browser_manager.run_with_session_retry(
                     lambda: execute_fetch(handle),
-                    driver_name="Amazhist",
-                    data_dir=handle.config.selenium_data_dir_path,
                     max_retries=_MAX_SESSION_RETRY_COUNT,
                     clear_profile_on_error=clear_profile_on_browser_error,
                     on_retry=lambda a, m: handle.set_status(f"🔄 セッションエラー、リトライ中... ({a}/{m})"),
-                    before_retry=handle.quit_selenium,
                 )
-            except (
-                selenium.common.exceptions.InvalidSessionIdException,
-                my_lib.selenium_util.SeleniumError,
-            ) as e:
-                result = _handle_selenium_exception(handle, e)
+            except my_lib.browser.BrowserError as e:
+                result = _handle_browser_exception(handle, e)
                 if result is not None:
                     return result
             except Exception:
                 # シャットダウン要求時は正常終了扱い（tracebackを出さない）
                 if not amazhist.crawler.is_shutdown_requested():
-                    driver, _ = handle.get_selenium_driver()
-                    logging.exception(f"データの収集中にエラーが発生しました: {driver.current_url}")
+                    page = handle.get_page()
+                    logging.exception(f"データの収集中にエラーが発生しました: {page.url}")
                     handle.set_status("❌ データの収集中にエラーが発生しました", is_error=True)
                     exit_code = 1
             finally:

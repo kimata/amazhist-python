@@ -12,13 +12,14 @@ import logging
 import math
 import time
 
-from selenium.webdriver.common.by import By
+from my_lib.browser import Xpath
 
 import amazhist.const
 import amazhist.handle
 import amazhist.order
 import amazhist.parser
 import amazhist.types
+import amazhist.webutil
 
 # プログレスバーのラベル
 STATUS_ORDER_ITEM_ALL = "[収集] 全注文"
@@ -93,7 +94,7 @@ def fetch_by_year_page(
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, _wait = handle.get_selenium_driver()
+    browser_page = handle.get_page()
 
     total_page = math.ceil(handle.get_order_count(year) / amazhist.const.ORDER_COUNT_PER_PAGE)
 
@@ -105,11 +106,11 @@ def fetch_by_year_page(
     keep_logged_on_func(handle)
 
     logging.info(f"{year}年 {page}/{total_page} ページの注文を確認しています")
-    logging.info(f"URL: {driver.current_url}")
+    logging.info(f"URL: {browser_page.url}")
 
     is_skipped = False
     order_list = []
-    order_card_count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
+    order_card_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
 
     # 注文カードが見つからなかった場合のチェック
     if order_card_count == 0:
@@ -136,9 +137,8 @@ def fetch_by_year_page(
     # ページレベルのエラーチェック（ループの前に1回だけ実行）
     if (
         len(
-            driver.find_elements(
-                By.XPATH,
-                '//div[contains(@class, "a-alert-content")]//span[contains(text(), "問題が発生")]',
+            browser_page.find_all(
+                Xpath('//div[contains(@class, "a-alert-content")]//span[contains(text(), "問題が発生")]'),
             )
         )
         != 0
@@ -173,37 +173,37 @@ def fetch_by_year_page(
             # キャンセル済みの注文はスキップ（プログレスバーは更新する）
             if (
                 len(
-                    driver.find_elements(
-                        By.XPATH,
-                        order_xpath
-                        + "//div[contains(@class, 'yohtmlc-shipment-status-primaryText')]"
-                        + "//span[contains(text(), 'キャンセル済み')]",
+                    browser_page.find_all(
+                        Xpath(
+                            order_xpath
+                            + "//div[contains(@class, 'yohtmlc-shipment-status-primaryText')]"
+                            + "//span[contains(text(), 'キャンセル済み')]"
+                        ),
                     )
                 )
                 != 0
             ):
-                no = driver.find_element(
-                    By.XPATH,
+                no = amazhist.webutil.text(
+                    browser_page,
                     order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
-                ).text
+                )
                 logging.info(f"キャンセル済みの注文をスキップしました: {no}")
                 # キャンセル済みでも「確認した」としてプログレスを更新
                 _safe_update_progress(handle, year)
                 continue
 
             # 日付を取得
-            date_text = driver.find_element(
-                By.XPATH,
+            date_text = amazhist.webutil.text(
+                browser_page,
                 order_xpath
                 + "//li[contains(@class, 'order-header__header-list-item')]"
                 + "//span[contains(@class, 'a-color-secondary') and contains(@class, 'aok-break-word')]",
-            ).text
+            )
             date = amazhist.parser.parse_date(date_text)
 
             # 注文番号を取得
-            order_no_elems = driver.find_elements(
-                By.XPATH,
-                order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
+            order_no_elems = browser_page.find_all(
+                Xpath(order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']"),
             )
             if not order_no_elems:
                 logging.warning(f"注文番号が取得できませんでした（{year}年 {page}ページ {i + 1}番目）")
@@ -228,10 +228,10 @@ def fetch_by_year_page(
                 + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
                 + "//a[contains(@href, 'order-details')]"
             )
-            order_details_elems = driver.find_elements(By.XPATH, order_details_xpath)
+            order_details_elems = browser_page.find_all(Xpath(order_details_xpath))
 
             if order_details_elems:
-                url = order_details_elems[0].get_attribute("href")
+                url = order_details_elems[0].attr("href")
                 if url is None:
                     # リンク要素はあるが href が取得できない場合 → URLを構築
                     logging.info(f"詳細リンクの URL が取得できないため、URLを構築します: {no}")

@@ -2,6 +2,12 @@
 # ruff: noqa: S101
 """
 item.py のテスト
+
+ブラウザ層は my_lib.browser の Page 抽象を使用する。
+Page / Element のモックは conftest の build_page / build_element ヘルパー
+（make_page / make_element フィクスチャ）で組み立て、browser_mocks で Handle に
+取り付ける。サムネイル取得・カテゴリ取得は browser_manager.get_browser().tab(url)
+の context manager（handle._test_tab）上で操作する。
 """
 
 import unittest.mock
@@ -10,55 +16,55 @@ import my_lib.graceful_shutdown
 import pytest
 
 import amazhist.config
-import amazhist.crawler
 import amazhist.exceptions
 import amazhist.handle
 import amazhist.item
+
+_MOCK_CONFIG = {
+    "base_dir": None,  # tmp_path で上書き
+    "data": {
+        "amazon": {
+            "cache": {
+                "order": "cache/order.db",
+                "thumb": "thumb",
+            },
+        },
+        "selenium": "selenium",
+        "debug": "debug",
+    },
+    "output": {
+        "excel": {
+            "table": "output/amazhist.xlsx",
+            "font": {"name": "Arial", "size": 10},
+        },
+        "captcha": "captcha.png",
+    },
+    "login": {
+        "amazon": {
+            "user": "test@example.com",
+            "pass": "password",
+        },
+    },
+}
+
+
+def _make_config(tmp_path):
+    config = dict(_MOCK_CONFIG)
+    config["base_dir"] = str(tmp_path)
+    return config
 
 
 class TestFetchItemCategory:
     """fetch_item_category のテスト"""
 
     @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック取り付け済み）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(_make_config(tmp_path)))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -72,36 +78,25 @@ class TestFetchItemCategory:
         assert result == []
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
-    def test_fetch_item_category_success(self, handle):
-        """カテゴリ取得成功"""
+    def test_fetch_item_category_success(self, handle, make_element):
+        """カテゴリ取得成功（タブ上のパンくずリストを取得）"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
 
-        # パンくずリスト要素をシミュレート
-        category_elements = []
-        for cat in ["本", "コンピュータ・IT", "プログラミング"]:
-            elem = unittest.mock.MagicMock()
-            elem.text = cat
-            category_elements.append(elem)
+        # パンくずリスト要素をシミュレート（tab.find_all の返り値）
+        category_elements = [make_element(text=cat) for cat in ["本", "コンピュータ・IT", "プログラミング"]]
+        handle._test_tab.find_all.return_value = category_elements
 
-        driver.find_elements.return_value = category_elements
-
-        with unittest.mock.patch("my_lib.selenium_util.browser_tab"):
-            result = amazhist.item.fetch_item_category(handle, "https://example.com/item")
+        result = amazhist.item.fetch_item_category(handle, "https://example.com/item")
 
         assert result == ["本", "コンピュータ・IT", "プログラミング"]
 
     def test_fetch_item_category_error(self, handle):
         """カテゴリ取得失敗時はエラー記録"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        _driver, _ = handle.get_selenium_driver()
 
-        with (
-            unittest.mock.patch(
-                "my_lib.selenium_util.browser_tab",
-                side_effect=Exception("ページ読み込みエラー"),
-            ),
-            unittest.mock.patch("my_lib.selenium_util.with_retry", side_effect=Exception("リトライ失敗")),
+        with unittest.mock.patch(
+            "amazhist.webutil.with_retry",
+            side_effect=Exception("リトライ失敗"),
         ):
             result = amazhist.item.fetch_item_category(handle, "https://example.com/item")
 
@@ -113,7 +108,7 @@ class TestFetchItemCategory:
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
         with unittest.mock.patch(
-            "my_lib.selenium_util.with_retry",
+            "amazhist.webutil.with_retry",
             side_effect=Exception("リトライ失敗"),
         ):
             result = amazhist.item.fetch_item_category(handle, "https://example.com/item", record_error=False)
@@ -126,46 +121,14 @@ class TestSaveThumbnail:
     """_save_thumbnail のテスト"""
 
     @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック取り付け済み）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
         (tmp_path / "thumb").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(_make_config(tmp_path)))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -176,9 +139,8 @@ class TestSaveThumbnail:
 
         amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
-        # driver.get が呼ばれていないことを確認
-        driver, _ = handle.get_selenium_driver()
-        driver.get.assert_not_called()
+        # タブを開いていないことを確認
+        handle._test_browser_manager.get_browser.assert_not_called()
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
     def test_save_thumbnail_no_asin(self, handle):
@@ -187,24 +149,17 @@ class TestSaveThumbnail:
 
         amazhist.item._save_thumbnail(handle, None, "https://example.com/thumb.jpg")
 
-        # driver.get が呼ばれていないことを確認
-        driver, _ = handle.get_selenium_driver()
-        driver.get.assert_not_called()
+        # タブを開いていないことを確認
+        handle._test_browser_manager.get_browser.assert_not_called()
 
-    def test_save_thumbnail_success(self, handle, tmp_path):
+    def test_save_thumbnail_success(self, handle, tmp_path, make_element):
         """サムネイル保存成功"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
 
-        # 画像要素をシミュレート
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b"fake_png_data"
-        driver.find_element.return_value = mock_img
+        # タブ上の画像要素をシミュレート
+        handle._test_tab.find.return_value = make_element(screenshot=b"fake_png_data")
 
-        with (
-            unittest.mock.patch("my_lib.selenium_util.browser_tab"),
-            unittest.mock.patch("PIL.Image.open"),
-        ):
+        with unittest.mock.patch("PIL.Image.open"):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
         # ファイルが作成されたことを確認
@@ -217,46 +172,14 @@ class TestParseItem:
     """parse_item のテスト"""
 
     @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック取り付け済み）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
         (tmp_path / "thumb").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(_make_config(tmp_path)))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
@@ -279,48 +202,37 @@ class TestParseItem:
         assert result is None
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
-    def test_parse_item_success(self, handle):
+    def test_parse_item_success(self, handle, make_element, by_value):
         """商品パース成功"""
         import datetime
 
         import amazhist.order
 
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # 商品リンク要素をシミュレート
-        mock_link = unittest.mock.MagicMock()
-        mock_link.text = "テスト商品"
-        mock_link.get_attribute.return_value = "https://www.amazon.co.jp/dp/B012345678"
+        link = make_element(text="テスト商品", href="https://www.amazon.co.jp/dp/B012345678")
+        thumb = make_element(attrs={"src": "https://example.com/thumb.jpg"})
+        # a-offscreen の価格は textContent（evaluate）で取得する
+        price = make_element(evaluate="¥1,234")
+        seller = make_element(text="テスト販売者")
 
-        # 価格要素をシミュレート
-        mock_price = unittest.mock.MagicMock()
-        mock_price.get_attribute.return_value = "¥1,234"
+        def find_by_value(value):
+            if "itemTitle" in value:
+                return link
+            if "itemImage" in value:
+                return thumb
+            return None
 
-        # サムネイル要素をシミュレート
-        mock_thumb = unittest.mock.MagicMock()
-        mock_thumb.get_attribute.return_value = "https://example.com/thumb.jpg"
-
-        # 販売者要素をシミュレート
-        mock_seller = unittest.mock.MagicMock()
-        mock_seller.text = "テスト販売者"
-
-        def find_element_side_effect(by, xpath):
-            if "itemTitle" in xpath:
-                return mock_link
-            elif "itemImage" in xpath:
-                return mock_thumb
-            return unittest.mock.MagicMock()
-
-        def find_elements_side_effect(by, xpath):
-            if "unitPrice" in xpath:
-                return [mock_price]
-            elif "orderedMerchant" in xpath:
-                return [mock_seller]
+        def find_all_by_value(value):
+            if "unitPrice" in value:
+                return [price]
+            if "orderedMerchant" in value:
+                return [seller]
             return []
 
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         order = amazhist.order.Order(
             date=datetime.datetime(2025, 1, 1),
@@ -332,7 +244,7 @@ class TestParseItem:
 
         with (
             unittest.mock.patch("amazhist.item.fetch_item_category", return_value=["本"]),
-            unittest.mock.patch("my_lib.selenium_util.with_retry"),
+            unittest.mock.patch("amazhist.webutil.with_retry"),
             unittest.mock.patch("time.sleep"),
         ):
             result = amazhist.item.parse_item(handle, "//div", order)
@@ -425,106 +337,55 @@ class TestSaveThumbnailErrors:
     """_save_thumbnail のエラーケースのテスト"""
 
     @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック取り付け済み）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
         (tmp_path / "thumb").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(_make_config(tmp_path)))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
 
-    def test_save_thumbnail_empty_data(self, handle):
+    def test_save_thumbnail_empty_data(self, handle, make_element):
         """画像データが空の場合はエラーを発生"""
-        import my_lib.graceful_shutdown
-
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
 
         # 空の画像データをシミュレート
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b""  # 空のデータ
-        driver.find_element.return_value = mock_img
+        handle._test_tab.find.return_value = make_element(screenshot=b"")
 
-        with (
-            unittest.mock.patch("my_lib.selenium_util.browser_tab"),
-            pytest.raises(amazhist.exceptions.ThumbnailEmptyError),
-        ):
+        with pytest.raises(amazhist.exceptions.ThumbnailEmptyError):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
-    def test_save_thumbnail_zero_size_file(self, handle, tmp_path):
+    def test_save_thumbnail_zero_size_file(self, handle, tmp_path, make_element):
         """ファイルサイズが0の場合はエラーを発生"""
         import os
-
-        import my_lib.graceful_shutdown
+        import pathlib
 
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
 
         # 非空のデータだがファイルに書き込むと0サイズになるケースをシミュレート
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b"fake_data"
-        driver.find_element.return_value = mock_img
+        handle._test_tab.find.return_value = make_element(screenshot=b"fake_data")
 
         # stat_result のモック（0サイズを返す）
         mock_stat_result = os.stat_result((0o100644, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 
         with (
-            unittest.mock.patch("my_lib.selenium_util.browser_tab"),
-            unittest.mock.patch("pathlib.Path.stat", return_value=mock_stat_result),
+            unittest.mock.patch.object(pathlib.Path, "stat", return_value=mock_stat_result),
             pytest.raises(amazhist.exceptions.ThumbnailSizeError),
         ):
             amazhist.item._save_thumbnail(handle, "B012345678", "https://example.com/thumb.jpg")
 
-    def test_save_thumbnail_corrupted_image(self, handle, tmp_path):
+    def test_save_thumbnail_corrupted_image(self, handle, tmp_path, make_element):
         """画像が破損している場合はエラーを発生"""
-        import my_lib.graceful_shutdown
-
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
 
         # 有効でない画像データをシミュレート
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b"not_a_real_png_image_data"
-        driver.find_element.return_value = mock_img
+        handle._test_tab.find.return_value = make_element(screenshot=b"not_a_real_png_image_data")
 
         with (
-            unittest.mock.patch("my_lib.selenium_util.browser_tab"),
             unittest.mock.patch("PIL.Image.open", side_effect=Exception("破損した画像")),
             pytest.raises(amazhist.exceptions.ThumbnailCorruptError),
         ):
@@ -535,95 +396,49 @@ class TestParseItemErrors:
     """parse_item のエラーケースのテスト"""
 
     @pytest.fixture
-    def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
-
-    @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
+    def handle(self, tmp_path, browser_mocks):
+        """Handle インスタンス（ブラウザモック取り付け済み）"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
         (tmp_path / "thumb").mkdir(parents=True, exist_ok=True)
         (tmp_path / "debug").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            h = amazhist.handle.Handle(config=amazhist.config.Config.load(_make_config(tmp_path)))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             yield h
             h.finish()
 
-    def test_parse_item_thumbnail_fetch_failure(self, handle):
+    def test_parse_item_thumbnail_fetch_failure(self, handle, make_element, by_value):
         """サムネイル取得失敗時はエラーを記録"""
         import datetime
-
-        import my_lib.graceful_shutdown
 
         import amazhist.order
 
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # 商品リンク要素をシミュレート
-        mock_link = unittest.mock.MagicMock()
-        mock_link.text = "テスト商品"
-        mock_link.get_attribute.return_value = "https://www.amazon.co.jp/dp/B012345678"
+        link = make_element(text="テスト商品", href="https://www.amazon.co.jp/dp/B012345678")
+        thumb = make_element(attrs={"src": "https://example.com/thumb.jpg"})
+        price = make_element(evaluate="¥1,234")
+        seller = make_element(text="テスト販売者")
 
-        # 価格要素をシミュレート
-        mock_price = unittest.mock.MagicMock()
-        mock_price.get_attribute.return_value = "¥1,234"
+        def find_by_value(value):
+            if "itemTitle" in value:
+                return link
+            if "itemImage" in value:
+                return thumb
+            return None
 
-        # サムネイル要素をシミュレート
-        mock_thumb = unittest.mock.MagicMock()
-        mock_thumb.get_attribute.return_value = "https://example.com/thumb.jpg"
-
-        # 販売者要素をシミュレート
-        mock_seller = unittest.mock.MagicMock()
-        mock_seller.text = "テスト販売者"
-
-        def find_element_side_effect(by, xpath):
-            if "itemTitle" in xpath:
-                return mock_link
-            elif "itemImage" in xpath:
-                return mock_thumb
-            return unittest.mock.MagicMock()
-
-        def find_elements_side_effect(by, xpath):
-            if "unitPrice" in xpath:
-                return [mock_price]
-            elif "orderedMerchant" in xpath:
-                return [mock_seller]
+        def find_all_by_value(value):
+            if "unitPrice" in value:
+                return [price]
+            if "orderedMerchant" in value:
+                return [seller]
             return []
 
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         order = amazhist.order.Order(
             date=datetime.datetime(2025, 1, 1),
@@ -637,7 +452,7 @@ class TestParseItemErrors:
         with (
             unittest.mock.patch("amazhist.item.fetch_item_category", return_value=["本"]),
             unittest.mock.patch(
-                "my_lib.selenium_util.with_retry",
+                "amazhist.webutil.with_retry",
                 side_effect=Exception("サムネイル取得失敗"),
             ),
             unittest.mock.patch("time.sleep"),
@@ -649,50 +464,36 @@ class TestParseItemErrors:
         # エラーが記録されていることを確認
         handle._db.record_error.assert_called_once()
 
-    def test_parse_item_price_parse_failure(self, handle):
+    def test_parse_item_price_parse_failure(self, handle, make_element, by_value):
         """価格パース失敗時はエラーを記録"""
         import datetime
-
-        import my_lib.graceful_shutdown
 
         import amazhist.order
 
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # 商品リンク要素をシミュレート
-        mock_link = unittest.mock.MagicMock()
-        mock_link.text = "テスト商品"
-        mock_link.get_attribute.return_value = "https://www.amazon.co.jp/dp/B012345678"
+        link = make_element(text="テスト商品", href="https://www.amazon.co.jp/dp/B012345678")
+        thumb = make_element(attrs={"src": None})  # サムネイルなし
+        price = make_element(evaluate="無料")  # パースできない価格
+        seller = make_element(text="テスト販売者")
 
-        # 価格要素をシミュレート（不正な値）
-        mock_price = unittest.mock.MagicMock()
-        mock_price.get_attribute.return_value = "無料"  # パースできない価格
+        def find_by_value(value):
+            if "itemTitle" in value:
+                return link
+            if "itemImage" in value:
+                return thumb
+            return None
 
-        # サムネイル要素をシミュレート
-        mock_thumb = unittest.mock.MagicMock()
-        mock_thumb.get_attribute.return_value = None  # サムネイルなし
-
-        # 販売者要素をシミュレート
-        mock_seller = unittest.mock.MagicMock()
-        mock_seller.text = "テスト販売者"
-
-        def find_element_side_effect(by, xpath):
-            if "itemTitle" in xpath:
-                return mock_link
-            elif "itemImage" in xpath:
-                return mock_thumb
-            return unittest.mock.MagicMock()
-
-        def find_elements_side_effect(by, xpath):
-            if "unitPrice" in xpath:
-                return [mock_price]
-            elif "orderedMerchant" in xpath:
-                return [mock_seller]
+        def find_all_by_value(value):
+            if "unitPrice" in value:
+                return [price]
+            if "orderedMerchant" in value:
+                return [seller]
             return []
 
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         order = amazhist.order.Order(
             date=datetime.datetime(2025, 1, 1),
@@ -705,7 +506,7 @@ class TestParseItemErrors:
         with (
             unittest.mock.patch("amazhist.item.fetch_item_category", return_value=["本"]),
             unittest.mock.patch("time.sleep"),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.item.parse_item(handle, "//div", order)
 
@@ -714,46 +515,35 @@ class TestParseItemErrors:
         # エラーが記録されていることを確認
         handle._db.record_or_update_error.assert_called_once()
 
-    def test_parse_item_price_not_found(self, handle):
+    def test_parse_item_price_not_found(self, handle, make_element, by_value):
         """価格要素が見つからない場合はエラーを記録"""
         import datetime
-
-        import my_lib.graceful_shutdown
 
         import amazhist.order
 
         my_lib.graceful_shutdown.reset_shutdown_flag()
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # 商品リンク要素をシミュレート
-        mock_link = unittest.mock.MagicMock()
-        mock_link.text = "テスト商品"
-        mock_link.get_attribute.return_value = "https://www.amazon.co.jp/dp/B012345678"
+        link = make_element(text="テスト商品", href="https://www.amazon.co.jp/dp/B012345678")
+        thumb = make_element(attrs={"src": None})  # サムネイルなし
+        seller = make_element(text="テスト販売者")
 
-        # サムネイル要素をシミュレート
-        mock_thumb = unittest.mock.MagicMock()
-        mock_thumb.get_attribute.return_value = None  # サムネイルなし
+        def find_by_value(value):
+            if "itemTitle" in value:
+                return link
+            if "itemImage" in value:
+                return thumb
+            return None
 
-        # 販売者要素をシミュレート
-        mock_seller = unittest.mock.MagicMock()
-        mock_seller.text = "テスト販売者"
-
-        def find_element_side_effect(by, xpath):
-            if "itemTitle" in xpath:
-                return mock_link
-            elif "itemImage" in xpath:
-                return mock_thumb
-            return unittest.mock.MagicMock()
-
-        def find_elements_side_effect(by, xpath):
-            if "unitPrice" in xpath:
+        def find_all_by_value(value):
+            if "unitPrice" in value:
                 return []  # 価格要素なし
-            elif "orderedMerchant" in xpath:
-                return [mock_seller]
+            if "orderedMerchant" in value:
+                return [seller]
             return []
 
-        driver.find_element.side_effect = find_element_side_effect
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         order = amazhist.order.Order(
             date=datetime.datetime(2025, 1, 1),
@@ -766,7 +556,7 @@ class TestParseItemErrors:
         with (
             unittest.mock.patch("amazhist.item.fetch_item_category", return_value=["本"]),
             unittest.mock.patch("time.sleep"),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.item.parse_item(handle, "//div", order)
 

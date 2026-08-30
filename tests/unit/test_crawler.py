@@ -2,10 +2,15 @@
 # ruff: noqa: S101
 """
 crawler.py のテスト
+
+ブラウザ層は my_lib.browser の Page 抽象を使用する。
+Page / Element のモックは conftest の build_page / build_element ヘルパー
+（make_page / make_element / browser_mocks / by_value フィクスチャ）で組み立てる。
 """
 
 import unittest.mock
 
+import my_lib.browser
 import my_lib.graceful_shutdown
 import pytest
 
@@ -13,6 +18,47 @@ import amazhist.config
 import amazhist.crawler
 import amazhist.database
 import amazhist.handle
+
+
+def _make_config(tmp_path):
+    """共通のモック Config 辞書を生成する。"""
+    return {
+        "base_dir": str(tmp_path),
+        "data": {
+            "amazon": {
+                "cache": {
+                    "order": "cache/order.db",
+                    "thumb": "thumb",
+                },
+            },
+            "selenium": "selenium",
+            "debug": "debug",
+        },
+        "output": {
+            "excel": {
+                "table": "output/amazhist.xlsx",
+                "font": {"name": "Arial", "size": 10},
+            },
+            "captcha": "captcha.png",
+        },
+        "login": {
+            "amazon": {
+                "user": "test@example.com",
+                "pass": "password",
+            },
+        },
+    }
+
+
+def _make_handle(mock_config, tmp_path, browser_mocks, *, with_db=False, **kwargs):
+    """ブラウザモックを取り付けた Handle を生成する。"""
+    (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
+        h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config), **kwargs)
+    browser_mocks(h)
+    if with_db:
+        h._db = unittest.mock.MagicMock()
+    return h
 
 
 class TestGenOrderUrl:
@@ -87,46 +133,13 @@ class TestFetchOrderList:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
     def test_fetch_order_list_shutdown_requested(self, handle):
         """シャットダウンリクエスト時は即座に終了"""
@@ -157,7 +170,7 @@ class TestFetchOrderList:
                 "amazhist.crawler._fetch_order_list_all_year",
                 side_effect=Exception("テストエラー"),
             ),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
             pytest.raises(Exception, match="テストエラー"),
         ):
             amazhist.crawler.fetch_order_list(handle)
@@ -170,70 +183,35 @@ class TestVisitUrl:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
     def test_visit_url_success(self, handle):
         """URLアクセス成功"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
         with unittest.mock.patch("amazhist.crawler._wait_for_loading"):
             amazhist.crawler.visit_url(handle, "https://example.com", "test")
 
-        driver.get.assert_called_once_with("https://example.com")
+        page.goto.assert_called_once_with("https://example.com")
 
     def test_visit_url_timeout_retry(self, handle):
-        """タイムアウト時のリトライ"""
-        from selenium.common.exceptions import TimeoutException
-
-        driver, _ = handle.get_selenium_driver()
+        """ページ遷移失敗時のリトライ"""
+        page = handle._test_page
         call_count = 0
 
         def side_effect(url):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise TimeoutException("タイムアウト")
+                raise my_lib.browser.NavigationError("タイムアウト")
 
-        driver.get.side_effect = side_effect
+        page.goto.side_effect = side_effect
 
         with unittest.mock.patch("amazhist.crawler._wait_for_loading"):
             amazhist.crawler.visit_url(handle, "https://example.com", "test")
@@ -242,14 +220,12 @@ class TestVisitUrl:
 
     def test_visit_url_timeout_max_retry(self, handle):
         """最大リトライ超過"""
-        from selenium.common.exceptions import TimeoutException
-
-        driver, _ = handle.get_selenium_driver()
-        driver.get.side_effect = TimeoutException("タイムアウト")
+        page = handle._test_page
+        page.goto.side_effect = my_lib.browser.NavigationError("タイムアウト")
 
         with (
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
-            pytest.raises(TimeoutException),
+            pytest.raises(my_lib.browser.NavigationError),
         ):
             amazhist.crawler.visit_url(handle, "https://example.com", "test")
 
@@ -259,74 +235,43 @@ class TestKeepLoggedOn:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
     def test_keep_logged_on_not_login_page(self, handle):
         """ログインページでない場合は何もしない"""
-        driver, _ = handle.get_selenium_driver()
-        driver.current_url = "https://www.amazon.co.jp/your-orders/orders"
+        page = handle._test_page
+        page.url = "https://www.amazon.co.jp/your-orders/orders"
 
         amazhist.crawler._keep_logged_on(handle)
 
-        # find_element が呼ばれないことを確認
-        driver.find_element.assert_not_called()
+        # 要素検索が呼ばれないことを確認
+        page.find.assert_not_called()
+        page.find_all.assert_not_called()
 
-    def test_keep_logged_on_login_page(self, handle):
+    def test_keep_logged_on_login_page(self, handle, make_element):
         """ログインページの場合"""
-        driver, _ = handle.get_selenium_driver()
-        driver.current_url = "https://www.amazon.co.jp/ap/signin?openid.mode=checkid_setup"
+        page = handle._test_page
+        page.url = "https://www.amazon.co.jp/ap/signin?openid.mode=checkid_setup"
 
-        # ログイン成功をシミュレート
-        def change_url(*args, **kwargs):
-            driver.current_url = "https://www.amazon.co.jp/your-orders/orders"
+        orders_url = "https://www.amazon.co.jp/your-orders/orders"
 
-        mock_submit = unittest.mock.MagicMock()
-        mock_submit.click.side_effect = change_url
-        driver.find_element.return_value = mock_submit
+        # ログイン成功をシミュレート（submit クリックで URL が変わる）
+        submit = make_element()
+        submit.click.side_effect = lambda: setattr(page, "url", orders_url)
+        page.find.return_value = submit
+        # 各入力欄・CAPTCHA は存在しない
+        page.exists.return_value = False
 
-        # CAPTCHA入力フォームがないことをシミュレート
-        driver.find_elements.return_value = []
-
-        with unittest.mock.patch("amazhist.crawler._wait_for_loading"):
+        with (
+            unittest.mock.patch("time.sleep"),
+            unittest.mock.patch("amazhist.crawler._wait_for_loading"),
+        ):
             amazhist.crawler._keep_logged_on(handle)
 
 
@@ -335,60 +280,24 @@ class TestFetchYearList:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
-    def test_fetch_year_list(self, handle):
+    def test_fetch_year_list(self, handle, make_element):
         """年リストの取得"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
         # ドロップダウンの年要素をシミュレート
-        year_elements = []
-        for year in ["過去3か月", "2024年", "2023年", "2022年"]:
-            elem = unittest.mock.MagicMock()
-            elem.text = year
-            year_elements.append(elem)
+        year_elements = [make_element(text=year) for year in ["過去3か月", "2024年", "2023年", "2022年"]]
 
-        driver.find_elements.return_value = year_elements
+        # ドロップダウンのプロンプト要素（クリック対象）
+        page.find.return_value = make_element()
+        page.find_all.return_value = year_elements
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
@@ -406,47 +315,13 @@ class TestRetryFailedItems:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_orders_empty(self, handle):
         """リトライ対象なし"""
@@ -646,68 +521,25 @@ class TestDebugMode:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle_debug(self, mock_config, tmp_path):
-        """デバッグモードの Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(
-                config=amazhist.config.Config.load(mock_config),
-                debug_mode=True,
-            )
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle_debug(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True, debug_mode=True)
+        yield h
+        h.finish()
 
     def test_debug_mode_enabled(self, handle_debug):
         """デバッグモードが有効"""
         assert handle_debug.debug_mode is True
 
-    def test_debug_mode_ignore_cache(self, mock_config, tmp_path):
+    def test_debug_mode_ignore_cache(self, mock_config, tmp_path, browser_mocks):
         """デバッグモードでは ignore_cache も True"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            # ignore_cache は app.py で設定されるので、ここでは別々にテスト
-            h = amazhist.handle.Handle(
-                config=amazhist.config.Config.load(mock_config),
-                debug_mode=True,
-                ignore_cache=True,
-            )
+        h = _make_handle(mock_config, tmp_path, browser_mocks, debug_mode=True, ignore_cache=True)
+        try:
             assert h.debug_mode is True
             assert h.ignore_cache is True
+        finally:
             h.finish()
 
 
@@ -755,165 +587,94 @@ class TestResolveCaptcha:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
-
-    def test_resolve_captcha_success(self, handle, tmp_path):
+    def test_resolve_captcha_success(self, handle, make_element, by_value):
         """CAPTCHA解決成功"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # CAPTCHA画像要素のモック
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b"fake_png_data"
+        img = make_element(screenshot=b"fake_png_data")
+        submit = make_element()
 
-        # Track CAPTCHA status - starts True (present), becomes False after submit
+        # CAPTCHA は初期状態で存在し、submit クリック後に解決される
         captcha_present = [True]
+        submit.click.side_effect = lambda: captcha_present.__setitem__(0, False)
 
-        def find_element_side_effect(by, xpath):
-            if "captcha" in xpath and "img" in xpath:
-                return mock_img
-            elif "cvf_captcha_input" in xpath:
-                return unittest.mock.MagicMock()
-            elif "submit" in xpath:
-                # After submit click, CAPTCHA is resolved
-                def click_side_effect():
-                    captcha_present[0] = False
+        def find_by_value(value):
+            if '@alt="captcha"' in value:
+                return img
+            if 'type="submit"' in value:
+                return submit
+            return make_element()
 
-                mock_btn = unittest.mock.MagicMock()
-                mock_btn.click.side_effect = click_side_effect
-                return mock_btn
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            if "cvf_captcha_input" in xpath:
-                if captcha_present[0]:
-                    return [unittest.mock.MagicMock()]
-                return []
-            return []
-
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        page.exists = unittest.mock.MagicMock(side_effect=lambda locator, *a, **k: captcha_present[0])
 
         with (
             unittest.mock.patch("builtins.input", return_value="ABC123"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             amazhist.crawler._resolve_captcha(handle)
 
-        # Just verify no exception was raised
+        # 例外が発生しないことを確認
 
-    def test_resolve_captcha_retry_then_success(self, handle, tmp_path):
+    def test_resolve_captcha_retry_then_success(self, handle, make_element, by_value):
         """CAPTCHA解決リトライ後成功"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b"fake_png_data"
+        img = make_element(screenshot=b"fake_png_data")
+        submit = make_element()
 
-        # Track retry count - success on 2nd attempt
+        # submit クリック回数を数え、2回目で解決する
         attempt_count = [0]
+        submit.click.side_effect = lambda: attempt_count.__setitem__(0, attempt_count[0] + 1)
 
-        def find_element_side_effect(by, xpath):
-            if "captcha" in xpath and "img" in xpath:
-                return mock_img
-            elif "cvf_captcha_input" in xpath:
-                return unittest.mock.MagicMock()
-            elif "submit" in xpath:
+        def find_by_value(value):
+            if '@alt="captcha"' in value:
+                return img
+            if 'type="submit"' in value:
+                return submit
+            return make_element()
 
-                def click_side_effect():
-                    attempt_count[0] += 1
-
-                mock_btn = unittest.mock.MagicMock()
-                mock_btn.click.side_effect = click_side_effect
-                return mock_btn
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            if "cvf_captcha_input" in xpath:
-                # First attempt fails (captcha still present), second succeeds
-                if attempt_count[0] < 2:
-                    return [unittest.mock.MagicMock()]
-                return []
-            return []
-
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        page.exists = unittest.mock.MagicMock(side_effect=lambda locator, *a, **k: attempt_count[0] < 2)
 
         with (
             unittest.mock.patch("builtins.input", return_value="ABC123"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             amazhist.crawler._resolve_captcha(handle)
 
-    def test_resolve_captcha_failure(self, handle):
+    def test_resolve_captcha_failure(self, handle, make_element, by_value):
         """CAPTCHA解決失敗"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_img = unittest.mock.MagicMock()
-        mock_img.screenshot_as_png = b"fake_png_data"
+        img = make_element(screenshot=b"fake_png_data")
+        submit = make_element()
 
-        mock_input = unittest.mock.MagicMock()
-        mock_submit = unittest.mock.MagicMock()
+        def find_by_value(value):
+            if '@alt="captcha"' in value:
+                return img
+            if 'type="submit"' in value:
+                return submit
+            return make_element()
 
-        def find_element_side_effect(by, xpath):
-            if "captcha" in xpath and "img" in xpath:
-                return mock_img
-            elif "cvf_captcha_input" in xpath:
-                return mock_input
-            elif "submit" in xpath:
-                return mock_submit
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
+        page.find.side_effect = by_value(find_by_value)
         # 常に CAPTCHA が残る
-        driver.find_elements.return_value = [mock_input]
+        page.exists.return_value = True
 
         with (
             unittest.mock.patch("builtins.input", return_value="WRONG"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
             pytest.raises(Exception, match="画像認証を解決できませんでした"),
         ):
             amazhist.crawler._resolve_captcha(handle)
@@ -924,87 +685,42 @@ class TestExecuteLogin:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
-
-    def test_execute_login_with_email_and_continue(self, handle):
+    def test_execute_login_with_email_and_continue(self, handle, make_element, by_value):
         """メールアドレス入力と続行ボタンがある場合"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_email = unittest.mock.MagicMock()
-        mock_continue = unittest.mock.MagicMock()
-        mock_password = unittest.mock.MagicMock()
-        mock_remember = unittest.mock.MagicMock()
-        mock_remember.get_attribute.return_value = None
-        mock_submit = unittest.mock.MagicMock()
+        email = make_element()
+        cont = make_element()
+        password = make_element()
+        remember = make_element(evaluate=None)  # 未チェック
+        submit = make_element()
 
-        def find_element_side_effect(by, xpath):
-            if "ap_email" in xpath:
-                return mock_email
-            elif "continue" in xpath:
-                return mock_continue
-            elif "ap_password" in xpath:
-                return mock_password
-            elif "rememberMe" in xpath:
-                return mock_remember
-            elif "signInSubmit" in xpath:
-                return mock_submit
-            return unittest.mock.MagicMock()
+        def find_by_value(value):
+            if "ap_email" in value:
+                return email
+            if "continue" in value:
+                return cont
+            if "ap_password" in value:
+                return password
+            if "rememberMe" in value:
+                return remember
+            if "signInSubmit" in value:
+                return submit
+            return make_element()
 
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            if '@id="ap_email"' in xpath:
-                return [mock_email]
-            elif "continue" in xpath:
-                return [mock_continue]
-            elif "ap_password" in xpath:
-                return [mock_password]
-            elif "rememberMe" in xpath:
-                return [mock_remember]
-            elif "cvf_captcha_input" in xpath:
-                return []
-            return []
-
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find.side_effect = by_value(find_by_value)
+        # CAPTCHA 以外は存在する
+        page.exists = unittest.mock.MagicMock(
+            side_effect=lambda locator, *a, **k: "cvf_captcha_input" not in locator.value
+        )
 
         with (
             unittest.mock.patch("time.sleep"),
@@ -1012,34 +728,24 @@ class TestExecuteLogin:
         ):
             amazhist.crawler._execute_login(handle)
 
-        mock_email.clear.assert_called_once()
-        mock_email.send_keys.assert_called_once_with("test@example.com")
-        mock_continue.click.assert_called_once()
-        mock_password.clear.assert_called_once()
-        mock_password.send_keys.assert_called_once_with("password")
-        mock_remember.click.assert_called_once()
-        mock_submit.click.assert_called_once()
+        email.clear.assert_called_once()
+        email.type.assert_called_once_with("test@example.com")
+        cont.click.assert_called_once()
+        password.clear.assert_called_once()
+        password.type.assert_called_once_with("password")
+        remember.click.assert_called_once()
+        submit.click.assert_called_once()
 
-    def test_execute_login_with_captcha(self, handle):
+    def test_execute_login_with_captcha(self, handle, make_element):
         """CAPTCHAがある場合"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_submit = unittest.mock.MagicMock()
-        mock_captcha = unittest.mock.MagicMock()
-
-        def find_element_side_effect(by, xpath):
-            if "signInSubmit" in xpath:
-                return mock_submit
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            if "cvf_captcha_input" in xpath:
-                return [mock_captcha]
-            return []
-
-        driver.find_elements.side_effect = find_elements_side_effect
+        submit = make_element()
+        page.find.return_value = submit
+        # CAPTCHA 入力欄のみ存在する
+        page.exists = unittest.mock.MagicMock(
+            side_effect=lambda locator, *a, **k: "cvf_captcha_input" in locator.value
+        )
 
         with (
             unittest.mock.patch("time.sleep"),
@@ -1056,61 +762,27 @@ class TestKeepLoggedOnFailure:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
-
-    def test_keep_logged_on_login_failure(self, handle):
+    def test_keep_logged_on_login_failure(self, handle, make_element):
         """ログイン失敗時は例外を発生"""
-        driver, _ = handle.get_selenium_driver()
-        driver.current_url = "https://www.amazon.co.jp/ap/signin?openid.mode=checkid_setup"
+        page = handle._test_page
+        page.url = "https://www.amazon.co.jp/ap/signin?openid.mode=checkid_setup"
 
         # ログインしても URL が変わらない
-        driver.find_elements.return_value = []
-
-        mock_submit = unittest.mock.MagicMock()
-        driver.find_element.return_value = mock_submit
+        page.exists.return_value = False
+        page.find.return_value = make_element()
 
         with (
+            unittest.mock.patch("time.sleep"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
             pytest.raises(Exception, match="ログインに失敗しました"),
         ):
             amazhist.crawler._keep_logged_on(handle)
@@ -1121,47 +793,13 @@ class TestFetchOrderCount:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_fetch_order_count_by_year(self, handle):
         """年ごとの注文数取得"""
@@ -1193,47 +831,13 @@ class TestFetchOrderListAllYear:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_fetch_order_list_all_year_target_year_not_found(self, handle):
         """年指定モードで指定年が存在しない場合"""
@@ -1329,58 +933,18 @@ class TestRetryOrderFromListPage:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
-
-    def test_retry_order_from_list_page_index_exceeded(self, handle):
+    def test_retry_order_from_list_page_index_exceeded(self, handle, by_value):
         """インデックスが注文数を超えている場合"""
-        driver, _ = handle.get_selenium_driver()
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card js-order-card" in xpath:
-                return []  # No orders found
-            return []
-
-        driver.find_elements.side_effect = find_elements_side_effect
+        page = handle._test_page
+        page.find_all.side_effect = by_value(lambda value: [])
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1399,19 +963,19 @@ class TestRetryOrderFromListPage:
 
         assert result is False
 
-    def test_retry_order_from_list_page_no_order_no_element(self, handle):
+    def test_retry_order_from_list_page_no_order_no_element(self, handle, make_element, by_value):
         """注文番号要素が見つからない場合"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
+        order = make_element()
 
-        mock_order = unittest.mock.MagicMock()
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card js-order-card" in xpath:
-                return [mock_order]
-            # yohtmlc-order-id not found -> empty list
+        def find_all_by_value(value):
+            if "yohtmlc-order-id" in value:
+                return []
+            if "order-card js-order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1431,22 +995,20 @@ class TestRetryOrderFromListPage:
 
         assert result is False
 
-    def test_retry_order_from_list_page_order_not_found_by_no(self, handle):
+    def test_retry_order_from_list_page_order_not_found_by_no(self, handle, make_element, by_value):
         """注文番号で注文が見つからない場合"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="DIFFERENT-ORDER-NO")
 
-        mock_order = unittest.mock.MagicMock()
-        mock_no_elem = unittest.mock.MagicMock()
-        mock_no_elem.text = "DIFFERENT-ORDER-NO"
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card js-order-card" in xpath and "[" not in xpath:
-                return [mock_order]
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_no_elem]
+        def find_all_by_value(value):
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card js-order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1466,39 +1028,30 @@ class TestRetryOrderFromListPage:
 
         assert result is False
 
-    def test_retry_order_from_list_page_success_with_detail_link(self, handle):
+    def test_retry_order_from_list_page_success_with_detail_link(self, handle, make_element, by_value):
         """詳細リンクがある場合の成功"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="ORDER-001")
+        date_elem = make_element(text="2024年1月15日")
+        detail_link = make_element(href="https://example.com/order-details")
 
-        mock_order = unittest.mock.MagicMock()
-        mock_no_elem = unittest.mock.MagicMock()
-        mock_no_elem.text = "ORDER-001"
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2024年1月15日"
-        mock_detail_link = unittest.mock.MagicMock()
-        mock_detail_link.get_attribute.return_value = "https://example.com/order-details"
-
-        def find_element_side_effect(by, xpath):
-            if "a-color-secondary" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH matches first, then indexed versions
-            if "order-card js-order-card" in xpath:
-                if "[" in xpath:
-                    # This is an indexed query like ORDER_XPATH + "[1]"
-                    return [mock_order]
-                return [mock_order]
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_no_elem]
-            elif "order-details" in xpath:
-                return [mock_detail_link]
+        def find_all_by_value(value):
+            if "order-details" in value:
+                return [detail_link]
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card js-order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        def find_by_value(value):
+            if "a-color-secondary" in value:
+                return date_elem
+            return None
+
+        page.find_all.side_effect = by_value(find_all_by_value)
+        page.find.side_effect = by_value(find_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1522,31 +1075,29 @@ class TestRetryOrderFromListPage:
 
         assert result is True
 
-    def test_retry_order_from_list_page_no_detail_link(self, handle):
+    def test_retry_order_from_list_page_no_detail_link(self, handle, make_element, by_value):
         """詳細リンクがない場合はURLを構築"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="ORDER-001")
+        date_elem = make_element(text="2024年1月15日")
 
-        mock_order = unittest.mock.MagicMock()
-        mock_no_elem = unittest.mock.MagicMock()
-        mock_no_elem.text = "ORDER-001"
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2024年1月15日"
-
-        def find_element_side_effect(by, xpath):
-            if "a-color-secondary" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card js-order-card" in xpath:
-                return [mock_order]
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_no_elem]
+        def find_all_by_value(value):
+            if "order-details" in value:
+                return []
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card js-order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        def find_by_value(value):
+            if "a-color-secondary" in value:
+                return date_elem
+            return None
+
+        page.find_all.side_effect = by_value(find_all_by_value)
+        page.find.side_effect = by_value(find_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1570,35 +1121,30 @@ class TestRetryOrderFromListPage:
 
         assert result is True
 
-    def test_retry_order_from_list_page_detail_link_no_href(self, handle):
+    def test_retry_order_from_list_page_detail_link_no_href(self, handle, make_element, by_value):
         """詳細リンクにhrefがない場合"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="ORDER-001")
+        date_elem = make_element(text="2024年1月15日")
+        detail_link = make_element(attrs={"href": None})
 
-        mock_order = unittest.mock.MagicMock()
-        mock_no_elem = unittest.mock.MagicMock()
-        mock_no_elem.text = "ORDER-001"
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2024年1月15日"
-        mock_detail_link = unittest.mock.MagicMock()
-        mock_detail_link.get_attribute.return_value = None
-
-        def find_element_side_effect(by, xpath):
-            if "a-color-secondary" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card js-order-card" in xpath:
-                return [mock_order]
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_no_elem]
-            elif "order-details" in xpath:
-                return [mock_detail_link]
+        def find_all_by_value(value):
+            if "order-details" in value:
+                return [detail_link]
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card js-order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        def find_by_value(value):
+            if "a-color-secondary" in value:
+                return date_elem
+            return None
+
+        page.find_all.side_effect = by_value(find_all_by_value)
+        page.find.side_effect = by_value(find_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1622,39 +1168,30 @@ class TestRetryOrderFromListPage:
 
         assert result is True
 
-    def test_retry_order_from_list_page_find_by_order_no_success(self, handle):
+    def test_retry_order_from_list_page_find_by_order_no_success(self, handle, make_element, by_value):
         """注文番号で注文を見つけて成功"""
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="TARGET-ORDER-NO")
+        date_elem = make_element(text="2024年1月15日")
+        detail_link = make_element(href="https://example.com/order-details")
 
-        mock_order = unittest.mock.MagicMock()
-        mock_no_elem = unittest.mock.MagicMock()
-        mock_no_elem.text = "TARGET-ORDER-NO"
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2024年1月15日"
-        mock_detail_link = unittest.mock.MagicMock()
-        mock_detail_link.get_attribute.return_value = "https://example.com/order-details"
-
-        def find_element_side_effect(by, xpath):
-            if "a-color-secondary" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
-
-        driver.find_element.side_effect = find_element_side_effect
-
-        # Track which xpath we're searching in
-        def find_elements_side_effect(by, xpath):
-            # When looking for order cards (without index)
-            if "order-card js-order-card" in xpath and "][" not in xpath:
-                return [mock_order]
-            # When looking for order id within indexed xpath (ORDER_XPATH + "[1]")
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_no_elem]
-            # When looking for details link
-            elif "order-details" in xpath:
-                return [mock_detail_link]
+        def find_all_by_value(value):
+            if "order-details" in value:
+                return [detail_link]
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card js-order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        def find_by_value(value):
+            if "a-color-secondary" in value:
+                return date_elem
+            return None
+
+        page.find_all.side_effect = by_value(find_all_by_value)
+        page.find.side_effect = by_value(find_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -1685,47 +1222,13 @@ class TestRetryFailedYears:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_years_empty(self, handle):
         """再巡回対象なし"""
@@ -1851,47 +1354,13 @@ class TestRetrySingleOrder:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_single_order_page_only(self, handle):
         """ページ全体を再巡回"""
@@ -2042,47 +1511,13 @@ class TestRetryErrorById:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_error_by_id_not_found(self, handle):
         """エラーが見つからない場合"""
@@ -2265,7 +1700,7 @@ class TestRetryErrorById:
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
         # order_count_fallback uses a context that's not "order", "category", or "thumbnail"
-        # to trigger the elif branch at line 814
+        # to trigger the elif branch
         error = amazhist.database.ErrorLog(
             id=1,
             url="",
@@ -2307,7 +1742,7 @@ class TestRetryErrorById:
                 "amazhist.crawler._retry_single_order",
                 side_effect=Exception("エラー"),
             ),
-            unittest.mock.patch("my_lib.selenium_util.dump_page"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.crawler.retry_error_by_id(handle, 1)
 
@@ -2319,47 +1754,13 @@ class TestRetryFailedItemsException:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_items_exception(self, handle):
         """例外発生時のダンプ処理"""
@@ -2370,7 +1771,7 @@ class TestRetryFailedItemsException:
                 "amazhist.crawler._retry_failed_years",
                 side_effect=Exception("テストエラー"),
             ),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
             pytest.raises(Exception, match="テストエラー"),
         ):
             amazhist.crawler.retry_failed_items(handle)
@@ -2393,47 +1794,13 @@ class TestRetryFailedOrdersShutdown:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_orders_shutdown(self, handle):
         """シャットダウン時は処理を中断"""
@@ -2461,47 +1828,13 @@ class TestRetryFailedCategoriesShutdown:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_categories_shutdown(self, handle):
         """シャットダウン時は処理を中断"""
@@ -2555,47 +1888,13 @@ class TestRetryFailedThumbnailsShutdown:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_thumbnails_shutdown(self, handle):
         """シャットダウン時は処理を中断"""
@@ -2651,46 +1950,13 @@ class TestFetchOrderListExceptionWithShutdown:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
     def test_fetch_order_list_exception_with_shutdown(self, handle):
         """シャットダウン中の例外ではダンプしない"""
@@ -2700,7 +1966,7 @@ class TestFetchOrderListExceptionWithShutdown:
                 side_effect=Exception("テストエラー"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
             pytest.raises(Exception, match="テストエラー"),
         ):
             amazhist.crawler.fetch_order_list(handle)
@@ -2713,84 +1979,42 @@ class TestExecuteLoginWithoutContinue:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
+    def test_execute_login_without_continue_button(self, handle, make_element, by_value):
+        """メールアドレス入力欄はあるが続行ボタンがない場合"""
+        page = handle._test_page
 
-    def test_execute_login_without_continue_button(self, handle):
-        """メールアドレス入力欄はあるが続行ボタンがない場合（113->117）"""
-        driver, _ = handle.get_selenium_driver()
+        email = make_element()
+        password = make_element()
+        remember = make_element(evaluate=None)
+        submit = make_element()
 
-        mock_email = unittest.mock.MagicMock()
-        mock_password = unittest.mock.MagicMock()
-        mock_remember = unittest.mock.MagicMock()
-        mock_remember.get_attribute.return_value = None
-        mock_submit = unittest.mock.MagicMock()
+        def find_by_value(value):
+            if "ap_email" in value:
+                return email
+            if "ap_password" in value:
+                return password
+            if "rememberMe" in value:
+                return remember
+            if "signInSubmit" in value:
+                return submit
+            return make_element()
 
-        def find_element_side_effect(by, xpath):
-            if "ap_email" in xpath:
-                return mock_email
-            elif "ap_password" in xpath:
-                return mock_password
-            elif "rememberMe" in xpath:
-                return mock_remember
-            elif "signInSubmit" in xpath:
-                return mock_submit
-            return unittest.mock.MagicMock()
+        page.find.side_effect = by_value(find_by_value)
 
-        driver.find_element.side_effect = find_element_side_effect
+        def exists_by_value(locator, *a, **k):
+            value = locator.value
+            # 続行ボタンと CAPTCHA 入力欄は存在しない
+            return "continue" not in value and "cvf_captcha_input" not in value
 
-        def find_elements_side_effect(by, xpath):
-            if '@id="ap_email"' in xpath:
-                return [mock_email]  # メールアドレス欄はある
-            elif "continue" in xpath:
-                return []  # 続行ボタンはない
-            elif "ap_password" in xpath:
-                return [mock_password]
-            elif "rememberMe" in xpath:
-                return [mock_remember]
-            elif "cvf_captcha_input" in xpath:
-                return []
-            return []
-
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.exists = unittest.mock.MagicMock(side_effect=exists_by_value)
 
         with (
             unittest.mock.patch("time.sleep"),
@@ -2798,11 +2022,11 @@ class TestExecuteLoginWithoutContinue:
         ):
             amazhist.crawler._execute_login(handle)
 
-        mock_email.clear.assert_called_once()
-        mock_email.send_keys.assert_called_once_with("test@example.com")
-        mock_password.clear.assert_called_once()
-        mock_password.send_keys.assert_called_once_with("password")
-        mock_submit.click.assert_called_once()
+        email.clear.assert_called_once()
+        email.type.assert_called_once_with("test@example.com")
+        password.clear.assert_called_once()
+        password.type.assert_called_once_with("password")
+        submit.click.assert_called_once()
 
 
 class TestRetryOrderFromListPageEdgeCases:
@@ -2810,63 +2034,28 @@ class TestRetryOrderFromListPageEdgeCases:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks)
+        yield h
+        h.finish()
 
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            yield h
-            h.finish()
+    def test_retry_order_from_list_page_order_no_not_found(self, handle, make_element, by_value):
+        """注文番号で検索時に見つからない場合"""
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="999-9999999-9999999")
 
-    def test_retry_order_from_list_page_order_no_not_found(self, handle):
-        """注文番号で検索時に見つからない場合（423->417）"""
-        driver, _ = handle.get_selenium_driver()
-
-        mock_order_elem = unittest.mock.MagicMock()
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card" in xpath and "[" not in xpath:
-                return [mock_order_elem, mock_order_elem]
-            elif "yohtmlc-order-id" in xpath:
-                mock_no_elem = unittest.mock.MagicMock()
-                mock_no_elem.text = "999-9999999-9999999"
-                return [mock_no_elem]
+        def find_all_by_value(value):
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card" in value:
+                return [order, order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -2887,19 +2076,19 @@ class TestRetryOrderFromListPageEdgeCases:
 
         assert result is False
 
-    def test_retry_order_from_list_page_no_order_id_element(self, handle):
-        """注文番号要素が取得できない場合（410-411）"""
-        driver, _ = handle.get_selenium_driver()
-        mock_order_elem = unittest.mock.MagicMock()
+    def test_retry_order_from_list_page_no_order_id_element(self, handle, make_element, by_value):
+        """注文番号要素が取得できない場合"""
+        page = handle._test_page
+        order = make_element()
 
-        def find_elements_side_effect(by, xpath):
-            if "order-card" in xpath and "[" not in xpath:
-                return [mock_order_elem]
-            elif "yohtmlc-order-id" in xpath:
+        def find_all_by_value(value):
+            if "yohtmlc-order-id" in value:
                 return []
+            if "order-card" in value:
+                return [order]
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find_all.side_effect = by_value(find_all_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -2919,34 +2108,30 @@ class TestRetryOrderFromListPageEdgeCases:
 
         assert result is False
 
-    def test_retry_order_from_list_page_url_attr_none(self, handle):
-        """詳細リンクの href が None の場合（455-459）"""
-        driver, _ = handle.get_selenium_driver()
+    def test_retry_order_from_list_page_url_attr_none(self, handle, make_element, by_value):
+        """詳細リンクの href が None の場合"""
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="123-4567890-1234567")
+        date_elem = make_element(text="2025年1月1日")
+        details = make_element(attrs={"href": None})
 
-        mock_order_elem = unittest.mock.MagicMock()
-        mock_order_no_elem = unittest.mock.MagicMock()
-        mock_order_no_elem.text = "123-4567890-1234567"
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2025年1月1日"
-        mock_details_elem = unittest.mock.MagicMock()
-        mock_details_elem.get_attribute.return_value = None  # href が None
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card" in xpath:
-                return [mock_order_elem]  # 常に1つの注文カード
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_order_no_elem]
-            elif "order-details" in xpath:
-                return [mock_details_elem]
+        def find_all_by_value(value):
+            if "order-details" in value:
+                return [details]
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card" in value:
+                return [order]
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "a-color-secondary" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
+        def find_by_value(value):
+            if "a-color-secondary" in value:
+                return date_elem
+            return None
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_by_value)
+        page.find.side_effect = by_value(find_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -2967,32 +2152,29 @@ class TestRetryOrderFromListPageEdgeCases:
 
         assert result is True
 
-    def test_retry_order_from_list_page_no_details_link(self, handle):
-        """詳細リンクがない場合（457-459）"""
-        driver, _ = handle.get_selenium_driver()
+    def test_retry_order_from_list_page_no_details_link(self, handle, make_element, by_value):
+        """詳細リンクがない場合"""
+        page = handle._test_page
+        order = make_element()
+        no_elem = make_element(text="123-4567890-1234567")
+        date_elem = make_element(text="2025年1月1日")
 
-        mock_order_elem = unittest.mock.MagicMock()
-        mock_order_no_elem = unittest.mock.MagicMock()
-        mock_order_no_elem.text = "123-4567890-1234567"
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2025年1月1日"
-
-        def find_elements_side_effect(by, xpath):
-            if "order-card" in xpath:
-                return [mock_order_elem]  # 常に1つの注文カード
-            elif "yohtmlc-order-id" in xpath:
-                return [mock_order_no_elem]
-            elif "order-details" in xpath:
-                return []  # 詳細リンクがない
+        def find_all_by_value(value):
+            if "order-details" in value:
+                return []
+            if "yohtmlc-order-id" in value:
+                return [no_elem]
+            if "order-card" in value:
+                return [order]
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "a-color-secondary" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
+        def find_by_value(value):
+            if "a-color-secondary" in value:
+                return date_elem
+            return None
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_by_value)
+        page.find.side_effect = by_value(find_by_value)
 
         error_info = amazhist.database.FailedOrderInfo(
             error_id=0,
@@ -3019,36 +2201,16 @@ class TestRetryFailedYearsLoopBranch:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {"cache": {"order": "cache/order.db", "thumb": "thumb"}},
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {"table": "output/amazhist.xlsx", "font": {"name": "Arial", "size": 10}},
-                "captcha": "captcha.png",
-            },
-            "login": {"amazon": {"user": "test@example.com", "pass": "password"}},
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_years_with_matching_error_year(self, handle):
-        """エラー年が一致する場合のエラー解決（520->519）"""
+        """エラー年が一致する場合のエラー解決"""
         mock_error = unittest.mock.MagicMock()
         mock_error.id = 1
         mock_error.order_year = 2025
@@ -3076,36 +2238,16 @@ class TestRetryFailedOrdersWithOrderNo:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {"cache": {"order": "cache/order.db", "thumb": "thumb"}},
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {"table": "output/amazhist.xlsx", "font": {"name": "Arial", "size": 10}},
-                "captcha": "captcha.png",
-            },
-            "login": {"amazon": {"user": "test@example.com", "pass": "password"}},
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_orders_with_order_no_success(self, handle):
-        """order_no が存在する場合の成功時処理（631->633）"""
+        """order_no が存在する場合の成功時処理"""
         error_info = amazhist.database.FailedOrderInfo(
             error_id=1,
             url="https://example.com",
@@ -3141,43 +2283,23 @@ class TestRetryFailedItemsExceptionWithoutShutdown:
 
     @pytest.fixture
     def mock_config(self, tmp_path):
-        """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {"cache": {"order": "cache/order.db", "thumb": "thumb"}},
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {"table": "output/amazhist.xlsx", "font": {"name": "Arial", "size": 10}},
-                "captcha": "captcha.png",
-            },
-            "login": {"amazon": {"user": "test@example.com", "pass": "password"}},
-        }
+        return _make_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
-        """Handle インスタンス"""
-        (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
-        with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
-            h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
-            h._db = unittest.mock.MagicMock()
-            yield h
-            h.finish()
+    def handle(self, mock_config, tmp_path, browser_mocks):
+        h = _make_handle(mock_config, tmp_path, browser_mocks, with_db=True)
+        yield h
+        h.finish()
 
     def test_retry_failed_items_exception_without_shutdown(self, handle):
-        """シャットダウン要求なしで例外時にダンプ（875->877）"""
+        """シャットダウン要求なしで例外時にダンプ"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler._retry_failed_years",
                 side_effect=Exception("テストエラー"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
-            unittest.mock.patch("my_lib.selenium_util.dump_page") as mock_dump,
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
             unittest.mock.patch.object(handle, "set_status"),
             unittest.mock.patch.object(handle, "set_progress_bar"),
             pytest.raises(Exception, match="テストエラー"),

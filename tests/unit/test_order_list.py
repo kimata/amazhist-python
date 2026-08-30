@@ -2,6 +2,10 @@
 # ruff: noqa: S101, SIM117
 """
 order_list.py のテスト
+
+ブラウザ層は my_lib.browser の Page 抽象を使用する。
+Page / Element のモックは conftest の build_page / build_element ヘルパー
+（make_page / make_element / browser_mocks / by_value フィクスチャ）で組み立てる。
 """
 
 import unittest.mock
@@ -9,8 +13,40 @@ import unittest.mock
 import pytest
 
 import amazhist.config
+import amazhist.const
 import amazhist.handle
 import amazhist.order_list
+
+_ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
+
+
+def _mock_config(tmp_path):
+    return {
+        "base_dir": str(tmp_path),
+        "data": {
+            "amazon": {
+                "cache": {
+                    "order": "cache/order.db",
+                    "thumb": "thumb",
+                },
+            },
+            "selenium": "selenium",
+            "debug": "debug",
+        },
+        "output": {
+            "excel": {
+                "table": "output/amazhist.xlsx",
+                "font": {"name": "Arial", "size": 10},
+            },
+            "captcha": "captcha.png",
+        },
+        "login": {
+            "amazon": {
+                "user": "test@example.com",
+                "pass": "password",
+            },
+        },
+    }
 
 
 class TestGenTargetText:
@@ -51,32 +87,7 @@ class TestSkipByYearPage:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
     def handle(self, mock_config, tmp_path):
@@ -125,43 +136,16 @@ class TestFetchByYearPage:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
+    def handle(self, mock_config, tmp_path, browser_mocks):
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 5
 
@@ -177,8 +161,7 @@ class TestFetchByYearPage:
         handle.get_progress_bar(amazhist.order_list._gen_status_label_by_year(2025)).update(5)
         handle.get_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL).update(5)
 
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         # モック関数
         visit_url = unittest.mock.MagicMock()
@@ -215,32 +198,7 @@ class TestSafeUpdateProgress:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
     def handle(self, mock_config, tmp_path):
@@ -306,32 +264,7 @@ class TestGetProgressCount:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
     def handle(self, mock_config, tmp_path):
@@ -365,43 +298,16 @@ class TestFetchByYearPageWithOrderCards:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
+    def handle(self, mock_config, tmp_path, browser_mocks):
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 10
 
@@ -414,8 +320,7 @@ class TestFetchByYearPageWithOrderCards:
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -444,31 +349,37 @@ class TestFetchByYearPageWithOrderCards:
         # record_or_update_error が呼ばれる
         handle._db.record_or_update_error.assert_called()
 
-    def test_fetch_problem_alert_retry(self, handle):
+    def test_fetch_problem_alert_retry(self, handle, by_value, make_element):
         """問題発生アラートでリトライ"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        # 1回目: 注文カード1件、問題アラートあり
-        # 2回目（リトライ後）: 正常
-        call_count = [0]
+        # 問題アラートは最初の呼び出しでのみ検出され、リトライ後は解消する
+        problem_calls = [0]
 
-        def find_elements_side_effect(by, xpath):
-            call_count[0] += 1
-            if "order-card" in xpath:
+        def find_all_fn(value):
+            if "問題が発生" in value:
+                problem_calls[0] += 1
+                return [unittest.mock.MagicMock()] if problem_calls[0] == 1 else []
+            if "キャンセル済み" in value:
+                return []
+            if "yohtmlc-order-id" in value:
+                return []  # 注文番号なし（NO_ORDER_NO で continue）
+            if "order-details" in value:
+                return []
+            if value == _ORDER_XPATH:
                 return [unittest.mock.MagicMock()]  # 1件の注文カード
-            if "問題が発生" in xpath:
-                # 最初の呼び出しでは問題あり、リトライ後は問題なし
-                if call_count[0] <= 2:
-                    return [unittest.mock.MagicMock()]
-                return []
-            if "キャンセル済み" in xpath:
-                return []
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        def find_fn(value):
+            if "order-header" in value or "a-color-secondary" in value:
+                return make_element(text="2025年01月15日")
+            return make_element()
+
+        page.find_all.side_effect = by_value(find_all_fn)
+        page.find.side_effect = by_value(find_fn)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -496,21 +407,21 @@ class TestFetchByYearPageWithOrderCards:
         # リトライが発生する（再帰呼び出し）
         assert visit_url.call_count >= 2
 
-    def test_fetch_problem_alert_retry_exceeded(self, handle):
+    def test_fetch_problem_alert_retry_exceeded(self, handle, by_value):
         """問題発生アラートでリトライ上限に達した場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        def find_elements_side_effect(by, xpath):
-            if "order-card" in xpath:
-                return [unittest.mock.MagicMock(), unittest.mock.MagicMock()]  # 2件
-            if "問題が発生" in xpath:
+        def find_all_fn(value):
+            if "問題が発生" in value:
                 return [unittest.mock.MagicMock()]  # 常に問題あり
+            if value == _ORDER_XPATH:
+                return [unittest.mock.MagicMock(), unittest.mock.MagicMock()]  # 2件
             return []
 
-        driver.find_elements.side_effect = find_elements_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -539,34 +450,29 @@ class TestFetchByYearPageWithOrderCards:
         assert is_skipped is True
         assert order_card_count == 2
 
-    def test_fetch_cancelled_order_skipped(self, handle):
+    def test_fetch_cancelled_order_skipped(self, handle, by_value, make_element):
         """キャンセル済み注文がスキップされる"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_order_id_elem = unittest.mock.MagicMock()
-        mock_order_id_elem.text = "123-4567890-1234567"
-
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH: '//div[contains(@class, "order-card js-order-card")]'
-            # 最初の呼び出し（注文カード数カウント）
-            if xpath == '//div[contains(@class, "order-card js-order-card")]':
-                return [unittest.mock.MagicMock()]  # 1件の注文カード
-            if "問題が発生" in xpath:
+        def find_all_fn(value):
+            if "問題が発生" in value:
                 return []
-            if "キャンセル済み" in xpath:
+            if "キャンセル済み" in value:
                 return [unittest.mock.MagicMock()]  # キャンセル済み
+            if value == _ORDER_XPATH:
+                return [unittest.mock.MagicMock()]  # 1件の注文カード
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "yohtmlc-order-id" in xpath:
-                return mock_order_id_elem
-            return unittest.mock.MagicMock()
+        def find_fn(value):
+            if "yohtmlc-order-id" in value:
+                return make_element(text="123-4567890-1234567")
+            return make_element()
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
+        page.find.side_effect = by_value(find_fn)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -594,35 +500,31 @@ class TestFetchByYearPageWithOrderCards:
         assert is_skipped is False
         assert order_card_count == 1
 
-    def test_fetch_order_no_not_found(self, handle):
+    def test_fetch_order_no_not_found(self, handle, by_value, make_element):
         """注文番号が取得できない場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2025年01月15日"
-
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH: '//div[contains(@class, "order-card js-order-card")]'
-            if xpath == '//div[contains(@class, "order-card js-order-card")]':
-                return [unittest.mock.MagicMock()]  # 1件の注文カード
-            if "問題が発生" in xpath:
+        def find_all_fn(value):
+            if "問題が発生" in value:
                 return []
-            if "キャンセル済み" in xpath:
+            if "キャンセル済み" in value:
                 return []
-            if "yohtmlc-order-id" in xpath:
+            if "yohtmlc-order-id" in value:
                 return []  # 注文番号なし
+            if value == _ORDER_XPATH:
+                return [unittest.mock.MagicMock()]  # 1件の注文カード
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "order-header" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
+        def find_fn(value):
+            if "order-header" in value or "a-color-secondary" in value:
+                return make_element(text="2025年01月15日")
+            return make_element()
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
+        page.find.side_effect = by_value(find_fn)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -650,43 +552,33 @@ class TestFetchByYearPageWithOrderCards:
         handle._db.record_or_update_error.assert_called()
         assert order_card_count == 1
 
-    def test_fetch_order_details_link_no_href(self, handle):
+    def test_fetch_order_details_link_no_href(self, handle, by_value, make_element):
         """詳細リンクはあるがhrefが取得できない場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2025年01月15日"
-
-        mock_order_id_elem = unittest.mock.MagicMock()
-        mock_order_id_elem.text = "123-4567890-1234567"
-
-        mock_link_elem = unittest.mock.MagicMock()
-        mock_link_elem.get_attribute.return_value = None  # href が None
-
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH: '//div[contains(@class, "order-card js-order-card")]'
-            if xpath == '//div[contains(@class, "order-card js-order-card")]':
-                return [unittest.mock.MagicMock()]  # 1件の注文カード
-            if "問題が発生" in xpath:
+        def find_all_fn(value):
+            if "問題が発生" in value:
                 return []
-            if "キャンセル済み" in xpath:
+            if "キャンセル済み" in value:
                 return []
-            if "yohtmlc-order-id" in xpath:
-                return [mock_order_id_elem]
-            if "order-details" in xpath:
-                return [mock_link_elem]  # リンク要素はあるがhrefなし
+            if "yohtmlc-order-id" in value:
+                return [make_element(text="123-4567890-1234567")]
+            if "order-details" in value:
+                return [make_element()]  # リンク要素はあるが href なし（attr は None）
+            if value == _ORDER_XPATH:
+                return [unittest.mock.MagicMock()]
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "order-header" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
+        def find_fn(value):
+            if "order-header" in value or "a-color-secondary" in value:
+                return make_element(text="2025年01月15日")
+            return make_element()
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
+        page.find.side_effect = by_value(find_fn)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -716,40 +608,33 @@ class TestFetchByYearPageWithOrderCards:
         gen_order_url.assert_called_with("123-4567890-1234567")
         assert order_card_count == 1
 
-    def test_fetch_order_details_link_not_found(self, handle):
+    def test_fetch_order_details_link_not_found(self, handle, by_value, make_element):
         """詳細リンクが見つからない場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2025年01月15日"
-
-        mock_order_id_elem = unittest.mock.MagicMock()
-        mock_order_id_elem.text = "123-4567890-1234567"
-
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH: '//div[contains(@class, "order-card js-order-card")]'
-            if xpath == '//div[contains(@class, "order-card js-order-card")]':
-                return [unittest.mock.MagicMock()]  # 1件の注文カード
-            if "問題が発生" in xpath:
+        def find_all_fn(value):
+            if "問題が発生" in value:
                 return []
-            if "キャンセル済み" in xpath:
+            if "キャンセル済み" in value:
                 return []
-            if "yohtmlc-order-id" in xpath:
-                return [mock_order_id_elem]
-            if "order-details" in xpath:
+            if "yohtmlc-order-id" in value:
+                return [make_element(text="123-4567890-1234567")]
+            if "order-details" in value:
                 return []  # リンク要素なし
+            if value == _ORDER_XPATH:
+                return [unittest.mock.MagicMock()]
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "order-header" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
+        def find_fn(value):
+            if "order-header" in value or "a-color-secondary" in value:
+                return make_element(text="2025年01月15日")
+            return make_element()
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
+        page.find.side_effect = by_value(find_fn)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -779,29 +664,25 @@ class TestFetchByYearPageWithOrderCards:
         gen_order_url.assert_called_with("123-4567890-1234567")
         assert order_card_count == 1
 
-    def test_fetch_order_card_parse_exception(self, handle):
+    def test_fetch_order_card_parse_exception(self, handle, by_value):
         """注文カード解析中に例外が発生した場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
+        page = handle._test_page
 
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH: '//div[contains(@class, "order-card js-order-card")]'
-            if xpath == '//div[contains(@class, "order-card js-order-card")]':
+        def find_all_fn(value):
+            if "問題が発生" in value:
+                return []
+            if "キャンセル済み" in value:
+                return []
+            if value == _ORDER_XPATH:
                 return [unittest.mock.MagicMock()]  # 1件の注文カード
-            if "問題が発生" in xpath:
-                return []
-            if "キャンセル済み" in xpath:
-                return []
             return []
 
-        def find_element_side_effect(by, xpath):
-            # 日付要素取得時に例外
-            raise Exception("テスト用例外")
-
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
+        # 日付要素取得時（webutil.text -> page.find）に例外
+        page.find.side_effect = Exception("テスト用例外")
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -837,43 +718,16 @@ class TestFetchByYearPageOrderProcessing:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
+    def handle(self, mock_config, tmp_path, browser_mocks):
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 10
             h._db.exists_order.return_value = False
@@ -881,46 +735,41 @@ class TestFetchByYearPageOrderProcessing:
             yield h
             h.finish()
 
-    def _setup_order_card_mock(self, driver, order_id="123-4567890-1234567"):
-        """注文カードのモックを設定するヘルパー"""
-        mock_date_elem = unittest.mock.MagicMock()
-        mock_date_elem.text = "2025年01月15日"
+    def _setup_order_card_mock(self, page, by_value, make_element, order_id="123-4567890-1234567"):
+        """注文カードのモックを設定するヘルパー（Page API 版）"""
+        date_elem = make_element(text="2025年01月15日")
+        order_id_elem = make_element(text=order_id)
+        link_elem = make_element(href=f"https://example.com/order/{order_id}")
 
-        mock_order_id_elem = unittest.mock.MagicMock()
-        mock_order_id_elem.text = order_id
-
-        mock_link_elem = unittest.mock.MagicMock()
-        mock_link_elem.get_attribute.return_value = f"https://example.com/order/{order_id}"
-
-        def find_elements_side_effect(by, xpath):
-            # ORDER_XPATH: '//div[contains(@class, "order-card js-order-card")]'
-            if xpath == '//div[contains(@class, "order-card js-order-card")]':
+        def find_all_fn(value):
+            if "問題が発生" in value:
+                return []
+            if "キャンセル済み" in value:
+                return []
+            if "yohtmlc-order-id" in value:
+                return [order_id_elem]
+            if "order-details" in value:
+                return [link_elem]
+            if value == _ORDER_XPATH:
                 return [unittest.mock.MagicMock()]
-            if "問題が発生" in xpath:
-                return []
-            if "キャンセル済み" in xpath:
-                return []
-            if "yohtmlc-order-id" in xpath:
-                return [mock_order_id_elem]
-            if "order-details" in xpath:
-                return [mock_link_elem]
             return []
 
-        def find_element_side_effect(by, xpath):
-            if "order-header" in xpath:
-                return mock_date_elem
-            return unittest.mock.MagicMock()
+        def find_fn(value):
+            if "order-header" in value or "a-color-secondary" in value:
+                return date_elem
+            if "yohtmlc-order-id" in value:
+                return order_id_elem
+            return make_element()
 
-        driver.find_elements.side_effect = find_elements_side_effect
-        driver.find_element.side_effect = find_element_side_effect
+        page.find_all.side_effect = by_value(find_all_fn)
+        page.find.side_effect = by_value(find_fn)
 
-    def test_fetch_order_new_item(self, handle):
+    def test_fetch_order_new_item(self, handle, by_value, make_element):
         """新規注文の取得"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -950,14 +799,13 @@ class TestFetchByYearPageOrderProcessing:
         # 新規取得なので連続キャッシュヒットは0
         assert consecutive_cache_hits == 0
 
-    def test_fetch_order_cached(self, handle):
+    def test_fetch_order_cached(self, handle, by_value, make_element):
         """キャッシュ済み注文"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
         handle._db.exists_order.return_value = True  # キャッシュ済み
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -986,14 +834,13 @@ class TestFetchByYearPageOrderProcessing:
         # キャッシュヒットなので連続カウント増加
         assert consecutive_cache_hits == 1
 
-    def test_fetch_order_early_exit_on_cache_hits(self, handle):
+    def test_fetch_order_early_exit_on_cache_hits(self, handle, by_value, make_element):
         """早期終了条件を満たす場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
         handle._db.exists_order.return_value = True  # キャッシュ済み
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1024,13 +871,12 @@ class TestFetchByYearPageOrderProcessing:
         # 閾値以上になるので5
         assert consecutive_cache_hits == 5
 
-    def test_fetch_order_exception_during_processing(self, handle):
+    def test_fetch_order_exception_during_processing(self, handle, by_value, make_element):
         """注文処理中に例外が発生した場合"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1062,14 +908,13 @@ class TestFetchByYearPageOrderProcessing:
         # 連続キャッシュヒットはリセット
         assert consecutive_cache_hits == 0
 
-    def test_fetch_order_debug_mode(self, handle):
+    def test_fetch_order_debug_mode(self, handle, by_value, make_element):
         """デバッグモードでは1件だけ処理"""
         handle.debug_mode = True
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1097,13 +942,12 @@ class TestFetchByYearPageOrderProcessing:
         # デバッグモードでは最終ページ扱い
         assert is_last is True
 
-    def test_fetch_order_shutdown_requested(self, handle):
+    def test_fetch_order_shutdown_requested(self, handle, by_value, make_element):
         """シャットダウン要求時"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1134,13 +978,12 @@ class TestFetchByYearPageOrderProcessing:
         # store_order_info が呼ばれる
         handle._db.set_last_modified.assert_called()
 
-    def test_fetch_order_item_list_failed(self, handle):
+    def test_fetch_order_item_list_failed(self, handle, by_value, make_element):
         """注文アイテム取得失敗時"""
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 10)
         handle.set_progress_bar(amazhist.order_list.STATUS_ORDER_ITEM_ALL, 10)
 
-        driver, _ = handle.get_selenium_driver()
-        self._setup_order_card_mock(driver)
+        self._setup_order_card_mock(handle._test_page, by_value, make_element)
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1175,43 +1018,16 @@ class TestFetchByYear:
     @pytest.fixture
     def mock_config(self, tmp_path):
         """モック Config"""
-        return {
-            "base_dir": str(tmp_path),
-            "data": {
-                "amazon": {
-                    "cache": {
-                        "order": "cache/order.db",
-                        "thumb": "thumb",
-                    },
-                },
-                "selenium": "selenium",
-                "debug": "debug",
-            },
-            "output": {
-                "excel": {
-                    "table": "output/amazhist.xlsx",
-                    "font": {"name": "Arial", "size": 10},
-                },
-                "captcha": "captcha.png",
-            },
-            "login": {
-                "amazon": {
-                    "user": "test@example.com",
-                    "pass": "password",
-                },
-            },
-        }
+        return _mock_config(tmp_path)
 
     @pytest.fixture
-    def handle(self, mock_config, tmp_path):
+    def handle(self, mock_config, tmp_path, browser_mocks):
         """Handle インスタンス"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             h = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
-            mock_driver = unittest.mock.MagicMock()
-            mock_wait = unittest.mock.MagicMock()
-            h.get_selenium_driver = unittest.mock.MagicMock(return_value=(mock_driver, mock_wait))
+            browser_mocks(h)
             h._db = unittest.mock.MagicMock()
             h._db.get_year_order_count.return_value = 5
             h._db.get_year_list.return_value = [2025, 2024, 2023]
@@ -1225,8 +1041,7 @@ class TestFetchByYear:
 
     def test_fetch_by_year_basic(self, handle):
         """基本的な年の取得"""
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []  # 注文カードなし
+        handle._test_page.find_all.return_value = []  # 注文カードなし
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1257,8 +1072,7 @@ class TestFetchByYear:
         handle._db.is_page_checked.return_value = True  # ページキャッシュ済み
         handle.set_progress_bar(amazhist.order_list._gen_status_label_by_year(2025), 5)
 
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1283,8 +1097,7 @@ class TestFetchByYear:
 
     def test_fetch_by_year_shutdown_requested(self, handle):
         """シャットダウン要求時"""
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1313,10 +1126,9 @@ class TestFetchByYear:
         # 複数ページあるが、デバッグモードなので1ページ目で終了
         handle._db.get_year_order_count.return_value = 25  # 3ページ分
 
-        driver, _ = handle.get_selenium_driver()
         # 期待値0で終わらないように、注文カードがある状態にする
         # ただし fetch_by_year_page が is_last=False を返す必要がある
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1346,8 +1158,7 @@ class TestFetchByYear:
         # 注文数を0にして、期待値0件として扱う
         handle._db.get_year_order_count.return_value = 0
 
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []  # 注文カードなし（期待値0なのでOK）
+        handle._test_page.find_all.return_value = []  # 注文カードなし（期待値0なのでOK）
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1387,8 +1198,7 @@ class TestFetchByYear:
         # 注文数を0にしておく（期待値0件）
         handle._db.get_year_order_count.return_value = 0
 
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1415,10 +1225,8 @@ class TestFetchByYear:
         """複数ページの処理"""
         handle._db.get_year_order_count.return_value = 15  # 2ページ分
 
-        driver, _ = handle.get_selenium_driver()
-
         # 最初のページ: 注文カードなし（即終了させるため）
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()
@@ -1450,8 +1258,7 @@ class TestFetchByYear:
 
         handle._db.is_page_checked.side_effect = is_page_checked_side_effect
 
-        driver, _ = handle.get_selenium_driver()
-        driver.find_elements.return_value = []
+        handle._test_page.find_all.return_value = []
 
         visit_url = unittest.mock.MagicMock()
         keep_logged_on = unittest.mock.MagicMock()

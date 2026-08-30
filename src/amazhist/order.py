@@ -20,9 +20,9 @@ import re
 import time
 from dataclasses import dataclass
 
-import my_lib.selenium_util
-from selenium.common.exceptions import TimeoutException
-from selenium.webdriver.common.by import By
+import my_lib.browser
+import my_lib.browser.helpers
+from my_lib.browser import Xpath
 
 import amazhist.config
 import amazhist.const
@@ -31,6 +31,7 @@ import amazhist.handle
 import amazhist.item
 import amazhist.parser
 import amazhist.types
+import amazhist.webutil
 
 
 @dataclass(frozen=True)
@@ -54,32 +55,32 @@ def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
     Returns:
         パースに成功したか
     """
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
-    date_text = driver.find_element(By.XPATH, '//td/b[contains(text(), "デジタル注文")]').text.split()[1]
+    date_text = amazhist.webutil.text(page, '//td/b[contains(text(), "デジタル注文")]').split()[1]
     date = amazhist.parser.parse_date_digital(date_text)
 
-    no = driver.find_element(By.XPATH, '//ul/li/b[contains(text(), "注文番号")]/..').text.split(": ")[1]
+    no = amazhist.webutil.text(page, '//ul/li/b[contains(text(), "注文番号")]/..').split(": ")[1]
 
     item_xpath = "//tr[td[b[contains(text(), '注文商品')]]]/following-sibling::tr[1]"
 
-    if my_lib.selenium_util.xpath_exists(driver, item_xpath + "/td[1]//a"):
-        link = driver.find_element(By.XPATH, item_xpath + "/td[1]//a")
+    if page.exists(Xpath(item_xpath + "/td[1]//a")):
+        link = amazhist.webutil.find(page, item_xpath + "/td[1]//a")
         name = link.text
-        url = link.get_attribute("href") or ""
+        url = link.attr("href") or ""
         asin_match = re.match(r".*/dp/([^/]+)/", url) if url else None
         asin = asin_match.group(1) if asin_match else None
         category = amazhist.item.fetch_item_category(handle, url) if url else []
     else:
         # NOTE: もう販売ページが存在しない場合．
-        name = driver.find_element(By.XPATH, item_xpath + "/td[1]//b").text
+        name = amazhist.webutil.text(page, item_xpath + "/td[1]//b")
         url = None
         asin = None
         category = []
 
     count = 1
 
-    price_text = driver.find_element(By.XPATH, item_xpath + "/td[2]").text
+    price_text = amazhist.webutil.text(page, item_xpath + "/td[2]")
     price = amazhist.parser.parse_price(price_text) or 0
 
     seller = "アマゾンジャパン合同会社"
@@ -121,10 +122,10 @@ def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
     """
     ITEM_XPATH = '//div[@data-component="purchasedItems"]'
 
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     is_unempty = False
-    for i in range(len(driver.find_elements(By.XPATH, ITEM_XPATH))):
+    for i in range(len(page.find_all(Xpath(ITEM_XPATH)))):
         # シャットダウン要求時は終了
         if amazhist.crawler.is_shutdown_requested():
             break
@@ -156,12 +157,12 @@ def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
     Returns:
         パースに成功したか
     """
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     date_str = order.date.strftime("%Y-%m-%d")
     logging.info(f"注文をパースしています: {date_str} - {order.no}")
 
-    if my_lib.selenium_util.xpath_exists(driver, "//b[contains(text(), 'デジタル注文')]"):
+    if page.exists(Xpath("//b[contains(text(), 'デジタル注文')]")):
         is_unempty = _parse_order_digital(handle, order)
     else:
         is_unempty = _parse_order_default(handle, order)
@@ -188,12 +189,12 @@ def fetch_item_list(
     Returns:
         取得に成功したか
     """
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     try:
         visit_url_func(handle, order.url, get_caller_name_func())
         keep_logged_on_func(handle)
-    except TimeoutException as e:
+    except my_lib.browser.NavigationError as e:
         logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order.no}")
         handle.record_or_update_error(
             url=order.url,
@@ -210,7 +211,7 @@ def fetch_item_list(
     if not parse_order(handle, order):
         logging.warning(f"注文のパースに失敗しました: {order.no}")
         dump_id = amazhist.const.generate_debug_dump_id()
-        my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+        my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         handle.record_or_update_error(
             url=order.url,
             error_type="parse_error",
@@ -226,20 +227,20 @@ def fetch_item_list(
     return True
 
 
-def _extract_order_count_from_page(driver) -> int | None:
+def _extract_order_count_from_page(page: my_lib.browser.Page) -> int | None:
     """ページ内の注文件数を抽出
 
     <span class="num-orders">64件</span> のような要素から件数を取得します。
 
     Args:
-        driver: Selenium WebDriver
+        page: ブラウザページ
 
     Returns:
         注文件数（見つからない場合は None）
     """
     ORDER_COUNT_TEXT_XPATH = "//span[contains(@class, 'num-orders')]"
 
-    elems = driver.find_elements(By.XPATH, ORDER_COUNT_TEXT_XPATH)
+    elems = page.find_all(Xpath(ORDER_COUNT_TEXT_XPATH))
     for elem in elems:
         count = amazhist.parser.parse_number(elem.text)
         if count is not None:
@@ -260,7 +261,7 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
     ORDER_COUNT_XPATH = "//span[contains(@class, 'num-orders')]"
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    driver, _wait = handle.get_selenium_driver()
+    browser_page = handle.get_page()
 
     caller_name = amazhist.crawler.get_caller_name(depth=2)
 
@@ -270,8 +271,8 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
         handle, amazhist.crawler.gen_hist_url(year, amazhist.const.MAX_PAGE_FOR_ORDER_COUNT), caller_name
     )
 
-    if my_lib.selenium_util.xpath_exists(driver, ORDER_COUNT_XPATH):
-        order_count_text = driver.find_element(By.XPATH, ORDER_COUNT_XPATH).text
+    if browser_page.exists(Xpath(ORDER_COUNT_XPATH)):
+        order_count_text = amazhist.webutil.text(browser_page, ORDER_COUNT_XPATH)
 
         count = amazhist.parser.parse_number(order_count_text)
         return count if count is not None else 0
@@ -282,20 +283,20 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
         amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 1), caller_name)
 
         # まずページ内の「○件の注文」テキストから件数を取得
-        page_count_text = _extract_order_count_from_page(driver)
+        page_count_text = _extract_order_count_from_page(browser_page)
         if page_count_text is not None:
             return page_count_text
 
         # テキストが見つからない場合は注文カードを数える（フォールバック）
-        if my_lib.selenium_util.xpath_exists(driver, ORDER_XPATH):
-            count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
+        if browser_page.exists(Xpath(ORDER_XPATH)):
+            count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
 
             # 1ページあたりの最大件数の場合、次のページがあるか確認
             if count == amazhist.const.ORDER_COUNT_PER_PAGE:
                 page = 2
                 while True:
                     amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, page), caller_name)
-                    page_count = len(driver.find_elements(By.XPATH, ORDER_XPATH))
+                    page_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
                     if page_count == 0:
                         break
                     count += page_count
@@ -350,10 +351,10 @@ if __name__ == "__main__":
         )
         parse_order(handle, order)
     except Exception:
-        driver, _wait = handle.get_selenium_driver()
+        page = handle.get_page()
         logging.error(traceback.format_exc())
-        my_lib.selenium_util.dump_page(
-            driver,
+        my_lib.browser.helpers.dump_page(
+            page,
             amazhist.const.generate_debug_dump_id(),
             handle.config.debug_dir_path,
         )

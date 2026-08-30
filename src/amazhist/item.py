@@ -15,9 +15,10 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import my_lib.selenium_util
+import my_lib.browser
+import my_lib.browser.helpers
 import PIL.Image
-from selenium.webdriver.common.by import By
+from my_lib.browser import Xpath
 
 import amazhist.config
 import amazhist.const
@@ -25,6 +26,7 @@ import amazhist.crawler
 import amazhist.exceptions
 import amazhist.handle
 import amazhist.parser
+import amazhist.webutil
 
 if TYPE_CHECKING:
     import amazhist.order
@@ -82,17 +84,12 @@ def fetch_item_category(
     if amazhist.crawler.is_shutdown_requested():
         return []
 
-    driver, _wait = handle.get_selenium_driver()
-
     def _fetch():
-        with my_lib.selenium_util.browser_tab(driver, item_url):
-            return [
-                x.text
-                for x in driver.find_elements(By.XPATH, "//div[contains(@class, 'a-breadcrumb')]//li//a")
-            ]
+        with handle.browser_manager.get_browser().tab(item_url) as tab:
+            return [x.text for x in tab.find_all(Xpath("//div[contains(@class, 'a-breadcrumb')]//li//a"))]
 
     try:
-        return my_lib.selenium_util.with_retry(
+        return amazhist.webutil.with_retry(
             _fetch,
             max_retries=amazhist.const.RETRY_CATEGORY,
             delay=amazhist.const.RETRY_DELAY_DEFAULT,
@@ -121,14 +118,12 @@ def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url:
     if amazhist.crawler.is_shutdown_requested():
         return
 
-    driver, _wait = handle.get_selenium_driver()
-
     thumb_path = handle.get_thumb_path(asin)
     if thumb_path is None:
         return
 
-    with my_lib.selenium_util.browser_tab(driver, thumb_url):
-        png_data = driver.find_element(By.XPATH, "//img").screenshot_as_png
+    with handle.browser_manager.get_browser().tab(thumb_url) as tab:
+        png_data = amazhist.webutil.find(tab, "//img").screenshot()
 
         if not png_data:
             raise amazhist.exceptions.ThumbnailEmptyError(
@@ -169,15 +164,15 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     if amazhist.crawler.is_shutdown_requested():
         return None
 
-    driver, _wait = handle.get_selenium_driver()
+    page = handle.get_page()
 
     # 商品名とリンク
-    link = driver.find_element(
-        By.XPATH,
+    link = amazhist.webutil.find(
+        page,
         item_xpath + "//div[@data-component='itemTitle']//a",
     )
     name = link.text
-    url = link.get_attribute("href") or ""
+    url = link.attr("href") or ""
 
     # ASIN を URL から抽出（/dp/XXXX または /gp/product/XXXX 形式）
     asin_match = re.match(r".*/(?:dp|gp/product)/([^/?]+)", url) if url else None
@@ -187,13 +182,13 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     category = fetch_item_category(handle, url) if url else []
 
     # サムネイル画像
-    thumb_url = driver.find_element(
-        By.XPATH, item_xpath + "//div[@data-component='itemImage']//img"
-    ).get_attribute("src")
+    thumb_url = amazhist.webutil.find(page, item_xpath + "//div[@data-component='itemImage']//img").attr(
+        "src"
+    )
 
     if thumb_url:
         try:
-            my_lib.selenium_util.with_retry(
+            amazhist.webutil.with_retry(
                 lambda: _save_thumbnail(handle, asin, thumb_url),
                 max_retries=amazhist.const.RETRY_THUMBNAIL,
                 delay=amazhist.const.RETRY_DELAY_DEFAULT,
@@ -209,17 +204,17 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
             )
 
     # 価格
-    price_elem = driver.find_elements(
-        By.XPATH, item_xpath + "//div[@data-component='unitPrice']//span[contains(@class, 'a-offscreen')]"
+    price_elem = page.find_all(
+        Xpath(item_xpath + "//div[@data-component='unitPrice']//span[contains(@class, 'a-offscreen')]")
     )
     if price_elem:
         # NOTE: a-offscreen クラスの要素は .text では空になることがあるため textContent を使用
-        price_text = price_elem[0].get_attribute("textContent") or ""
+        price_text = str(price_elem[0].evaluate("(el) => el.textContent") or "")
         price = amazhist.parser.parse_price(price_text)
         if price is None:
             logging.warning(f"価格のパースに失敗しました: {price_text}")
             dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
             handle.record_or_update_error(
                 url=url if url else order.url,
                 error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -232,7 +227,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     else:
         logging.warning(f"価格が見つかりませんでした: {name}")
         dump_id = amazhist.const.generate_debug_dump_id()
-        my_lib.selenium_util.dump_page(driver, dump_id, handle.config.debug_dir_path)
+        my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         handle.record_or_update_error(
             url=url if url else order.url,
             error_type=amazhist.const.ERROR_TYPE_PRICE,
@@ -247,7 +242,7 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     count = 1
 
     # 販売者
-    seller_elem = driver.find_elements(By.XPATH, item_xpath + "//div[@data-component='orderedMerchant']//a")
+    seller_elem = page.find_all(Xpath(item_xpath + "//div[@data-component='orderedMerchant']//a"))
     seller = seller_elem[0].text if seller_elem else "アマゾンジャパン合同会社"
 
     # コンディション（デフォルト新品）
