@@ -112,12 +112,11 @@ class TestParseOrderCount:
     """parse_order_count のテスト"""
 
     def test_parse_order_count_with_count_element(self, handle, make_element):
-        """注文件数要素がある場合"""
+        """件数ラベル「に確定された N件の注文」がある場合"""
         page = handle._test_page
 
-        # 注文件数表示をシミュレート（num-orders 要素あり）
-        page.exists.return_value = True
-        page.find.return_value = make_element(text="42件の注文")
+        # 件数ラベルをシミュレート（_extract_order_count_from_page が find_all で参照）
+        page.find_all.return_value = [make_element(text="に確定された42件の注文")]
 
         with unittest.mock.patch("amazhist.crawler.visit_url"):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -128,8 +127,7 @@ class TestParseOrderCount:
         """注文件数がカンマ区切りの場合（1,234件 → 1234）"""
         page = handle._test_page
 
-        page.exists.return_value = True
-        page.find.return_value = make_element(text="1,234件の注文")
+        page.find_all.return_value = [make_element(text="に確定された1,234件の注文")]
 
         with unittest.mock.patch("amazhist.crawler.visit_url"):
             result = amazhist.order.parse_order_count(handle, 2024)
@@ -137,19 +135,20 @@ class TestParseOrderCount:
         assert result == 1234
 
     def test_parse_order_count_without_count_element(self, handle):
-        """注文件数要素がない場合（注文数が少ない）"""
+        """件数ラベルがない場合（フォールバックで注文カードを数える）"""
         page = handle._test_page
 
         # 注文カード要素をシミュレート
         order_cards = [unittest.mock.MagicMock() for _ in range(5)]
-        # num-orders 要素なし → False、ORDER_XPATH あり → True
-        page.exists.side_effect = [False, True]
-        # _extract_order_count_from_page で空リスト、ORDER_XPATH で5件
-        page.find_all.side_effect = [[], order_cards]
+        # find_all: 件数ラベル(本番)=[], 件数ラベル(リトライ)=[], ORDER_XPATH で5件
+        # exists: ORDER_XPATH あり → True
+        page.exists.return_value = True
+        page.find_all.side_effect = [[], [], order_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
             unittest.mock.patch("time.sleep"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
 
@@ -158,52 +157,46 @@ class TestParseOrderCount:
     def test_parse_order_count_no_orders(self, handle):
         """注文がない場合"""
         page = handle._test_page
+        # 件数ラベル・ORDER_XPATH ともに無し
         page.exists.return_value = False
         page.find_all.return_value = []
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
             unittest.mock.patch("time.sleep"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
 
         assert result == 0
 
     def test_parse_order_count_with_page_text(self, handle, make_element):
-        """ページ内テキストから注文件数を取得"""
+        """件数ラベルのテキストから注文件数を取得"""
         page = handle._test_page
 
-        # 「○件の注文」テキストがあるケース
-        page.exists.side_effect = [False, True]
-        page.find_all.return_value = [make_element(text="15件")]
+        page.find_all.return_value = [make_element(text="に確定された15件の注文")]
 
-        with (
-            unittest.mock.patch("amazhist.crawler.visit_url"),
-            unittest.mock.patch("time.sleep"),
-        ):
+        with unittest.mock.patch("amazhist.crawler.visit_url"):
             result = amazhist.order.parse_order_count(handle, 2024)
 
         assert result == 15
 
     def test_parse_order_count_pagination(self, handle):
-        """複数ページにわたる注文のカウント"""
+        """複数ページにわたる注文のカウント（フォールバック）"""
         page = handle._test_page
 
-        # 1ページ目: ORDER_COUNT_PER_PAGE 件、2ページ目: 5件、3ページ目: 0件
+        # 1ページ目: ORDER_COUNT_PER_PAGE 件、2ページ目: 5件
         page1_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page2_cards = [unittest.mock.MagicMock() for _ in range(5)]
-        page3_cards = []
 
-        # find_all の呼び出し:
-        # 1. _extract_order_count_from_page で空リスト（num-orders要素なし）
-        # 2. ORDER_XPATH でページ1のカード（10件）
-        # 3. ORDER_XPATH でページ2のカード（5件）
-        page.exists.side_effect = [False, True]
-        page.find_all.side_effect = [[], page1_cards, page2_cards, page3_cards]
+        # find_all: 件数ラベル(本番)=[], 件数ラベル(リトライ)=[], ページ1=10件, ページ2=5件
+        page.exists.return_value = True
+        page.find_all.side_effect = [[], [], page1_cards, page2_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
             unittest.mock.patch("time.sleep"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
 
@@ -211,26 +204,27 @@ class TestParseOrderCount:
         assert result == 15
 
     def test_parse_order_count_pagination_full_pages(self, handle):
-        """ページがちょうど終わる場合"""
+        """ページがちょうど終わる場合（フォールバック）"""
         page = handle._test_page
 
         # 1ページ目: ORDER_COUNT_PER_PAGE件、2ページ目: 0件（空）
         page1_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page2_cards = []
 
-        page.exists.side_effect = [False, True]
-        page.find_all.side_effect = [[], page1_cards, page2_cards]
+        page.exists.return_value = True
+        page.find_all.side_effect = [[], [], page1_cards, page2_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
             unittest.mock.patch("time.sleep"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
 
         assert result == amazhist.const.ORDER_COUNT_PER_PAGE
 
     def test_parse_order_count_pagination_multiple_full_pages(self, handle):
-        """複数の満杯ページがある場合"""
+        """複数の満杯ページがある場合（フォールバック）"""
         page = handle._test_page
 
         # 1ページ目と2ページ目がORDER_COUNT_PER_PAGE、3ページ目は少ない
@@ -238,12 +232,13 @@ class TestParseOrderCount:
         page2_cards = [unittest.mock.MagicMock() for _ in range(amazhist.const.ORDER_COUNT_PER_PAGE)]
         page3_cards = [unittest.mock.MagicMock() for _ in range(3)]  # 3件
 
-        page.exists.side_effect = [False, True]
-        page.find_all.side_effect = [[], page1_cards, page2_cards, page3_cards]
+        page.exists.return_value = True
+        page.find_all.side_effect = [[], [], page1_cards, page2_cards, page3_cards]
 
         with (
             unittest.mock.patch("amazhist.crawler.visit_url"),
             unittest.mock.patch("time.sleep"),
+            unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
             result = amazhist.order.parse_order_count(handle, 2024)
 

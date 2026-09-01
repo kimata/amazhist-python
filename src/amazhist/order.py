@@ -230,7 +230,8 @@ def fetch_item_list(
 def _extract_order_count_from_page(page: my_lib.browser.Page) -> int | None:
     """ページ内の注文件数を抽出
 
-    <span class="num-orders">64件</span> のような要素から件数を取得します。
+    時間フィルタのラベル <label class="time-filter__label">に確定された<b>1,184件</b>の注文</label>
+    のような要素から件数を取得します（各年の注文一覧ページに常に表示される）。
 
     Args:
         page: ブラウザページ
@@ -238,7 +239,7 @@ def _extract_order_count_from_page(page: my_lib.browser.Page) -> int | None:
     Returns:
         注文件数（見つからない場合は None）
     """
-    ORDER_COUNT_TEXT_XPATH = "//span[contains(@class, 'num-orders')]"
+    ORDER_COUNT_TEXT_XPATH = "//label[contains(@class, 'time-filter__label')]"
 
     elems = page.find_all(Xpath(ORDER_COUNT_TEXT_XPATH))
     for elem in elems:
@@ -258,67 +259,63 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
     Returns:
         注文件数
     """
-    ORDER_COUNT_XPATH = "//span[contains(@class, 'num-orders')]"
+    # NOTE: 件数は時間フィルタのラベル「に確定された N件の注文」に、各年の一覧ページで常に
+    # 表示される（_extract_order_count_from_page が参照）。以前の num-orders 要素は
+    # Amazon のページ変更で廃止された。
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
     browser_page = handle.get_page()
 
     caller_name = amazhist.crawler.get_caller_name(depth=2)
 
-    # NOTE: 注文数が多い場合，実際の注文数は最初の方のページには表示されないので，
-    # あり得ないページ数を指定する．
-    amazhist.crawler.visit_url(
-        handle, amazhist.crawler.gen_hist_url(year, amazhist.const.MAX_PAGE_FOR_ORDER_COUNT), caller_name
-    )
+    amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 1), caller_name)
 
-    if browser_page.exists(Xpath(ORDER_COUNT_XPATH)):
-        order_count_text = amazhist.webutil.text(browser_page, ORDER_COUNT_XPATH)
-
-        count = amazhist.parser.parse_number(order_count_text)
-        return count if count is not None else 0
-    else:
+    # 件数ラベルから取得（見つからなければ読み込み遅延を疑い、一度だけ待って再取得）
+    count = _extract_order_count_from_page(browser_page)
+    if count is None:
         time.sleep(1)
+        count = _extract_order_count_from_page(browser_page)
+    if count is not None:
+        return count
 
-        # NOTE: 注文数が表示されない場合，注文数が少ない可能性が高いので，先頭のページを表示する．
-        amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 1), caller_name)
+    # 件数ラベルが見つからない場合、セレクタ保守のためページを保存する
+    # (Amazon のページ変更で件数要素が移動/廃止された可能性を後から確認するため)
+    dump_id = amazhist.const.generate_debug_dump_id()
+    my_lib.browser.helpers.dump_page(browser_page, dump_id, handle.config.debug_dir_path)
+    logging.warning("%d年: 注文件数要素が見つからないためページを保存しました (dump_id=%d)", year, dump_id)
 
-        # まずページ内の「○件の注文」テキストから件数を取得
-        page_count_text = _extract_order_count_from_page(browser_page)
-        if page_count_text is not None:
-            return page_count_text
+    # フォールバック: 注文カードを数える
+    if browser_page.exists(Xpath(ORDER_XPATH)):
+        count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
 
-        # テキストが見つからない場合は注文カードを数える（フォールバック）
-        if browser_page.exists(Xpath(ORDER_XPATH)):
-            count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
+        # 1ページあたりの最大件数の場合、次のページがあるか確認
+        if count == amazhist.const.ORDER_COUNT_PER_PAGE:
+            page = 2
+            while True:
+                amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, page), caller_name)
+                page_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
+                if page_count == 0:
+                    break
+                count += page_count
+                if page_count < amazhist.const.ORDER_COUNT_PER_PAGE:
+                    break
+                page += 1
 
-            # 1ページあたりの最大件数の場合、次のページがあるか確認
-            if count == amazhist.const.ORDER_COUNT_PER_PAGE:
-                page = 2
-                while True:
-                    amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, page), caller_name)
-                    page_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
-                    if page_count == 0:
-                        break
-                    count += page_count
-                    if page_count < amazhist.const.ORDER_COUNT_PER_PAGE:
-                        break
-                    page += 1
+        # フォールバックで注文カードを数えた場合はエラーとして記録
+        # 後から年単位で再巡回可能にする
+        logging.warning(f"{year}年: 注文件数要素が見つからず、注文カードを数えました（{count}件）")
+        handle.record_or_update_error(
+            url=amazhist.crawler.gen_hist_url(year, 1),
+            error_type=amazhist.const.ERROR_TYPE_ORDER_COUNT_FALLBACK,
+            context="year",
+            message=f"注文件数要素が見つからず、注文カードを数えました（{count}件）",
+            order_year=year,
+        )
 
-            # フォールバックで注文カードを数えた場合はエラーとして記録
-            # 後から年単位で再巡回可能にする
-            logging.warning(f"{year}年: 注文件数要素が見つからず、注文カードを数えました（{count}件）")
-            handle.record_or_update_error(
-                url=amazhist.crawler.gen_hist_url(year, 1),
-                error_type=amazhist.const.ERROR_TYPE_ORDER_COUNT_FALLBACK,
-                context="year",
-                message=f"注文件数要素が見つからず、注文カードを数えました（{count}件）",
-                order_year=year,
-            )
+        return count
 
-            return count
-        else:
-            logging.warning("注文件数の取得に失敗しました")
-            return 0
+    logging.warning("注文件数の取得に失敗しました")
+    return 0
 
 
 ######################################################################
