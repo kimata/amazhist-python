@@ -74,8 +74,8 @@ class TestExecuteFetch:
             amazhist.cli.execute_fetch(handle)
             mock_fetch.assert_called_once_with(handle)
 
-    def test_execute_fetch_error_dumps_page(self, handle):
-        """エラー時にページダンプ"""
+    def test_execute_fetch_error_propagates(self, handle):
+        """エラーはそのまま伝播する（ページダンプはタブのスコープ側で行う）"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler.fetch_order_list",
@@ -86,7 +86,7 @@ class TestExecuteFetch:
         ):
             with pytest.raises(Exception, match="フェッチエラー"):
                 amazhist.cli.execute_fetch(handle)
-            mock_dump.assert_called_once()
+            mock_dump.assert_not_called()
 
 
 class TestExecute:
@@ -344,8 +344,8 @@ class TestExecuteRetryExceptions:
         ):
             amazhist.cli.execute_retry(handle)
 
-    def test_execute_retry_generic_exception_with_dump(self, handle):
-        """汎用例外時にページダンプを実行"""
+    def test_execute_retry_generic_exception_propagates(self, handle):
+        """汎用例外はそのまま伝播する（ページダンプはタブのスコープ側で行う）"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler.retry_failed_items",
@@ -356,7 +356,7 @@ class TestExecuteRetryExceptions:
         ):
             with pytest.raises(Exception, match="retry error"):
                 amazhist.cli.execute_retry(handle)
-            mock_dump.assert_called_once()
+            mock_dump.assert_not_called()
 
     def test_execute_retry_generic_exception_with_shutdown(self, handle):
         """シャットダウン要求時はダンプをスキップ"""
@@ -706,11 +706,6 @@ class TestExecuteAdvanced:
                 side_effect=Exception("generic error"),
             ),
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
-            unittest.mock.patch.object(
-                amazhist.handle.Handle,
-                "get_page",
-                return_value=mock_page,
-            ),
             unittest.mock.patch("amazhist.history.generate_table_excel"),
             unittest.mock.patch("builtins.input", return_value=""),
         ):

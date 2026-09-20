@@ -94,172 +94,174 @@ def fetch_by_year_page(
     """
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    browser_page = handle.get_page()
-
     total_page = math.ceil(handle.get_order_count(year) / amazhist.const.ORDER_COUNT_PER_PAGE)
 
     handle.set_status(
         f"🔍 注文履歴を解析しています... {_gen_target_text(year)} {page}/{total_page} ページ",
     )
 
-    visit_url_func(handle, gen_hist_url_func(year, page), get_caller_name_func())
-    keep_logged_on_func(handle)
+    # 一覧ページ 1 枚ごとに専用タブを開く（注文詳細は fetch_item_list が別タブで取得する）
+    with handle.page() as browser_page, amazhist.webutil.dump_page_on_error(handle, browser_page):
+        visit_url_func(handle, browser_page, gen_hist_url_func(year, page), get_caller_name_func())
+        keep_logged_on_func(handle, browser_page)
 
-    logging.info(f"{year}年 {page}/{total_page} ページの注文を確認しています")
-    logging.info(f"URL: {browser_page.url}")
+        logging.info(f"{year}年 {page}/{total_page} ページの注文を確認しています")
+        logging.info(f"URL: {browser_page.url}")
 
-    is_skipped = False
-    order_list = []
-    order_card_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
+        is_skipped = False
+        order_list = []
+        order_card_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
 
-    # 注文カードが見つからなかった場合のチェック
-    if order_card_count == 0:
-        expected_on_page = min(
-            handle.get_order_count(year) - _get_progress_count(handle, year),
-            amazhist.const.ORDER_COUNT_PER_PAGE,
-        )
-        if expected_on_page > 0:
-            logging.warning(
-                f"注文カードが見つかりませんでした（{year}年 {page}ページ、期待: {expected_on_page}件）"
+        # 注文カードが見つからなかった場合のチェック
+        if order_card_count == 0:
+            expected_on_page = min(
+                handle.get_order_count(year) - _get_progress_count(handle, year),
+                amazhist.const.ORDER_COUNT_PER_PAGE,
             )
-            handle.record_or_update_error(
-                url=gen_hist_url_func(year, page),
-                error_type=amazhist.const.ERROR_TYPE_PARSE,
-                context="order",
-                message=f"注文カードが見つかりませんでした（期待: {expected_on_page}件）",
-                order_year=year,
-                order_page=page,
-            )
-            # 期待していた分のプログレスを更新
-            _safe_update_progress(handle, year, expected_on_page)
-            return (True, page >= total_page, 0, 0)  # 注文カード0件
-
-    # ページレベルのエラーチェック（ループの前に1回だけ実行）
-    if (
-        len(
-            browser_page.find_all(
-                Xpath('//div[contains(@class, "a-alert-content")]//span[contains(text(), "問題が発生")]'),
-            )
-        )
-        != 0
-    ):
-        if retry < amazhist.const.RETRY_FETCH:
-            logging.warning("問題が発生しました。再試行します...")
-            time.sleep(amazhist.const.RETRY_DELAY_DEFAULT)
-            return fetch_by_year_page(
-                handle,
-                year,
-                page,
-                visit_url_func,
-                keep_logged_on_func,
-                get_caller_name_func,
-                gen_hist_url_func,
-                gen_order_url_func,
-                is_shutdown_requested_func,
-                retry=retry + 1,
-                can_early_exit=can_early_exit,
-                consecutive_cache_hits=consecutive_cache_hits,
-            )
-        else:
-            # リトライ上限に達した場合は全ての注文カードの分プログレスを更新
-            logging.warning(f"リトライ上限に達しました。{order_card_count}件の注文をスキップします")
-            _safe_update_progress(handle, year, order_card_count)
-            return (True, page >= total_page, order_card_count, 0)
-
-    for i in range(order_card_count):
-        order_xpath = ORDER_XPATH + f"[{i + 1}]"
-
-        try:
-            # キャンセル済みの注文はスキップ（プログレスバーは更新する）
-            if (
-                len(
-                    browser_page.find_all(
-                        Xpath(
-                            order_xpath
-                            + "//div[contains(@class, 'yohtmlc-shipment-status-primaryText')]"
-                            + "//span[contains(text(), 'キャンセル済み')]"
-                        ),
-                    )
+            if expected_on_page > 0:
+                logging.warning(
+                    f"注文カードが見つかりませんでした（{year}年 {page}ページ、期待: {expected_on_page}件）"
                 )
-                != 0
-            ):
-                no = amazhist.webutil.text(
-                    browser_page,
-                    order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
-                )
-                logging.info(f"キャンセル済みの注文をスキップしました: {no}")
-                # キャンセル済みでも「確認した」としてプログレスを更新
-                _safe_update_progress(handle, year)
-                continue
-
-            # 日付を取得
-            date_text = amazhist.webutil.text(
-                browser_page,
-                order_xpath
-                + "//li[contains(@class, 'order-header__header-list-item')]"
-                + "//span[contains(@class, 'a-color-secondary') and contains(@class, 'aok-break-word')]",
-            )
-            date = amazhist.parser.parse_date(date_text)
-
-            # 注文番号を取得
-            order_no_elems = browser_page.find_all(
-                Xpath(order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']"),
-            )
-            if not order_no_elems:
-                logging.warning(f"注文番号が取得できませんでした（{year}年 {page}ページ {i + 1}番目）")
                 handle.record_or_update_error(
                     url=gen_hist_url_func(year, page),
-                    error_type=amazhist.const.ERROR_TYPE_NO_ORDER_NO,
+                    error_type=amazhist.const.ERROR_TYPE_PARSE,
                     context="order",
-                    message=f"注文番号が取得できませんでした（{i + 1}番目）",
+                    message=f"注文カードが見つかりませんでした（期待: {expected_on_page}件）",
+                    order_year=year,
+                    order_page=page,
+                )
+                # 期待していた分のプログレスを更新
+                _safe_update_progress(handle, year, expected_on_page)
+                return (True, page >= total_page, 0, 0)  # 注文カード0件
+
+        # ページレベルのエラーチェック（ループの前に1回だけ実行）
+        if (
+            len(
+                browser_page.find_all(
+                    Xpath('//div[contains(@class, "a-alert-content")]//span[contains(text(), "問題が発生")]'),
+                )
+            )
+            != 0
+        ):
+            if retry < amazhist.const.RETRY_FETCH:
+                logging.warning("問題が発生しました。再試行します...")
+                time.sleep(amazhist.const.RETRY_DELAY_DEFAULT)
+                return fetch_by_year_page(
+                    handle,
+                    year,
+                    page,
+                    visit_url_func,
+                    keep_logged_on_func,
+                    get_caller_name_func,
+                    gen_hist_url_func,
+                    gen_order_url_func,
+                    is_shutdown_requested_func,
+                    retry=retry + 1,
+                    can_early_exit=can_early_exit,
+                    consecutive_cache_hits=consecutive_cache_hits,
+                )
+            else:
+                # リトライ上限に達した場合は全ての注文カードの分プログレスを更新
+                logging.warning(f"リトライ上限に達しました。{order_card_count}件の注文をスキップします")
+                _safe_update_progress(handle, year, order_card_count)
+                return (True, page >= total_page, order_card_count, 0)
+
+        for i in range(order_card_count):
+            order_xpath = ORDER_XPATH + f"[{i + 1}]"
+
+            try:
+                # キャンセル済みの注文はスキップ（プログレスバーは更新する）
+                if (
+                    len(
+                        browser_page.find_all(
+                            Xpath(
+                                order_xpath
+                                + "//div[contains(@class, 'yohtmlc-shipment-status-primaryText')]"
+                                + "//span[contains(text(), 'キャンセル済み')]"
+                            ),
+                        )
+                    )
+                    != 0
+                ):
+                    no = amazhist.webutil.text(
+                        browser_page,
+                        order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']",
+                    )
+                    logging.info(f"キャンセル済みの注文をスキップしました: {no}")
+                    # キャンセル済みでも「確認した」としてプログレスを更新
+                    _safe_update_progress(handle, year)
+                    continue
+
+                # 日付を取得
+                date_text = amazhist.webutil.text(
+                    browser_page,
+                    order_xpath
+                    + "//li[contains(@class, 'order-header__header-list-item')]"
+                    + "//span[contains(@class, 'a-color-secondary') and contains(@class, 'aok-break-word')]",
+                )
+                date = amazhist.parser.parse_date(date_text)
+
+                # 注文番号を取得
+                order_no_elems = browser_page.find_all(
+                    Xpath(order_xpath + "//div[contains(@class, 'yohtmlc-order-id')]/span[@dir='ltr']"),
+                )
+                if not order_no_elems:
+                    logging.warning(f"注文番号が取得できませんでした（{year}年 {page}ページ {i + 1}番目）")
+                    handle.record_or_update_error(
+                        url=gen_hist_url_func(year, page),
+                        error_type=amazhist.const.ERROR_TYPE_NO_ORDER_NO,
+                        context="order",
+                        message=f"注文番号が取得できませんでした（{i + 1}番目）",
+                        order_no=None,
+                        order_year=year,
+                        order_page=page,
+                        order_index=i,
+                    )
+                    _safe_update_progress(handle, year)
+                    continue
+
+                no = order_no_elems[0].text
+
+                # order-details リンクを取得
+                order_details_xpath = (
+                    order_xpath
+                    + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
+                    + "//a[contains(@href, 'order-details')]"
+                )
+                order_details_elems = browser_page.find_all(Xpath(order_details_xpath))
+
+                if order_details_elems:
+                    url = order_details_elems[0].attr("href")
+                    if url is None:
+                        # リンク要素はあるが href が取得できない場合 → URLを構築
+                        logging.info(f"詳細リンクの URL が取得できないため、URLを構築します: {no}")
+                        url = gen_order_url_func(no)
+                else:
+                    # 詳細リンクがない場合 → URLを構築
+                    logging.info(f"詳細リンクがないため、URLを構築して取得を試みます: {no}")
+                    url = gen_order_url_func(no)
+
+                order_list.append(
+                    amazhist.order.Order(date=date, no=no, url=url, time_filter=year, page=page)
+                )
+            except Exception as e:
+                # 注文カード解析中に予期しない例外が発生した場合
+                logging.warning(
+                    f"注文カードの解析中にエラーが発生しました（{year}年 {page}ページ {i + 1}番目）: {e}"
+                )
+                handle.record_or_update_error(
+                    url=gen_hist_url_func(year, page),
+                    error_type=amazhist.const.ERROR_TYPE_PARSE,
+                    context="order",
+                    message=f"注文カードの解析中にエラーが発生しました（{i + 1}番目）: {e}",
                     order_no=None,
                     order_year=year,
                     order_page=page,
                     order_index=i,
                 )
+                is_skipped = True
+                # 例外発生時はプログレスバーを更新
                 _safe_update_progress(handle, year)
-                continue
-
-            no = order_no_elems[0].text
-
-            # order-details リンクを取得
-            order_details_xpath = (
-                order_xpath
-                + "//li[contains(@class, 'yohtmlc-order-level-connections')]"
-                + "//a[contains(@href, 'order-details')]"
-            )
-            order_details_elems = browser_page.find_all(Xpath(order_details_xpath))
-
-            if order_details_elems:
-                url = order_details_elems[0].attr("href")
-                if url is None:
-                    # リンク要素はあるが href が取得できない場合 → URLを構築
-                    logging.info(f"詳細リンクの URL が取得できないため、URLを構築します: {no}")
-                    url = gen_order_url_func(no)
-            else:
-                # 詳細リンクがない場合 → URLを構築
-                logging.info(f"詳細リンクがないため、URLを構築して取得を試みます: {no}")
-                url = gen_order_url_func(no)
-
-            order_list.append(amazhist.order.Order(date=date, no=no, url=url, time_filter=year, page=page))
-        except Exception as e:
-            # 注文カード解析中に予期しない例外が発生した場合
-            logging.warning(
-                f"注文カードの解析中にエラーが発生しました（{year}年 {page}ページ {i + 1}番目）: {e}"
-            )
-            handle.record_or_update_error(
-                url=gen_hist_url_func(year, page),
-                error_type=amazhist.const.ERROR_TYPE_PARSE,
-                context="order",
-                message=f"注文カードの解析中にエラーが発生しました（{i + 1}番目）: {e}",
-                order_no=None,
-                order_year=year,
-                order_page=page,
-                order_index=i,
-            )
-            is_skipped = True
-            # 例外発生時はプログレスバーを更新
-            _safe_update_progress(handle, year)
 
     time.sleep(1)
 
@@ -373,9 +375,10 @@ def fetch_by_year(
         is_shutdown_requested_func: シャットダウン要求確認関数
         start_page: 開始ページ
     """
-    visit_url_func(handle, gen_hist_url_func(year, start_page), get_caller_name_func())
-
-    keep_logged_on_func(handle)
+    # ログイン状態の確認は専用タブで行う（Cookie はブラウザに残る）
+    with handle.page() as browser_page, amazhist.webutil.dump_page_on_error(handle, browser_page):
+        visit_url_func(handle, browser_page, gen_hist_url_func(year, start_page), get_caller_name_func())
+        keep_logged_on_func(handle, browser_page)
 
     year_list = handle.get_year_list()
 

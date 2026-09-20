@@ -149,11 +149,14 @@ def _save_thumbnail(handle: amazhist.handle.Handle, asin: str | None, thumb_url:
             ) from e
 
 
-def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.order.Order) -> Item | None:
+def parse_item(
+    handle: amazhist.handle.Handle, page: my_lib.browser.Page, item_xpath: str, order: amazhist.order.Order
+) -> Item | None:
     """商品情報をパース（新形式）
 
     Args:
         handle: アプリケーションハンドル
+        page: 注文詳細ページを表示中のタブ
         item_xpath: 商品要素のXPath
         order: 注文情報
 
@@ -163,8 +166,6 @@ def parse_item(handle: amazhist.handle.Handle, item_xpath: str, order: amazhist.
     # シャットダウン要求時はスキップ
     if amazhist.crawler.is_shutdown_requested():
         return None
-
-    page = handle.get_page()
 
     # 商品名とリンク
     link = amazhist.webutil.find(

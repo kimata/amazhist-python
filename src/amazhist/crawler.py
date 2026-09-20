@@ -19,7 +19,7 @@ import logging
 import re
 import time
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import my_lib.browser
 import my_lib.browser.helpers
@@ -36,6 +36,9 @@ import amazhist.order
 import amazhist.order_list
 import amazhist.parser
 import amazhist.webutil
+
+if TYPE_CHECKING:
+    from my_lib.browser import Page
 
 _STATUS_ORDER_COUNT = "[収集] 年数"
 
@@ -74,9 +77,7 @@ def _wait_for_loading(handle: amazhist.handle.Handle, sec: float = 2) -> None:
     time.sleep(sec)
 
 
-def _resolve_captcha(handle: amazhist.handle.Handle) -> None:
-    page = handle.get_page()
-
+def _resolve_captcha(handle: amazhist.handle.Handle, page: Page) -> None:
     logging.info("画像認証の解決を試みます")
 
     def _try_solve():
@@ -126,9 +127,7 @@ def _gen_submit_button_xpath(button_id: str) -> str:
     )
 
 
-def _execute_login(handle: amazhist.handle.Handle) -> None:
-    page = handle.get_page()
-
+def _execute_login(handle: amazhist.handle.Handle, page: Page) -> None:
     time.sleep(1)
 
     # NOTE: 新しいサインインページではメール入力欄の id が ap_email_login になっている
@@ -158,7 +157,7 @@ def _execute_login(handle: amazhist.handle.Handle) -> None:
     _wait_for_loading(handle)
 
     if page.exists(Xpath('//input[@name="cvf_captcha_input"]')):
-        _resolve_captcha(handle)
+        _resolve_captcha(handle, page)
 
 
 def _is_signin_page(page: Any) -> bool:
@@ -169,16 +168,14 @@ def _is_signin_page(page: Any) -> bool:
     return amazhist.const.SIGNIN_URL_PATH in page.url
 
 
-def _keep_logged_on(handle: amazhist.handle.Handle) -> None:
-    page = handle.get_page()
-
+def _keep_logged_on(handle: amazhist.handle.Handle, page: Page) -> None:
     if not _is_signin_page(page):
         return
 
     logging.info("ログインを試みます")
 
     def _try_login():
-        _execute_login(handle)
+        _execute_login(handle, page)
         if _is_signin_page(page):
             dump_id = amazhist.const.generate_debug_dump_id()
             my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
@@ -209,12 +206,11 @@ def gen_order_url(no: str) -> str:
     return amazhist.const.HIST_URL_BY_ORDER_NO.format(no=no)
 
 
-def visit_url(handle: amazhist.handle.Handle, url: str, caller_name: str) -> None:
-    """URLにアクセス
+def visit_url(handle: amazhist.handle.Handle, page: Page, url: str, caller_name: str) -> None:
+    """指定タブで URL にアクセス
 
     ページ遷移に失敗した場合はリトライします。
     """
-    page = handle.get_page()
 
     def _load_page():
         page.goto(url)
@@ -250,25 +246,24 @@ def _fetch_order_list_by_year_page(
 
 
 def _fetch_year_list(handle: amazhist.handle.Handle) -> list[int]:
-    """年リストを取得"""
-    page = handle.get_page()
+    """年リストを取得（専用タブで注文履歴トップを開く）"""
+    with handle.page() as page, amazhist.webutil.dump_page_on_error(handle, page):
+        visit_url(handle, page, amazhist.const.HIST_URL, get_caller_name())
 
-    visit_url(handle, amazhist.const.HIST_URL, get_caller_name())
+        _keep_logged_on(handle, page)
 
-    _keep_logged_on(handle)
+        amazhist.webutil.find(
+            page, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
+        ).click()
 
-    amazhist.webutil.find(
-        page, "//form[@action='/your-orders/orders']//span[contains(@class, 'a-dropdown-prompt')]"
-    ).click()
+        _wait_for_loading(handle)
 
-    _wait_for_loading(handle)
-
-    year_str_list = [
-        elem.text
-        for elem in page.find_all(
-            Xpath("//div[contains(@class, 'a-popover-wrapper')]//li"),
-        )
-    ]
+        year_str_list = [
+            elem.text
+            for elem in page.find_all(
+                Xpath("//div[contains(@class, 'a-popover-wrapper')]//li"),
+            )
+        ]
 
     year_list = list(
         reversed([int(label.replace("年", "")) for label in year_str_list if re.match(r"\d+年", label)])
@@ -329,7 +324,7 @@ def _fetch_order_count(handle: amazhist.handle.Handle) -> None:
 
 def _fetch_order_list_all_year(handle: amazhist.handle.Handle) -> None:
     # ブラウザが起動していることを確認
-    handle.get_page()
+    handle.ensure_browser()
 
     year_list = _fetch_year_list(handle)
     _fetch_order_count(handle)
@@ -382,19 +377,14 @@ def fetch_order_list(handle: amazhist.handle.Handle) -> None:
         handle: アプリケーションハンドル
     """
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    page = handle.get_page()
+    handle.ensure_browser()
 
     _setup_graceful_shutdown(handle)
 
     handle.set_status("📥 注文履歴の収集を開始します...")
 
-    try:
-        _fetch_order_list_all_year(handle)
-    except Exception:
-        if not is_shutdown_requested():
-            dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
-        raise
+    # NOTE: 例外時のページダンプは、タブを開いている各スコープ（dump_page_on_error）で行う
+    _fetch_order_list_all_year(handle)
 
     if is_shutdown_requested():
         handle.set_status("🛑 注文履歴の収集を中断しました")
@@ -414,9 +404,6 @@ def _retry_order_from_list_page(
     Returns:
         成功した場合 True
     """
-    ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
-    browser_page = handle.get_page()
-
     year = error_info.order_year
     page = error_info.order_page
     index = error_info.order_index
@@ -427,9 +414,30 @@ def _retry_order_from_list_page(
         logging.warning("注文の年/ページ情報がありません")
         return False
 
+    # 注文一覧ページは専用タブで開き、注文詳細は別タブ（_parse_order_in_new_tab）で取得する
+    with handle.page() as browser_page, amazhist.webutil.dump_page_on_error(handle, browser_page):
+        order = _find_order_in_list_page(handle, browser_page, year, page, index, order_no)
+
+    if order is None:
+        return False
+
+    return _parse_order_in_new_tab(handle, order)
+
+
+def _find_order_in_list_page(
+    handle: amazhist.handle.Handle,
+    browser_page: Page,
+    year: int,
+    page: int,
+    index: int | None,
+    order_no: str | None,
+) -> amazhist.order.Order | None:
+    """注文一覧ページ（指定タブ）から対象注文の情報を取得する"""
+    ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
+
     # 注文一覧ページにアクセス
-    visit_url(handle, gen_hist_url(year, page), get_caller_name())
-    _keep_logged_on(handle)
+    visit_url(handle, browser_page, gen_hist_url(year, page), get_caller_name())
+    _keep_logged_on(handle, browser_page)
 
     # 注文番号がない場合（NO_ORDER_NO エラー）はインデックスで注文を特定
     order_xpath: str | None = None
@@ -440,7 +448,7 @@ def _retry_order_from_list_page(
             logging.warning(
                 f"注文が見つかりませんでした（インデックス超過）: {year}年 {page}ページ {index + 1}番目"
             )
-            return False
+            return None
 
         order_xpath = ORDER_XPATH + f"[{index + 1}]"
 
@@ -450,7 +458,7 @@ def _retry_order_from_list_page(
         )
         if not order_no_elems:
             logging.warning(f"注文番号が取得できませんでした: {year}年 {page}ページ {index + 1}番目")
-            return False
+            return None
 
         order_no = order_no_elems[0].text
     else:
@@ -467,7 +475,7 @@ def _retry_order_from_list_page(
 
     if order_xpath is None or order_no is None:
         logging.warning(f"注文が見つかりませんでした: {order_no}")
-        return False
+        return None
 
     # 日付を取得
     date_text = amazhist.webutil.text(
@@ -499,8 +507,7 @@ def _retry_order_from_list_page(
         logging.info(f"詳細リンクがないため、URLを構築して取得を試みます: {order_no}")
         url = gen_order_url(order_no)
 
-    # 注文を取得
-    order = amazhist.order.Order(
+    return amazhist.order.Order(
         date=date,
         no=order_no,
         url=url,
@@ -508,10 +515,14 @@ def _retry_order_from_list_page(
         page=page,
     )
 
-    visit_url(handle, order.url, get_caller_name())
-    _keep_logged_on(handle)
 
-    return amazhist.order.parse_order(handle, order)
+def _parse_order_in_new_tab(handle: amazhist.handle.Handle, order: amazhist.order.Order) -> bool:
+    """注文詳細ページを専用タブで開いてパースする"""
+    with handle.page() as page, amazhist.webutil.dump_page_on_error(handle, page):
+        visit_url(handle, page, order.url, get_caller_name())
+        _keep_logged_on(handle, page)
+
+        return amazhist.order.parse_order(handle, page, order)
 
 
 def _retry_failed_years(handle: amazhist.handle.Handle) -> tuple[int, int]:
@@ -621,10 +632,7 @@ def _retry_single_order(
             page=order_page,
         )
 
-        visit_url(handle, order.url, get_caller_name())
-        _keep_logged_on(handle)
-
-        return amazhist.order.parse_order(handle, order)
+        return _parse_order_in_new_tab(handle, order)
 
     if order_year is not None:
         # 現在の年で注文番号がない場合も一覧ページから再取得を試みる
@@ -811,7 +819,7 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
 
     # エラーが有効な場合のみブラウザを起動
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    page = handle.get_page()
+    handle.ensure_browser()
 
     _setup_graceful_shutdown(handle)
 
@@ -870,51 +878,43 @@ def retry_error_by_id(handle: amazhist.handle.Handle, error_id: int) -> bool:
         return success
 
     except Exception as e:
+        # NOTE: ページダンプはタブを開いている各スコープ（dump_page_on_error）で行う
         logging.exception(f"エラーID {error_id} の再取得中にエラーが発生しました: {e}")
         handle.set_status("❌ 再取得中にエラーが発生しました", is_error=True)
-        if not is_shutdown_requested():
-            dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         return False
 
 
 def retry_failed_items(handle: amazhist.handle.Handle) -> None:
     """エラーが発生したアイテムを再取得"""
     handle.set_status("🤖 巡回ロボットの準備をします...")
-    page = handle.get_page()
+    handle.ensure_browser()
 
     _setup_graceful_shutdown(handle)
 
     handle.set_status("🔄 エラーが発生したアイテムを再取得します...")
 
-    try:
-        # 年単位の再巡回（order_count_fallback エラー）
-        year_success, year_fail = _retry_failed_years(handle)
+    # NOTE: 例外時のページダンプは、タブを開いている各スコープ（dump_page_on_error）で行う
+    # 年単位の再巡回（order_count_fallback エラー）
+    year_success, year_fail = _retry_failed_years(handle)
 
-        # 注文の再取得
-        order_success, order_fail = _retry_failed_orders(handle)
+    # 注文の再取得
+    order_success, order_fail = _retry_failed_orders(handle)
 
-        # カテゴリの再取得
-        category_success, category_fail = _retry_failed_categories(handle)
+    # カテゴリの再取得
+    category_success, category_fail = _retry_failed_categories(handle)
 
-        # サムネイルの再取得
-        thumb_success, thumb_fail = _retry_failed_thumbnails(handle)
+    # サムネイルの再取得
+    thumb_success, thumb_fail = _retry_failed_thumbnails(handle)
 
-        # 結果をログに出力
-        total_success = year_success + order_success + category_success + thumb_success
-        total_fail = year_fail + order_fail + category_fail + thumb_fail
+    # 結果をログに出力
+    total_success = year_success + order_success + category_success + thumb_success
+    total_fail = year_fail + order_fail + category_fail + thumb_fail
 
-        logging.info(f"再取得結果: 成功 {total_success} 件, 失敗 {total_fail} 件")
-        logging.info(f"  年: 成功 {year_success}, 失敗 {year_fail}")
-        logging.info(f"  注文: 成功 {order_success}, 失敗 {order_fail}")
-        logging.info(f"  カテゴリ: 成功 {category_success}, 失敗 {category_fail}")
-        logging.info(f"  サムネイル: 成功 {thumb_success}, 失敗 {thumb_fail}")
-
-    except Exception:
-        if not is_shutdown_requested():
-            dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
-        raise
+    logging.info(f"再取得結果: 成功 {total_success} 件, 失敗 {total_fail} 件")
+    logging.info(f"  年: 成功 {year_success}, 失敗 {year_fail}")
+    logging.info(f"  注文: 成功 {order_success}, 失敗 {order_fail}")
+    logging.info(f"  カテゴリ: 成功 {category_success}, 失敗 {category_fail}")
+    logging.info(f"  サムネイル: 成功 {thumb_success}, 失敗 {thumb_fail}")
 
     if is_shutdown_requested():
         handle.set_status("🛑 再取得を中断しました")
@@ -950,7 +950,5 @@ if __name__ == "__main__":
 
             _fetch_order_list_by_year(handle, year, start_page)
     except Exception:
-        page = handle.get_page()
+        # NOTE: ページダンプはタブを開いている各スコープ（dump_page_on_error）で行う
         logging.error(traceback.format_exc())
-        dump_id = amazhist.const.generate_debug_dump_id()
-        my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)

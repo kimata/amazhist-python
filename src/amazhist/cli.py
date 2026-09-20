@@ -67,35 +67,21 @@ def _handle_browser_exception(handle: amazhist.handle.Handle, e: Exception) -> i
 
 
 def execute_fetch(handle: amazhist.handle.Handle) -> None:
+    # NOTE: 例外時のページダンプは、タブを開いている各スコープ（webutil.dump_page_on_error）で行う
     try:
         amazhist.crawler.fetch_order_list(handle)
     except my_lib.browser.SessionError:
-        # セッションエラーはブラウザが壊れているのでダンプを試みず re-raise
         logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
-        raise
-    except Exception:
-        # シャットダウン要求時またはブラウザが存在しない場合はダンプをスキップ
-        if not amazhist.crawler.is_shutdown_requested() and handle.has_browser():
-            page = handle.get_page()
-            dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         raise
 
 
 def execute_retry(handle: amazhist.handle.Handle) -> None:
     """エラーが発生したアイテムを再取得"""
+    # NOTE: 例外時のページダンプは、タブを開いている各スコープ（webutil.dump_page_on_error）で行う
     try:
         amazhist.crawler.retry_failed_items(handle)
     except my_lib.browser.SessionError:
-        # セッションエラーはブラウザが壊れているのでダンプを試みず re-raise
         logging.warning("セッションエラーが発生しました（ブラウザがクラッシュした可能性があります）")
-        raise
-    except Exception:
-        # シャットダウン要求時またはブラウザが存在しない場合はダンプをスキップ
-        if not amazhist.crawler.is_shutdown_requested() and handle.has_browser():
-            page = handle.get_page()
-            dump_id = amazhist.const.generate_debug_dump_id()
-            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
         raise
 
 
@@ -244,8 +230,7 @@ def execute(
             except Exception:
                 # シャットダウン要求時は正常終了扱い（tracebackを出さない）
                 if not amazhist.crawler.is_shutdown_requested():
-                    page = handle.get_page()
-                    logging.exception(f"データの収集中にエラーが発生しました: {page.url}")
+                    logging.exception("データの収集中にエラーが発生しました")
                     handle.set_status("❌ データの収集中にエラーが発生しました", is_error=True)
                     exit_code = 1
             finally:

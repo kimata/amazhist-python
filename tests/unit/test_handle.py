@@ -683,18 +683,22 @@ class TestHandleBrowser:
             },
         }
 
-    def test_get_page_initialized(self, mock_config, tmp_path):
-        """ブラウザ初期化済みの場合、get_page がそのページを返す"""
+    def test_page_delegates_to_browser_manager(self, mock_config, tmp_path):
+        """page() が BrowserManager の page() スコープを開いてページを yield する"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             mock_page = unittest.mock.MagicMock()
-            handle.get_page = unittest.mock.MagicMock(return_value=mock_page)
+            mock_manager = unittest.mock.MagicMock()
+            mock_manager.page.return_value.__enter__.return_value = mock_page
+            handle._browser_manager = mock_manager
 
-            page = handle.get_page()
+            with handle.page() as page:
+                assert page is mock_page
+                mock_manager.page.return_value.__exit__.assert_not_called()
 
-            assert page is mock_page
+            mock_manager.page.return_value.__exit__.assert_called_once()
 
             handle.finish()
 
@@ -724,16 +728,16 @@ class TestHandleBrowser:
 
             handle.finish()
 
-    def test_get_page_not_initialized(self, mock_config, tmp_path):
-        """BrowserManager 未初期化時に get_page が例外"""
+    def test_page_not_initialized(self, mock_config, tmp_path):
+        """BrowserManager 未初期化時に page() が例外"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         with unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             handle._browser_manager = None
 
-            with pytest.raises(RuntimeError, match="BrowserManager is not initialized"):
-                handle.get_page()
+            with pytest.raises(RuntimeError, match="BrowserManager is not initialized"), handle.page():
+                pass
 
             handle.finish()
 
@@ -992,7 +996,7 @@ class TestBrowserLifecycle:
     """ブラウザの遅延起動・セッションリトライ・プロファイル削除のテスト
 
     「遅延起動」「起動失敗時のプロファイル削除」は、新しい
-    my_lib.browser.BrowserManager では get_page（遅延起動）と
+    my_lib.browser.BrowserManager では page() / get_browser()（遅延起動）と
     run_with_session_retry（SessionError 時のクリーン再起動）に分離された。
     """
 
@@ -1026,14 +1030,13 @@ class TestBrowserLifecycle:
             },
         }
 
-    def test_get_page_create_new(self, mock_config, tmp_path):
-        """get_page が遅延起動してページを返す"""
+    def test_page_launches_lazily(self, mock_config, tmp_path):
+        """page() が遅延起動して新しいタブを yield し、スコープ終了で閉じる"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
         mock_page = unittest.mock.MagicMock()
         mock_browser = unittest.mock.MagicMock()
-        mock_browser.pages.return_value = []
-        mock_browser.new_page.return_value = mock_page
+        mock_browser.page.return_value.__enter__.return_value = mock_page
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
@@ -1042,31 +1045,32 @@ class TestBrowserLifecycle:
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
             assert not handle.has_browser()
 
-            page = handle.get_page()
+            with handle.page() as page:
+                assert page is mock_page
+                assert handle.has_browser()
 
-            assert page is mock_page
-            assert handle.has_browser()
+            mock_browser.page.return_value.__exit__.assert_called_once()
 
             handle.finish()
 
-    def test_get_page_reuses_existing_page(self, mock_config, tmp_path):
-        """既にタブがある場合は先頭タブを返す"""
+    def test_ensure_browser_launches_once(self, mock_config, tmp_path):
+        """ensure_browser() はブラウザを 1 回だけ起動する"""
         (tmp_path / "cache").mkdir(parents=True, exist_ok=True)
 
-        existing_page = unittest.mock.MagicMock()
         mock_browser = unittest.mock.MagicMock()
-        mock_browser.pages.return_value = [existing_page]
 
         with (
             unittest.mock.patch.object(amazhist.handle.Handle, "_init_database"),
-            unittest.mock.patch("my_lib.browser.factory.launch", return_value=mock_browser),
+            unittest.mock.patch("my_lib.browser.factory.launch", return_value=mock_browser) as mock_launch,
         ):
             handle = amazhist.handle.Handle(config=amazhist.config.Config.load(mock_config))
 
-            page = handle.get_page()
+            handle.ensure_browser()
+            handle.ensure_browser()
 
-            assert page is existing_page
-            mock_browser.new_page.assert_not_called()
+            assert handle.has_browser()
+            mock_launch.assert_called_once()
+            mock_browser.page.assert_not_called()
 
             handle.finish()
 

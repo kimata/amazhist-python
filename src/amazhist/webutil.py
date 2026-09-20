@@ -7,13 +7,20 @@ Selenium の `find_element`（存在必須）相当のヘルパーをここに�
 
 from __future__ import annotations
 
+import contextlib
 import time
-from collections.abc import Callable
-from typing import TypeAlias, TypeVar
+from collections.abc import Callable, Iterator
+from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
+import my_lib.browser.helpers
+import my_lib.graceful_shutdown
 from my_lib.browser import Element, FrameScope, Page, Xpath
 
+import amazhist.const
 import amazhist.exceptions
+
+if TYPE_CHECKING:
+    import amazhist.handle
 
 _T = TypeVar("_T")
 
@@ -71,3 +78,20 @@ def with_retry(
     if last_exception is not None:
         raise last_exception
     raise RuntimeError("Unexpected state in with_retry")  # pragma: no cover
+
+
+@contextlib.contextmanager
+def dump_page_on_error(handle: amazhist.handle.Handle, page: Page) -> Iterator[None]:
+    """スコープ内で例外が起きたら、そのタブをダンプして再送出する
+
+    タブは `handle.page()` のスコープを抜けると閉じられるため、ダンプはスコープ内で行う
+    必要がある。シャットダウン要求中はブラウザが閉じている可能性が高いのでダンプしない。
+    """
+    try:
+        yield
+    except Exception:
+        if not my_lib.graceful_shutdown.is_shutdown_requested():
+            dump_id = amazhist.const.generate_debug_dump_id()
+            with contextlib.suppress(Exception):
+                my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
+        raise

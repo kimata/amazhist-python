@@ -162,7 +162,7 @@ class TestFetchOrderList:
             mock_fetch.assert_called_once_with(handle)
 
     def test_fetch_order_list_exception(self, handle):
-        """例外発生時のテスト"""
+        """例外はそのまま伝播する（ページダンプはタブのスコープ側で行う）"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
         with (
@@ -170,12 +170,23 @@ class TestFetchOrderList:
                 "amazhist.crawler._fetch_order_list_all_year",
                 side_effect=Exception("テストエラー"),
             ),
-            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
             pytest.raises(Exception, match="テストエラー"),
         ):
             amazhist.crawler.fetch_order_list(handle)
 
+    def test_dump_page_on_error_dumps_failed_tab(self, handle):
+        """スコープ内で例外が起きたら、そのタブをダンプして再送出する"""
+        my_lib.graceful_shutdown.reset_shutdown_flag()
+
+        with (
+            unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
+            pytest.raises(Exception, match="テストエラー"),
+            amazhist.webutil.dump_page_on_error(handle, handle._test_page),
+        ):
+            raise Exception("テストエラー")
+
         mock_dump.assert_called_once()
+        assert mock_dump.call_args[0][0] is handle._test_page
 
 
 class TestVisitUrl:
@@ -196,7 +207,7 @@ class TestVisitUrl:
         page = handle._test_page
 
         with unittest.mock.patch("amazhist.crawler._wait_for_loading"):
-            amazhist.crawler.visit_url(handle, "https://example.com", "test")
+            amazhist.crawler.visit_url(handle, handle._test_page, "https://example.com", "test")
 
         page.goto.assert_called_once_with("https://example.com")
 
@@ -214,7 +225,7 @@ class TestVisitUrl:
         page.goto.side_effect = side_effect
 
         with unittest.mock.patch("amazhist.crawler._wait_for_loading"):
-            amazhist.crawler.visit_url(handle, "https://example.com", "test")
+            amazhist.crawler.visit_url(handle, handle._test_page, "https://example.com", "test")
 
         assert call_count == 3
 
@@ -227,7 +238,7 @@ class TestVisitUrl:
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
             pytest.raises(my_lib.browser.NavigationError),
         ):
-            amazhist.crawler.visit_url(handle, "https://example.com", "test")
+            amazhist.crawler.visit_url(handle, handle._test_page, "https://example.com", "test")
 
 
 class TestKeepLoggedOn:
@@ -248,7 +259,7 @@ class TestKeepLoggedOn:
         page = handle._test_page
         page.url = "https://www.amazon.co.jp/your-orders/orders"
 
-        amazhist.crawler._keep_logged_on(handle)
+        amazhist.crawler._keep_logged_on(handle, handle._test_page)
 
         # 要素検索が呼ばれないことを確認
         page.find.assert_not_called()
@@ -272,7 +283,7 @@ class TestKeepLoggedOn:
             unittest.mock.patch("time.sleep"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
         ):
-            amazhist.crawler._keep_logged_on(handle)
+            amazhist.crawler._keep_logged_on(handle, handle._test_page)
 
 
 class TestFetchYearList:
@@ -621,7 +632,7 @@ class TestResolveCaptcha:
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
             unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
-            amazhist.crawler._resolve_captcha(handle)
+            amazhist.crawler._resolve_captcha(handle, handle._test_page)
 
         # 例外が発生しないことを確認
 
@@ -651,7 +662,7 @@ class TestResolveCaptcha:
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
             unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
-            amazhist.crawler._resolve_captcha(handle)
+            amazhist.crawler._resolve_captcha(handle, handle._test_page)
 
     def test_resolve_captcha_failure(self, handle, make_element, by_value):
         """CAPTCHA解決失敗"""
@@ -677,7 +688,7 @@ class TestResolveCaptcha:
             unittest.mock.patch("my_lib.browser.helpers.dump_page"),
             pytest.raises(Exception, match="画像認証を解決できませんでした"),
         ):
-            amazhist.crawler._resolve_captcha(handle)
+            amazhist.crawler._resolve_captcha(handle, handle._test_page)
 
 
 class TestExecuteLogin:
@@ -726,7 +737,7 @@ class TestExecuteLogin:
             unittest.mock.patch("time.sleep"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
         ):
-            amazhist.crawler._execute_login(handle)
+            amazhist.crawler._execute_login(handle, handle._test_page)
 
         email.clear.assert_called_once()
         email.type.assert_called_once_with("test@example.com")
@@ -752,9 +763,9 @@ class TestExecuteLogin:
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
             unittest.mock.patch("amazhist.crawler._resolve_captcha") as mock_resolve,
         ):
-            amazhist.crawler._execute_login(handle)
+            amazhist.crawler._execute_login(handle, handle._test_page)
 
-        mock_resolve.assert_called_once_with(handle)
+        mock_resolve.assert_called_once_with(handle, handle._test_page)
 
 
 class TestKeepLoggedOnFailure:
@@ -785,7 +796,7 @@ class TestKeepLoggedOnFailure:
             unittest.mock.patch("my_lib.browser.helpers.dump_page"),
             pytest.raises(Exception, match="ログインに失敗しました"),
         ):
-            amazhist.crawler._keep_logged_on(handle)
+            amazhist.crawler._keep_logged_on(handle, handle._test_page)
 
 
 class TestFetchOrderCount:
@@ -1763,7 +1774,7 @@ class TestRetryFailedItemsException:
         h.finish()
 
     def test_retry_failed_items_exception(self, handle):
-        """例外発生時のダンプ処理"""
+        """例外はそのまま伝播する（ページダンプはタブのスコープ側で行う）"""
         my_lib.graceful_shutdown.reset_shutdown_flag()
 
         with (
@@ -1776,7 +1787,7 @@ class TestRetryFailedItemsException:
         ):
             amazhist.crawler.retry_failed_items(handle)
 
-        mock_dump.assert_called_once()
+        mock_dump.assert_not_called()
 
     def test_retry_failed_items_shutdown(self, handle):
         """シャットダウン時はダンプしない"""
@@ -1958,18 +1969,15 @@ class TestFetchOrderListExceptionWithShutdown:
         yield h
         h.finish()
 
-    def test_fetch_order_list_exception_with_shutdown(self, handle):
+    def test_dump_page_on_error_skips_dump_during_shutdown(self, handle):
         """シャットダウン中の例外ではダンプしない"""
         with (
-            unittest.mock.patch(
-                "amazhist.crawler._fetch_order_list_all_year",
-                side_effect=Exception("テストエラー"),
-            ),
-            unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True),
+            unittest.mock.patch("my_lib.graceful_shutdown.is_shutdown_requested", return_value=True),
             unittest.mock.patch("my_lib.browser.helpers.dump_page") as mock_dump,
             pytest.raises(Exception, match="テストエラー"),
+            amazhist.webutil.dump_page_on_error(handle, handle._test_page),
         ):
-            amazhist.crawler.fetch_order_list(handle)
+            raise Exception("テストエラー")
 
         mock_dump.assert_not_called()
 
@@ -2020,7 +2028,7 @@ class TestExecuteLoginWithoutContinue:
             unittest.mock.patch("time.sleep"),
             unittest.mock.patch("amazhist.crawler._wait_for_loading"),
         ):
-            amazhist.crawler._execute_login(handle)
+            amazhist.crawler._execute_login(handle, handle._test_page)
 
         email.clear.assert_called_once()
         email.type.assert_called_once_with("test@example.com")
@@ -2292,7 +2300,7 @@ class TestRetryFailedItemsExceptionWithoutShutdown:
         h.finish()
 
     def test_retry_failed_items_exception_without_shutdown(self, handle):
-        """シャットダウン要求なしで例外時にダンプ"""
+        """シャットダウン要求なしでも呼び出し元ではダンプしない（タブのスコープ側で行う）"""
         with (
             unittest.mock.patch(
                 "amazhist.crawler._retry_failed_years",
@@ -2306,4 +2314,4 @@ class TestRetryFailedItemsExceptionWithoutShutdown:
         ):
             amazhist.crawler.retry_failed_items(handle)
 
-        mock_dump.assert_called_once()
+        mock_dump.assert_not_called()

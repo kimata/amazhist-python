@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.11"
 
 [options]
-exclude-newer = "2026-08-23T07:42:46.719914147Z"
+exclude-newer = "2026-09-13T03:54:32.540254971Z"
 exclude-newer-span = "P1W"
 
 [[package]]
@@ -188,7 +188,7 @@ requires-dist = [
     { name = "docopt-ng", specifier = ">=0.9.0" },
     { name = "imageio", specifier = ">=2.37.2" },
     { name = "jinxed", specifier = ">=1.3.0" },
-    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=e5ba0574b5008facbfe37067ae5ca170e619884b" },
+    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=2396a082d68e98ad807e06041293f5c364d100b6" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "patchright", specifier = ">=1.62.0" },
     { name = "pillow", specifier = ">=12.1.0" },
@@ -1433,7 +1433,7 @@ wheels = [
 [[package]]
 name = "my-lib"
 version = "0.2.0"
-source = { git = "https://github.com/kimata/my-py-lib?rev=e5ba0574b5008facbfe37067ae5ca170e619884b#e5ba0574b5008facbfe37067ae5ca170e619884b" }
+source = { git = "https://github.com/kimata/my-py-lib?rev=2396a082d68e98ad807e06041293f5c364d100b6#2396a082d68e98ad807e06041293f5c364d100b6" }
 dependencies = [
     { name = "coloredlogs" },
     { name = "dacite" },

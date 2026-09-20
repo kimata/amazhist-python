@@ -19,6 +19,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import my_lib.browser
 import my_lib.browser.helpers
@@ -33,6 +34,9 @@ import amazhist.parser
 import amazhist.types
 import amazhist.webutil
 
+if TYPE_CHECKING:
+    from my_lib.browser import Page
+
 
 @dataclass(frozen=True)
 class Order:
@@ -45,18 +49,17 @@ class Order:
     page: int | None = None  # _retry_failed_orders で None
 
 
-def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
+def _parse_order_digital(handle: amazhist.handle.Handle, page: Page, order: Order) -> bool:
     """デジタル注文をパース
 
     Args:
         handle: アプリケーションハンドル
+        page: 注文詳細ページを表示中のタブ
         order: 注文情報
 
     Returns:
         パースに成功したか
     """
-    page = handle.get_page()
-
     date_text = amazhist.webutil.text(page, '//td/b[contains(text(), "デジタル注文")]').split()[1]
     date = amazhist.parser.parse_date_digital(date_text)
 
@@ -110,19 +113,18 @@ def _parse_order_digital(handle: amazhist.handle.Handle, order: Order) -> bool:
     return True
 
 
-def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
+def _parse_order_default(handle: amazhist.handle.Handle, page: Page, order: Order) -> bool:
     """通常の注文をパース
 
     Args:
         handle: アプリケーションハンドル
+        page: 注文詳細ページを表示中のタブ
         order: 注文情報
 
     Returns:
         パースに成功したか（1つ以上の商品を取得できたか）
     """
     ITEM_XPATH = '//div[@data-component="purchasedItems"]'
-
-    page = handle.get_page()
 
     is_unempty = False
     for i in range(len(page.find_all(Xpath(ITEM_XPATH)))):
@@ -132,7 +134,7 @@ def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
 
         item_xpath = "(" + ITEM_XPATH + f")[{i + 1}]"
 
-        item = amazhist.item.parse_item(handle, item_xpath, order)
+        item = amazhist.item.parse_item(handle, page, item_xpath, order)
         if item is None:
             # シャットダウン要求により中断
             break
@@ -145,27 +147,26 @@ def _parse_order_default(handle: amazhist.handle.Handle, order: Order) -> bool:
     return is_unempty
 
 
-def parse_order(handle: amazhist.handle.Handle, order: Order) -> bool:
+def parse_order(handle: amazhist.handle.Handle, page: Page, order: Order) -> bool:
     """注文をパース
 
     注文の種類（デジタル/通常）を判別し、適切なパース関数を呼び出します。
 
     Args:
         handle: アプリケーションハンドル
+        page: 注文詳細ページを表示中のタブ
         order: 注文情報
 
     Returns:
         パースに成功したか
     """
-    page = handle.get_page()
-
     date_str = order.date.strftime("%Y-%m-%d")
     logging.info(f"注文をパースしています: {date_str} - {order.no}")
 
     if page.exists(Xpath("//b[contains(text(), 'デジタル注文')]")):
-        is_unempty = _parse_order_digital(handle, order)
+        is_unempty = _parse_order_digital(handle, page, order)
     else:
-        is_unempty = _parse_order_default(handle, order)
+        is_unempty = _parse_order_default(handle, page, order)
 
     return is_unempty
 
@@ -177,7 +178,7 @@ def fetch_item_list(
     keep_logged_on_func: amazhist.types.KeepLoggedOnFunc,
     get_caller_name_func: amazhist.types.GetCallerNameFunc,
 ) -> bool:
-    """注文詳細ページから商品情報を取得
+    """注文詳細ページを専用タブで開いて商品情報を取得
 
     Args:
         handle: アプリケーションハンドル
@@ -189,40 +190,39 @@ def fetch_item_list(
     Returns:
         取得に成功したか
     """
-    page = handle.get_page()
+    with handle.page() as page, amazhist.webutil.dump_page_on_error(handle, page):
+        try:
+            visit_url_func(handle, page, order.url, get_caller_name_func())
+            keep_logged_on_func(handle, page)
+        except my_lib.browser.NavigationError as e:
+            logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order.no}")
+            handle.record_or_update_error(
+                url=order.url,
+                error_type=amazhist.const.ERROR_TYPE_TIMEOUT,
+                context="order",
+                message=str(e),
+                order_no=order.no,
+                order_year=order.time_filter,
+                order_page=order.page,
+            )
+            time.sleep(1)
+            return False
 
-    try:
-        visit_url_func(handle, order.url, get_caller_name_func())
-        keep_logged_on_func(handle)
-    except my_lib.browser.NavigationError as e:
-        logging.warning(f"注文ページの取得に失敗しました（タイムアウト）: {order.no}")
-        handle.record_or_update_error(
-            url=order.url,
-            error_type=amazhist.const.ERROR_TYPE_TIMEOUT,
-            context="order",
-            message=str(e),
-            order_no=order.no,
-            order_year=order.time_filter,
-            order_page=order.page,
-        )
-        time.sleep(1)
-        return False
-
-    if not parse_order(handle, order):
-        logging.warning(f"注文のパースに失敗しました: {order.no}")
-        dump_id = amazhist.const.generate_debug_dump_id()
-        my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
-        handle.record_or_update_error(
-            url=order.url,
-            error_type="parse_error",
-            context="order",
-            message="注文のパースに失敗しました",
-            order_no=order.no,
-            order_year=order.time_filter,
-            order_page=order.page,
-        )
-        time.sleep(1)
-        return False
+        if not parse_order(handle, page, order):
+            logging.warning(f"注文のパースに失敗しました: {order.no}")
+            dump_id = amazhist.const.generate_debug_dump_id()
+            my_lib.browser.helpers.dump_page(page, dump_id, handle.config.debug_dir_path)
+            handle.record_or_update_error(
+                url=order.url,
+                error_type="parse_error",
+                context="order",
+                message="注文のパースに失敗しました",
+                order_no=order.no,
+                order_year=order.time_filter,
+                order_page=order.page,
+            )
+            time.sleep(1)
+            return False
 
     return True
 
@@ -264,11 +264,17 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
     # Amazon のページ変更で廃止された。
     ORDER_XPATH = '//div[contains(@class, "order-card js-order-card")]'
 
-    browser_page = handle.get_page()
-
     caller_name = amazhist.crawler.get_caller_name(depth=2)
 
-    amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, 1), caller_name)
+    # 年ごとに専用タブで一覧ページを開く
+    with handle.page() as browser_page, amazhist.webutil.dump_page_on_error(handle, browser_page):
+        return _parse_order_count_in_page(handle, browser_page, year, caller_name, ORDER_XPATH)
+
+
+def _parse_order_count_in_page(
+    handle: amazhist.handle.Handle, browser_page: Page, year: int, caller_name: str, ORDER_XPATH: str
+) -> int:
+    amazhist.crawler.visit_url(handle, browser_page, amazhist.crawler.gen_hist_url(year, 1), caller_name)
 
     # 件数ラベルから取得（見つからなければ読み込み遅延を疑い、一度だけ待って再取得）
     count = _extract_order_count_from_page(browser_page)
@@ -292,7 +298,9 @@ def parse_order_count(handle: amazhist.handle.Handle, year: int) -> int:
         if count == amazhist.const.ORDER_COUNT_PER_PAGE:
             page = 2
             while True:
-                amazhist.crawler.visit_url(handle, amazhist.crawler.gen_hist_url(year, page), caller_name)
+                amazhist.crawler.visit_url(
+                    handle, browser_page, amazhist.crawler.gen_hist_url(year, page), caller_name
+                )
                 page_count = len(browser_page.find_all(Xpath(ORDER_XPATH)))
                 if page_count == 0:
                     break
@@ -336,22 +344,17 @@ if __name__ == "__main__":
 
     try:
         no = args["-n"]
-        amazhist.crawler.visit_url(handle, amazhist.crawler.gen_order_url(no), "main")
-        amazhist.crawler._keep_logged_on(handle)
+        with handle.page() as page, amazhist.webutil.dump_page_on_error(handle, page):
+            amazhist.crawler.visit_url(handle, page, amazhist.crawler.gen_order_url(no), "main")
+            amazhist.crawler._keep_logged_on(handle, page)
 
-        order = Order(
-            date=datetime.datetime.now(),
-            no=no,
-            url=amazhist.crawler.gen_order_url(no),
-            page=1,
-            time_filter=None,
-        )
-        parse_order(handle, order)
+            order = Order(
+                date=datetime.datetime.now(),
+                no=no,
+                url=amazhist.crawler.gen_order_url(no),
+                page=1,
+                time_filter=None,
+            )
+            parse_order(handle, page, order)
     except Exception:
-        page = handle.get_page()
         logging.error(traceback.format_exc())
-        my_lib.browser.helpers.dump_page(
-            page,
-            amazhist.const.generate_debug_dump_id(),
-            handle.config.debug_dir_path,
-        )

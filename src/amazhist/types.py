@@ -9,19 +9,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from my_lib.browser import Page
+
     import amazhist.handle
 
 
 class VisitUrlFunc(Protocol):
-    """URL訪問関数の型"""
+    """URL訪問関数の型（指定タブで URL へ遷移する）"""
 
-    def __call__(self, handle: amazhist.handle.Handle, url: str, caller_name: str) -> None: ...
+    def __call__(self, handle: amazhist.handle.Handle, page: Page, url: str, caller_name: str) -> None: ...
 
 
 class KeepLoggedOnFunc(Protocol):
-    """ログイン維持関数の型"""
+    """ログイン維持関数の型（指定タブがサインインページならログインする）"""
 
-    def __call__(self, handle: amazhist.handle.Handle) -> None: ...
+    def __call__(self, handle: amazhist.handle.Handle, page: Page) -> None: ...
 
 
 class GetCallerNameFunc(Protocol):

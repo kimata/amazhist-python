@@ -83,7 +83,7 @@ class TestParseOrder:
         )
 
         with unittest.mock.patch("amazhist.order._parse_order_digital", return_value=True) as mock_parse:
-            result = amazhist.order.parse_order(handle, order)
+            result = amazhist.order.parse_order(handle, handle._test_page, order)
 
         assert result is True
         mock_parse.assert_called_once()
@@ -102,7 +102,7 @@ class TestParseOrder:
         )
 
         with unittest.mock.patch("amazhist.order._parse_order_default", return_value=True) as mock_parse:
-            result = amazhist.order.parse_order(handle, order)
+            result = amazhist.order.parse_order(handle, handle._test_page, order)
 
         assert result is True
         mock_parse.assert_called_once()
@@ -300,7 +300,7 @@ class TestParseOrderDigital:
                 "amazhist.item.fetch_item_category", return_value=["Kindleストア", "電子書籍"]
             ),
         ):
-            result = amazhist.order._parse_order_digital(handle, order)
+            result = amazhist.order._parse_order_digital(handle, handle._test_page, order)
 
         assert result is True
         handle._db.upsert_item.assert_called_once()
@@ -328,7 +328,7 @@ class TestParseOrderDigital:
             ),
             unittest.mock.patch("amazhist.parser.parse_price", return_value=500),
         ):
-            result = amazhist.order._parse_order_digital(handle, order)
+            result = amazhist.order._parse_order_digital(handle, handle._test_page, order)
 
         assert result is True
         handle._db.upsert_item.assert_called_once()
@@ -367,7 +367,7 @@ class TestParseOrderDigital:
             unittest.mock.patch("amazhist.parser.parse_price", return_value=1500),
             unittest.mock.patch("amazhist.item.fetch_item_category", return_value=[]),
         ):
-            result = amazhist.order._parse_order_digital(handle, order)
+            result = amazhist.order._parse_order_digital(handle, handle._test_page, order)
 
         assert result is True
         assert len(recorded_items) == 1
@@ -412,7 +412,7 @@ class TestParseOrderDefault:
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
             unittest.mock.patch("amazhist.item.parse_item", side_effect=[mock_item1, mock_item2]),
         ):
-            result = amazhist.order._parse_order_default(handle, order)
+            result = amazhist.order._parse_order_default(handle, handle._test_page, order)
 
         assert result is True
         assert handle._db.upsert_item.call_count == 2
@@ -429,7 +429,7 @@ class TestParseOrderDefault:
             page=1,
         )
 
-        result = amazhist.order._parse_order_default(handle, order)
+        result = amazhist.order._parse_order_default(handle, handle._test_page, order)
 
         assert result is False
 
@@ -450,7 +450,7 @@ class TestParseOrderDefault:
 
         # 最初の商品処理前にシャットダウン要求
         with unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=True):
-            result = amazhist.order._parse_order_default(handle, order)
+            result = amazhist.order._parse_order_default(handle, handle._test_page, order)
 
         assert result is False
 
@@ -470,7 +470,7 @@ class TestParseOrderDefault:
             unittest.mock.patch("amazhist.crawler.is_shutdown_requested", return_value=False),
             unittest.mock.patch("amazhist.item.parse_item", return_value=None),
         ):
-            result = amazhist.order._parse_order_default(handle, order)
+            result = amazhist.order._parse_order_default(handle, handle._test_page, order)
 
         assert result is False
 

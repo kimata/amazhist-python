@@ -197,7 +197,9 @@ class TestParseItem:
             no="ORDER-001",
             url="https://www.amazon.co.jp/order/ORDER-001",
         )
-        result = amazhist.item.parse_item(handle, "//div[@data-component='purchasedItems']", order)
+        result = amazhist.item.parse_item(
+            handle, handle._test_page, "//div[@data-component='purchasedItems']", order
+        )
 
         assert result is None
         my_lib.graceful_shutdown.reset_shutdown_flag()
@@ -247,7 +249,7 @@ class TestParseItem:
             unittest.mock.patch("amazhist.webutil.with_retry"),
             unittest.mock.patch("time.sleep"),
         ):
-            result = amazhist.item.parse_item(handle, "//div", order)
+            result = amazhist.item.parse_item(handle, handle._test_page, "//div", order)
 
         assert result is not None
         assert result.name == "テスト商品"
@@ -457,7 +459,7 @@ class TestParseItemErrors:
             ),
             unittest.mock.patch("time.sleep"),
         ):
-            result = amazhist.item.parse_item(handle, "//div", order)
+            result = amazhist.item.parse_item(handle, handle._test_page, "//div", order)
 
         assert result is not None
         assert result.name == "テスト商品"
@@ -508,7 +510,7 @@ class TestParseItemErrors:
             unittest.mock.patch("time.sleep"),
             unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
-            result = amazhist.item.parse_item(handle, "//div", order)
+            result = amazhist.item.parse_item(handle, handle._test_page, "//div", order)
 
         assert result is not None
         assert result.price == 0  # パース失敗時は 0
@@ -558,7 +560,7 @@ class TestParseItemErrors:
             unittest.mock.patch("time.sleep"),
             unittest.mock.patch("my_lib.browser.helpers.dump_page"),
         ):
-            result = amazhist.item.parse_item(handle, "//div", order)
+            result = amazhist.item.parse_item(handle, handle._test_page, "//div", order)
 
         assert result is not None
         assert result.price == 0  # 価格なしの場合は 0
